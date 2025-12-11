@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Generic starter index.html for a web project" />
+    <title>Sports Portal — CBB</title>
+
+    <!-- Favicon -->
+    <link rel="icon" href="favicon.ico" />
+
+    <!-- Stylesheet (create styles.css in same folder) -->
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+   <div class="header">
+        <ul class="left">
+            <li><a href="/">Sports Portal</a></li>
+        </ul>
+        <ul class="right">
+            <li><a href="/">Home</a></li>
+            <li><a href="#">Login</a></li>
+            <li><a href="#">Sign Up</a></li>
+            <li><a href="#">About</a></li>
+        </ul>
+    </div>
+
+    <div class="sitebody">
+        <h2>Welcome to College Basketball Team Draft</h2>
+        <h3>Rules</h3>
+        <ul>
+            <li>Draft all 64 teams in the NCAA March Madness College Basketball Tournament</li>
+            <li>Men's and Women's tournaments available</li>
+            <li>Snake or Auction Draft</li>
+            <li>10 points are awarded for each correct pick</li>
+            <li>Person with most points at the end of all 6 rounds is the winner</li>         
+            <li>Tiebreaker is the closest guess for the National Championship total score</li>
+        </ul>
+        <div class="center-container">
+            <a href="#"><button>Start a March Madness Team Draft League</button></a>
+        </div>
+
+    </div>
+    <footer class="site-footer">
+            <p>&copy; <span id="year"></span> Sports Portal. All rights reserved.</p>
+    </footer>
+
+    <!-- Basic script to set current year and provide a place for project scripts -->
+    <script>
+        document.getElementById('year').textContent = new Date().getFullYear();
+        // Add project JavaScript in scripts.js and include it below as needed
+        // <script src="scripts.js"></script>
+    </script>
+</body>
+</html>
