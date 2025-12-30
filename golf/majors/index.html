@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Generic starter index.html for a web project" />
+    <title>Sports Portal — Golf Majors</title>
+
+    <!-- Favicon -->
+    <link rel="icon" href="favicon.ico" />
+
+    <!-- Stylesheet (create styles.css in same folder) -->
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+   <div class="header">
+        <ul class="left">
+            <li><a href="/">Sports Portal</a></li>
+        </ul>
+        <ul class="right">
+            <li><a href="/">Home</a></li>
+            <li><a href="#">Login</a></li>
+            <li><a href="#">Sign Up</a></li>
+            <li><a href="#">About</a></li>
+        </ul>
+    </div>
+
+    <div class="sitebody">
+        <h2>Welcome to Golf Majors</h2>
+        <h3>Rules</h3>
+        <ul>
+            <li>Pick a team of 6 golfers for the 4 PGA majors</li>
+            <li>The Players Championship is optional</li>
+            <li>Sum the best 4 scores of the day for your golfers</li>
+            <li>In the event 4 golfers don't make the cut, 2 options</li>
+                <ul>
+                    <li>Player can be eliminated OR</li>
+                    <li>The worst score of each day will count for each MC golfer</li>
+                </ul>
+            <li>Best Team Golf Score at the end of the tournament is the winner</li>
+            <li>Season Winner can be tracked multiple ways</li>
+                <ul>
+                    <li>Best full season golf score</li>
+                    <li>Most earned Money</li>
+                    <li>Most Fedex Points</li>    
+                </ul>
+            <li>Optional bonus Points for 1st, 2nd, 3rd place golfers on your team</li>
+           <li>Several options for tiebreakers</li>
+        </ul>
+        <div class="center-container">
+            <a href="#"><button>Start a Golf Majors League</button></a>
+        </div>
+
+    </div>
+    <footer class="site-footer">
+            <p>&copy; <span id="year"></span> Sports Portal. All rights reserved.</p>
+    </footer>
+
+    <!-- Basic script to set current year and provide a place for project scripts -->
+    <script>
+        document.getElementById('year').textContent = new Date().getFullYear();
+        // Add project JavaScript in scripts.js and include it below as needed
+        // <script src="scripts.js"></script>
+    </script>
+</body>
+</html>

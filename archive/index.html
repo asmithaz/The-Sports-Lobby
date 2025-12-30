@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Generic starter index.html for a web project" />
+    <title>Sports Portal — Home</title>
+
+    <!-- Favicon -->
+    <link rel="icon" href="favicon.ico" />
+
+    <!-- Stylesheet (create styles.css in same folder) -->
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+   <div class="header">
+        <ul class="left">
+            <li>Sports Portal</li>
+        </ul>
+        <ul class="right">
+            <li><a href="/">Home</a></li>
+            <li><a href="#">Login</a></li>
+            <li><a href="#">Sign Up</a></li>
+            <li><a href="#">About</a></li>
+        </ul>
+    </div>
+
+    <div class="sitebody">
+
+        <h1>Welcome to the Sports Portal</h1>
+        <p>Your destination for unique fantasy games</p>
+        
+        <div class="container">
+            <a href="#"><img src="/images/basketball.png" alt="Basketball"></a>
+            <a href="#"><img src="/images/football.jpg" alt="Football"></a>
+            <a href="#"><img src="/images/Golf.jpeg" alt="Golf"></a>
+        </div> 
+      <p>Explore our upcoming fantasy games</p>
+            <ul>
+                <li><a href="/cfb/bowlpickem/index.html">College Football Bowl Pick'em</a></li>
+                <li><a href="/nfl/teamdraft/index.html"">NFL Teams Playoff Draft</a></li>
+                <li><a href="/nfl/dfs/index.html">NFL Playoffs DFS</a></li>
+                <li><a href="/cbb/teamdraft/index.html">NCAA Basketball March Madness Draft</a></li>
+                <li><a href="/cbb/conferencebrackets/index.html">NCAA Basketball Conference Brackets</a></li>
+                <li><a href="/golf/season/index.html">Fantasy Golf Season</a></li>
+                <li><a href="/golf/majors/index.html">Golf Majors Season</a></li>
+                <li>And many more...</li>
+            </ul>
+        </div>
+
+    <footer class="site-footer">
+            <p>&copy; <span id="year"></span> Sports Portal. All rights reserved.</p>
+    </footer>
+
+    Basic script to set current year and provide a place for project scripts
+    <script>
+        document.getElementById('year').textContent = new Date().getFullYear();
+        // Add project JavaScript in scripts.js and include it below as needed
+        // <script src="scripts.js"></script>
+    </script>
+</body>
+
+</html> 
