@@ -82,6 +82,7 @@ main p{
     justify-content: center;
     color: #151F30;
     font-weight: bold;
+    font-size: 35px;
 }
 
 .container-1 {
@@ -102,13 +103,13 @@ main p{
 
 .container-2 {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     flex-wrap:wrap;
     flex-grow: 1;
-    justify-content: space-evenly;
     margin: 0;
     gap: 25px;
     flex-grow: 1;
+    flex-basis: 50%;
 }
 
 .container-3 {
@@ -126,21 +127,34 @@ main p{
 
 .container-4 {
     display: flex;
+    flex-direction: row;
     justify-content: space-evenly;
     align-items: center;
     flex-grow: 1;
-    width: 100px;
     border: 2px solid #151F30;
-    padding: 15px;
+    padding: 8px;
     border-radius: 8px;
     font-weight: bold;
     text-align: center;
+    min-width: 750px;
 }
 
-.container-4:hover {
+/* .container-4:hover {
     color: white;
     padding: 15px;
     background-color: #4d63dd;
+    transition: background-color 0.3s; 
+} */
+
+.container-4 button {
+    margin-top: 10px;
+    padding: 10px 10px;
+    background-color: #151F30;
+    color: #F9FAF8;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
     transition: background-color 0.3s;
 }
 
@@ -149,6 +163,8 @@ main p{
     text-decoration: none; /* Removes the default underline */
     color: inherit; /* Inherit color from parent or define a new one */
     cursor: pointer; /* Ensures the cursor changes to a hand icon */
+    max-length: 100px;
+    
 }
 
 /* .footer {
@@ -212,7 +228,7 @@ section {
 .container-6 section {
     display: flex;
     /* gap: 10px; */
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
 }
 
 input[type="radio"] {
@@ -319,12 +335,12 @@ input[type="radio"]:checked+label {
 
 .container-8 {
     display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
+    flex-direction: column;
     flex-basis: 50%;
     margin: 0;
-    gap: 12px; /* space between paragraph blocks */
-    align-items: flex-start;
+    padding: 5px;
+    align-content: center;
+    flex-grow: 1;
 }
 
 /* Ensure any UL alongside .container-8 starts at the top and has no default margins */
@@ -350,6 +366,25 @@ input[type="radio"]:checked+label {
 }
 
 .container-9 {
-    
     padding-bottom: 5px;
+}
+
+.container-10 {
+    display: flex;
+    flex-direction: column;
+    flex-basis: 75%; 
+    text-align: left; 
+    font-weight: normal;
+
+}
+
+.container-10 ul {
+    display: flex; 
+    flex-direction: column;
+    justify-content: space-evenly;
+}
+
+.container-10 ul li {
+    margin: 5px 0; 
+
 }
