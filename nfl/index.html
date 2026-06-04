@@ -1,0 +1,161 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Generic starter index.html for a web project" />
+    <title>Sports Portal Football</title>
+
+    <!-- Favicon -->
+    <link rel="icon" href="favicon.ico" />
+
+    <!-- Stylesheet (create styles.css in same folder) -->
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="navbar"> 
+        <div class="navbar-links">
+            <ul>
+                <li><a href="/index.html">Home</a></li>
+                <li><a href="Login.html">Login</a></li>
+                <li><a href="/login/index.html">Signup</a></li>
+                <li><a href="about.html">About</a></li>
+            </ul>
+        </div>
+    </nav>
+    <main>  
+
+            <p>Pro Football Challenges</p>
+            <div class="container-2">
+                <div class="container-4">
+                    <div class="container-8">
+                        Set it, Forget it League
+                            <button onclick="startLeague('/nfl/set-it-forget-it/')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>Teams are selected in a snake or auction draft.</li>
+                            <li>Teams go head to head each week.</li>
+                            <li>No roster changes, no waiver pick ups, no trades! One substitution allowed midway through the season.</li>
+                            <li>Huge team rosters for high scoring weekly games.</li>
+                            <li>Customizable scoring settings including rushing, receiving, and passing yards, touchdowns, kicking yards, etc.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="container-4">
+                    <div class="container-8">
+                        NFL Playoffs Bracket
+                        <button onclick="startLeague('/nfl/playoffs-bracket/')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>Player's select winner for every game in the bracket.</li>
+                            <li>Points awarded for every correct pick.</li>
+                            <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
+                            <li>Real time standings report and what if scenarios.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="container-4">
+                    <div class="container-8">
+                        NFL Survivor
+                        <button onclick="startLeague('/nfl/survivor/')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>Pick one team to win their matchup from a preset pool of games.</li>
+                            <li>Players with winning picks move on to the next week until all teams are eliminated.</li>
+                            <li>Playoff specific survivor game available for bowl season.</li>
+                            <li>Each team can only be picked once per season.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="container-4">
+                    <div class="container-8">
+                        NFL Pick 'em
+                        <button onclick="startLeague('/nfl/pickem/')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>Pick every game winner each week.</li>
+                            <li>Available to play against the spread or straight up.</li>
+                            <li>Customizable scoring including confidence ranking.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="container-4">
+                    <div class="container-8">
+                        Gauntlet Playoff Tournament
+                        <button onclick="startLeague('/nfl/gauntlet/')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>Each player is randomly assigned one team or more (up to 14 entries).</li>
+                            <li>Player's with losing teams move on while losing teams are eliminated.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="container-4">
+                    <div class="container-8">
+                        Playoff Draft
+                        <button onclick="startLeague('/nfl/playoff-draft/')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>Teams are selected in a snake or auction draft.</li>
+                            <li>Players keep the teams that are drafted through the playoffs and accumulate points.</li>
+                            <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="container-4">
+                    <div class="container-8">
+                        Playoff Weekly Strategy Game
+                        <button onclick="startLeague('/nfl/playoff-strategy/')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>Player's draft a team based on teams available in the playoffs.</li>
+                            <li>Points awarded based on players achievements in game, just like fantasy football!</li>
+                            <li>Multipliers awarded for taking the same players each week.</li>
+                            <li>Points awarded are cumulative.</li>
+                            <li>Customizable scoring settings including rushing, receiving, and passing yards, touchdowns, kicking yards, etc.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="container-4">
+                    <div class="container-8">
+                        Kicker League
+                        <button onclick="startLeague('/nfl/kicker-league/')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>All Kicker Teams go head to head each week.</li>
+                            <li>Customizable scoring settings including PATs, made and missed field goals, distance of attempts, etc.</li>
+                            <li>Leagues last through the regular season.</li>
+                        </ul>
+                    </div>
+                </div>
+
+            </div>
+
+    </div>
+
+    <footer class="footer">
+        2026 The Sports Portal. All rights reserved.
+    </footer>
+
+    </main>
+</body>
+</html> 

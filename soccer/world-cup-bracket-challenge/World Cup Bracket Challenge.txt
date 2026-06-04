@@ -1,0 +1,38 @@
+3 Options to start
+* Pick before the group stage only
+* Pick before the knockout stage and skip the group stage
+* Pick before the group stage, and repick the knockout stage
+
+Increasing point structure
+
+Option 1
+Start from Group Stage and only get the ones you selected correctly in the bracket
+Correct Winner - 20pts
+Second Place - 10pts
+Next 8 - 5 pts
+
+Round of 32 - 40pts
+Round of 16 - 80pts
+Quarterfinals -  160pts
+Semifinals - 320pts
+Finals -640pts
+
+Option 2
+Knockout stage bracket without picking group stage
+Round of 32 - 10pts
+Round of 16 - 20pts
+Quarterfinals -  40pts
+Semifinals - 80pts
+Finals -160pts
+
+Option 3
+Start from Group Stage and everyone gets to pick the entire knockout stage bracket, scores are cumulative
+Correct Winner - 20pts
+Second Place - 10pts
+Next 8 - 5 pts
+
+Round of 32 - 10pts
+Round of 16 - 20pts
+Quarterfinals -  40pts
+Semifinals - 80pts
+Finals -160pts

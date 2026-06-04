@@ -1,4 +1,4 @@
-﻿body {
+body {
     margin: 0;
     padding: 0;
     display: flex;
@@ -14,24 +14,6 @@
     justify-content: center;
     padding: 10px 20px;
 }
-
-/* .navbar-title {
-    font-weight: bold;
-
-}
-
-.navbar-title a {
-    color: #151F30;
-    text-decoration: none; 
-    padding: 5px 10px;
-    transition: background-color 0.3s;
-
-}
-
-.navbar-title a:hover {
-    background-color: white; 
-    border-radius: 4px;
-} */
 
 .navbar-links ul {
     list-style: none; /* Remove default bullet points */
@@ -140,13 +122,6 @@ main p{
     min-width: 750px;
 }
 
-/* .container-4:hover {
-    color: white;
-    padding: 15px;
-    background-color: #4d63dd;
-    transition: background-color 0.3s; 
-} */
-
 .container-4 button {
     margin-top: 10px;
     padding: 10px 10px;
@@ -167,17 +142,6 @@ main p{
     cursor: pointer; /* Ensures the cursor changes to a hand icon */   
     
 }
-
-/* .footer {
-    display: flex;
-    align-content: flex-end;
-    justify-content: center;
-    align-items: center;
-    background-color: #151F30;
-    color: #F9FAF8;
-    padding: 15px 0;
-    margin-top: auto;
-} */
 
 .container-format {
     display: flex;

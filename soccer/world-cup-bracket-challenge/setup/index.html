@@ -1,0 +1,152 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>World Cup Bracket Challenge</title>
+    <link rel="icon" href="favicon.ico" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="navbar-links">
+            <ul>
+                <li><a href="/index.html">Home</a></li>
+                <li><a href="/soccer/">Soccer</a></li>
+                <li><a href="/login/index.html">Login</a></li>
+                <li><a href="/login/index.html">Signup</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main>
+        <h1>World Cup Bracket Challenge</h1>
+        <p class="subtitle">Setup Your League</p>
+
+        <form id="league-setup-form">
+            <div class="form-card">
+                <div class="form-group">
+                    <label for="league-name">League Name</label>
+                    <input type="text" id="league-name" name="league-name" placeholder="Enter your league name - max 30 characters" maxlength="30" required oninput="updateCounter(this)" />
+                    <span class="char-counter" id="char-counter">0 / 30</span>
+                </div>
+            </div>
+
+            <div class="form-card">
+                <div class="form-group">
+                    <label>League Visibility</label>
+                    <div class="radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="visibility" value="private" checked />
+                            <span class="radio-label">
+                                <strong>Private</strong>
+                                <span>Invite only — members join via link or code</span>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="visibility" value="public" />
+                            <span class="radio-label">
+                                <strong>Public</strong>
+                                <span>Anyone can find and join your league</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-card">
+                <div class="form-group">
+                    <label>League Type</label>
+                    <div class="radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="league-type" value="group-stage-only" checked />
+                            <span class="radio-label">
+                                <strong>Group Stage Only</strong>
+                                <span>Pick teams starting at group stage and progress your choices through the knockout stage</span>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="league-type" value="knockout-only" />
+                            <span class="radio-label">
+                                <strong>Knockout Stage Only</strong>
+                                <span>Once the World Cup reaches the knockout stage, complete your bracket</span>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="league-type" value="group-and-repick" />
+                            <span class="radio-label">
+                                <strong>Group Stage + Knockout Stage Repick</strong>
+                                <span>Pick teams starting at the group stage, regardless of your predictions, complete a bracket for the knockout stage</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit">Next</button>
+            </div>
+        </form>
+    </main>
+
+    <footer class="footer">
+        2026 The Sports Portal. All rights reserved.
+    </footer>
+
+    <script>
+        function updateCounter(input) {
+            document.getElementById('char-counter').textContent = input.value.length + ' / 30';
+        }
+
+        document.getElementById('league-setup-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const btn = this.querySelector('button[type="submit"]');
+            btn.textContent = 'Creating...';
+            btn.disabled = true;
+
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                window.location.href = '/login/index.html';
+                return;
+            }
+
+            const leagueName = document.getElementById('league-name').value;
+            const visibility = document.querySelector('input[name="visibility"]:checked').value;
+            const leagueType = document.querySelector('input[name="league-type"]:checked').value;
+            const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+
+            const { data, error } = await supabase
+                .from('leagues')
+                .insert({
+                    name: leagueName,
+                    visibility: visibility,
+                    league_type: leagueType,
+                    commissioner_id: session.user.id,
+                    invite_code: inviteCode,
+                    game_type: 'world-cup-bracket-challenge'
+                })
+                .select()
+                .single();
+
+            if (error) {
+                btn.textContent = 'Next';
+                btn.disabled = false;
+                alert('Failed to create league. Please try again.');
+                console.error(error);
+                return;
+            }
+
+            sessionStorage.setItem('league_id', data.id);
+            sessionStorage.setItem('league_visibility', visibility);
+            sessionStorage.setItem('league_type', leagueType);
+            sessionStorage.setItem('league_name', leagueName);
+            sessionStorage.setItem('league_invite_code', inviteCode);
+            window.location.href = '/soccer/world-cup-bracket-challenge/invite/';
+        });
+    </script>
+</body>
+</html>

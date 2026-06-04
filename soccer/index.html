@@ -1,0 +1,123 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Generic starter index.html for a web project" />
+    <title>Sports Portal Soccer</title>
+
+    <!-- Favicon -->
+    <link rel="icon" href="favicon.ico" />
+
+    <!-- Stylesheet (create styles.css in same folder) -->
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="navbar"> 
+        <div class="navbar-links">
+            <ul>
+                <li><a href="/index.html">Home</a></li>
+                <li><a href="Login.html">Login</a></li>
+                <li><a href="/login/index.html">Signup</a></li>
+                <li><a href="about.html">About</a></li>
+            </ul>
+        </div>
+    </nav>
+    <main>  
+
+            <p>Soccer Challenges</p>
+            <div class="container-2">
+                <div class="container-4">
+                    <div class="container-8">
+                        World Cup Country Draft
+                        <button onclick="startLeague('/soccer/world-cup-draft/')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>Draft countries in an auction or snake draft.</li>
+                            <li>Score points for every win a country gets including knock out stage!</li>
+                            <li>Escalating points for different stages.</li>
+                            <li>Cumulative scores determine the winner.</li>
+                            <li>Customizable scoring options including bonus points, member groups, multiple entries, and more.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="container-4">
+                    <div class="container-8">
+                        World Cup Bracket Challenge
+                        <button onclick="startLeague('/soccer/world-cup-bracket-challenge/index.html')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>Start from group stage or elimination rounds.</li>
+                            <li>Score points for correct predictions.</li>
+                            <li>Escalating points for different stages.</li>
+                            <li>Cumulative scores determine the winner.</li>
+                            <li>Customizable scoring options including bonus points, member groups, multiple entries, and more.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="container-4">
+                    <div class="container-8">
+                        League Pick 'em
+                        <button onclick="startLeague('/soccer/league-pickem/')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>Many leagues available including Premier League, MLS, Bundesliga, etc.</li>
+                            <li>Select winners of multiple games each week.</li>
+                            <li>Groups play against the spread or straight up.</li>
+                            <li>Confidence rankings available in pool.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="container-4">
+                    <div class="container-8">
+                        Soccer Survivor
+                        <button onclick="startLeague('/soccer/survivor/')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>Leagues available including Premier League, MLS, Bundesliga, etc.</li>
+                            <li>Pick one team to win their matchup from a preset pool of games.</li>
+                            <li>Players with winning picks move on to the next week until all teams are eliminated.</li>
+                            <li>Each team can only be picked once per season.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="container-4">
+                    <div class="container-8">
+                        League Bracket Season
+                        <button onclick="startLeague('/soccer/league-bracket/')">Start your League!</button>
+                    </div>
+                    <div class="container-10">
+                        <ul>
+                            <li>Select league tournaments available for various leagues including America's Cup, CONCACAF, Eurocup, etc.</li>
+                            <li>Player's select winner for every game in the bracket.</li>
+                            <li>Season length is customizable or one off.</li>
+                            <li>Points awarded for every correct pick.</li>
+                            <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
+                            <li>Real time standings report and what if scenarios.</li>
+                        </ul>
+                    </div>
+                </div>
+
+            </div>
+
+    </div>
+
+    <footer class="footer">
+        2026 The Sports Portal. All rights reserved.
+    </footer>
+
+    </main>
+</body>
+</html> 

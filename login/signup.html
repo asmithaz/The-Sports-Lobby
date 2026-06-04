@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Sports Portal — Sign Up</title>
+    <link rel="icon" href="favicon.ico" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="navbar-links">
+            <ul>
+                <li><a href="/index.html">Home</a></li>
+                <li><a href="/login/index.html">Login</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main>
+        <div class="login-card" id="signup-card">
+            <h2>Create Account</h2>
+            <form>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" placeholder="Enter your email" required />
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" placeholder="Create a password" required />
+                </div>
+                <div class="form-group">
+                    <label for="confirm-password">Confirm Password</label>
+                    <input type="password" id="confirm-password" name="confirm-password" placeholder="Confirm your password" required />
+                </div>
+                <p id="signup-error" class="error-msg"></p>
+                <button type="button" class="btn-primary" onclick="handleSignup()">Create Account</button>
+                <div class="divider"></div>
+                <a href="index.html" class="btn-secondary">Already have an account? Log In</a>
+            </form>
+        </div>
+
+        <div class="login-card" id="confirm-card" style="display:none;">
+            <h2>Check Your Email</h2>
+            <p style="text-align:center; color:#3e4455; margin-bottom:24px;">
+                We sent a confirmation link to <strong id="confirm-email"></strong>.<br>
+                Click the link to activate your account.
+            </p>
+            <a href="index.html" class="btn-secondary">Back to Log In</a>
+        </div>
+    </main>
+
+    <footer class="footer">
+        2026 The Sports Portal. All rights reserved.
+    </footer>
+
+    <script>
+        async function handleSignup() {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const confirm = document.getElementById('confirm-password').value;
+            const errorEl = document.getElementById('signup-error');
+            errorEl.textContent = '';
+
+            if (password !== confirm) {
+                errorEl.textContent = 'Passwords do not match.';
+                return;
+            }
+
+            if (password.length < 6) {
+                errorEl.textContent = 'Password must be at least 6 characters.';
+                return;
+            }
+
+            const { error } = await supabase.auth.signUp({ email, password });
+
+            if (error) {
+                errorEl.textContent = error.message;
+                return;
+            }
+
+            document.getElementById('confirm-email').textContent = email;
+            document.getElementById('signup-card').style.display = 'none';
+            document.getElementById('confirm-card').style.display = 'block';
+        }
+    </script>
+</body>
+</html>
