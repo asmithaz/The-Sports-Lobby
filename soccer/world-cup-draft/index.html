@@ -1,32 +1,69 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="description" content="Generic starter index.html for a web project" />
-    <title>Sports Portal Soccer</title>
-
-    <!-- Favicon -->
-    <link rel="icon" href="favicon.ico" />
-
-    <!-- Stylesheet (create styles.css in same folder) -->
+    <title>World Cup Country Draft</title>
+    <link rel="icon" href="/favicon.ico" />
     <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
 </head>
 <body>
 
-    <nav class="navbar"> 
+    <nav class="navbar">
         <div class="navbar-links">
             <ul>
                 <li><a href="/index.html">Home</a></li>
-                <li><a href="Login.html">Login</a></li>
+                <li><a href="/soccer/">Soccer</a></li>
+                <li><a href="/login/index.html">Login</a></li>
                 <li><a href="/login/index.html">Signup</a></li>
-                <li><a href="about.html">About</a></li>
             </ul>
         </div>
     </nav>
-    <main>  
-        <H1>World Cup Country Draft</H1>
 
+    <main>
+        <h1>World Cup Country Draft</h1>
+        <p class="subtitle">Draft countries, compete all tournament long</p>
+
+        <div class="cta-group">
+            <a href="/soccer/world-cup-draft/setup/" class="btn-primary">Create League</a>
+        </div>
+
+        <div class="join-card">
+            <p class="join-label">Have an invite link or code?</p>
+            <div class="join-row">
+                <input type="text" id="invite-input" placeholder="Paste invite link or enter code" />
+                <button class="btn-secondary" onclick="joinLeague()">Join</button>
+            </div>
+            <p id="join-error" class="join-error hidden">Enter a valid invite link or code.</p>
+        </div>
     </main>
+
+    <footer class="footer">
+        2026 The Sports Portal. All rights reserved.
+    </footer>
+
+    <script>
+        function joinLeague() {
+            const val = document.getElementById('invite-input').value.trim();
+            const errEl = document.getElementById('join-error');
+            if (!val) {
+                errEl.classList.remove('hidden');
+                return;
+            }
+            errEl.classList.add('hidden');
+            const match = val.match(/wcd-([a-z0-9]+)/i);
+            const code = match ? match[1].toLowerCase() : val.toLowerCase();
+            window.location.href = '/join/wcd-' + code;
+        }
+
+        document.getElementById('invite-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') joinLeague();
+        });
+
+        renderDashboardLink();
+    </script>
 </body>
-</html> 
+</html>

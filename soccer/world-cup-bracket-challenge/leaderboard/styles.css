@@ -1,0 +1,174 @@
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    font-family: Arial, Helvetica, sans-serif;
+    min-height: 100vh;
+    background-color: rgb(204, 204, 204);
+}
+
+.navbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 20px;
+}
+
+.navbar-links ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    font-weight: bold;
+}
+
+.navbar-links li { margin: 0 40px; }
+
+.navbar-links a {
+    color: #151F30;
+    text-decoration: none;
+    padding: 5px 10px;
+    border-radius: 8px;
+    transition: background-color 0.3s;
+}
+
+.navbar-links a:hover {
+    color: white;
+    background-color: #151F30;
+}
+
+main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px 60px;
+}
+
+h1 {
+    color: #151F30;
+    margin-bottom: 4px;
+}
+
+.subtitle {
+    color: #3e4455;
+    font-size: 16px;
+    margin: 0 0 28px 0;
+}
+
+/* ── Status messages ── */
+.loading, .empty, .error {
+    color: #555;
+    font-size: 14px;
+    padding: 24px 0;
+    text-align: center;
+}
+
+.error { color: #dc2626; }
+
+.note {
+    font-size: 13px;
+    color: #555;
+    margin: 0 0 16px 0;
+    text-align: center;
+}
+
+/* ── Table ── */
+.leaderboard-table {
+    width: 100%;
+    max-width: 780px;
+    border-collapse: collapse;
+    background: #f9faf8;
+    border: 1.5px solid #151F30;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.leaderboard-table thead tr {
+    background-color: #151F30;
+    color: #f9faf8;
+}
+
+.leaderboard-table thead th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+}
+
+.leaderboard-table tbody tr {
+    border-top: 1px solid #e2e4ea;
+    transition: background-color 0.15s;
+}
+
+.leaderboard-table tbody tr:hover {
+    background-color: #eef0f6;
+}
+
+.leaderboard-table tbody td {
+    padding: 12px 16px;
+    font-size: 13px;
+    color: #151F30;
+}
+
+/* ── Medal rows ── */
+.rank-gold   { background-color: #fefce8 !important; }
+.rank-silver { background-color: #f8f9fa !important; }
+.rank-bronze { background-color: #fff7ed !important; }
+
+.rank-gold:hover   { background-color: #fef9c3 !important; }
+.rank-silver:hover { background-color: #f1f3f5 !important; }
+.rank-bronze:hover { background-color: #ffedd5 !important; }
+
+/* ── Columns ── */
+.col-rank {
+    width: 40px;
+    font-weight: bold;
+    color: #555;
+    text-align: center;
+}
+
+.col-name {
+    font-weight: bold;
+}
+
+.col-champion .flag {
+    margin-right: 4px;
+}
+
+.col-submitted {
+    font-weight: bold;
+    text-align: center;
+}
+
+.col-submitted.yes { color: #16a34a; }
+.col-submitted.no  { color: #aaa; }
+
+.col-correct, .col-points, .col-possible {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.col-points {
+    font-weight: bold;
+    color: #4d63dd;
+    font-size: 14px;
+}
+
+.col-possible {
+    color: #888;
+}
+
+/* ── Footer ── */
+.footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #151F30;
+    padding: 50px 0;
+    margin-top: auto;
+    font-weight: bold;
+}

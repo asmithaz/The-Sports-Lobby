@@ -1,0 +1,349 @@
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    font-family: Arial, Helvetica, sans-serif;
+    min-height: 100vh;
+    background-color: rgb(204, 204, 204);
+}
+
+.navbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 20px;
+}
+
+.navbar-links ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    font-weight: bold;
+}
+
+.navbar-links li {
+    margin-left: 40px;
+    margin-right: 40px;
+}
+
+.navbar-links a {
+    color: #151F30;
+    text-decoration: none;
+    padding: 5px 10px;
+    border-radius: 8px;
+    transition: background-color 0.3s;
+}
+
+.navbar-links a:hover {
+    color: white;
+    background-color: #151F30;
+}
+
+main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0px 16px 40px;
+}
+
+h1 {
+    color: #151F30;
+    margin-bottom: 4px;
+}
+
+.subtitle {
+    color: #3e4455;
+    font-size: 16px;
+    margin: 0 0 20px 0;
+}
+
+/* ── Bracket name ── */
+.bracket-name-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    max-width: 960px;
+    margin-bottom: 16px;
+}
+
+.bracket-name-label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #151F30;
+    white-space: nowrap;
+}
+
+.bracket-name-input {
+    width: 280px;
+    padding: 8px 12px;
+    border: 1.5px solid #151F30;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #151F30;
+    background: #f9faf8;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.bracket-name-input:focus {
+    border-color: #4d63dd;
+}
+
+.bracket-name-counter {
+    font-size: 12px;
+    color: #888;
+    min-width: 24px;
+}
+
+/* ── Progress bar ── */
+.picks-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 960px;
+    background: #f9faf8;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    padding: 12px 20px;
+    box-sizing: border-box;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.picks-progress {
+    font-weight: bold;
+    color: #151F30;
+    font-size: 14px;
+}
+
+.picks-progress span {
+    color: #4d63dd;
+}
+
+.dot {
+    margin: 0 8px;
+    color: #999;
+}
+
+.picks-legend {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.advance-legend { color: #4d63dd; }
+.next8-legend   { color: #c07a00; }
+
+/* ── Groups grid ── */
+.groups-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    width: 100%;
+    max-width: 960px;
+}
+
+@media (max-width: 860px) {
+    .groups-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 620px) {
+    .groups-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 400px) {
+    .groups-grid { grid-template-columns: 1fr; }
+}
+
+.loading {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: #666;
+    padding: 40px;
+}
+
+/* ── Group card ── */
+.group-card {
+    background: #f9faf8;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+
+.group-card.complete {
+    border-color: #4d63dd;
+}
+
+.group-header {
+    background: #151F30;
+    color: #f9faf8;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 8px 14px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.group-card.complete .group-header {
+    background: #4d63dd;
+}
+
+/* ── Team rows ── */
+.team-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #ddd;
+    cursor: pointer;
+    transition: background-color 0.15s;
+    user-select: none;
+}
+
+.team-row:last-child {
+    border-bottom: none;
+}
+
+.team-row:hover {
+    background-color: #e8eaf0;
+}
+
+.flag {
+    font-size: 20px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.team-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: bold;
+    color: #151F30;
+}
+
+.badge {
+    font-size: 13px;
+    font-weight: bold;
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+/* Advance pick — blue */
+.state-advance {
+    background-color: #eef0fa;
+}
+
+.state-advance:hover {
+    background-color: #dde1f5;
+}
+
+.state-advance .team-name {
+    color: #4d63dd;
+}
+
+.advance-badge {
+    color: #4d63dd;
+}
+
+/* Next 8 pick — gold */
+.state-next8 {
+    background-color: #fef8ea;
+}
+
+.state-next8:hover {
+    background-color: #faefc8;
+}
+
+.state-next8 .team-name {
+    color: #c07a00;
+}
+
+.next8-badge {
+    color: #c07a00;
+}
+
+/* Next 8 eligible (advance full, slot open) — subtle hint */
+.state-next8-eligible {
+    background-color: #fffdf4;
+}
+
+.state-next8-eligible:hover {
+    background-color: #faefc8;
+}
+
+/* Disabled (advance full, next8 full or taken) */
+.state-disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.state-disabled:hover {
+    background-color: transparent;
+}
+
+/* ── Submit row ── */
+.submit-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 32px;
+    gap: 10px;
+}
+
+.submit-hint {
+    font-size: 13px;
+    color: #666;
+    margin: 0;
+}
+
+.submit-hint.hint-ready {
+    color: #4d63dd;
+    font-weight: bold;
+}
+
+#submit-btn {
+    padding: 12px 36px;
+    background-color: #151F30;
+    color: #f9faf8;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+#submit-btn:hover:not(:disabled) {
+    background-color: #4d63dd;
+}
+
+#submit-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #151F30;
+    padding: 50px 0;
+    margin-top: auto;
+    font-weight: bold;
+}

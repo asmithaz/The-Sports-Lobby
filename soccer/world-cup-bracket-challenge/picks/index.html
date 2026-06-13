@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Group Stage Picks — World Cup Bracket Challenge</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="navbar-links">
+            <ul>
+                <li><a href="/soccer/">Soccer</a></li>
+                <li><a href="/soccer/world-cup-bracket-challenge/">Bracket Challenge</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main>
+        <h1>World Cup Bracket Challenge</h1>
+        <p class="subtitle" id="league-name-display">Group Stage Picks</p>
+
+        <div class="bracket-name-row">
+            <label class="bracket-name-label" for="bracket-name">Bracket Name</label>
+            <input type="text" id="bracket-name" class="bracket-name-input"
+                   maxlength="30" placeholder="Enter a name for your bracket"
+                   oninput="document.getElementById('bracket-name-counter').textContent = (30 - this.value.length)" />
+            <span id="bracket-name-counter" class="bracket-name-counter">30</span>
+        </div>
+
+        <div class="picks-bar">
+            <div class="picks-progress">
+                <span id="groups-counter">0 / 12</span> groups complete
+                <span class="dot">·</span>
+                <span id="next8-counter">0 / 8</span> Next 8 picks
+            </div>
+            <div class="picks-legend">
+                <span class="legend-item advance-legend">✓ Advance</span>
+                <span class="legend-item next8-legend">★ Next 8</span>
+            </div>
+        </div>
+
+        <div class="groups-grid" id="groups-grid">
+            <p class="loading">Loading teams...</p>
+        </div>
+
+        <div class="submit-row">
+            <p class="submit-hint" id="submit-hint">Pick 2 teams to advance from each group to unlock submit.</p>
+            <button id="submit-btn" disabled onclick="submitPicks()">Submit Group Picks</button>
+        </div>
+    </main>
+
+    <footer class="footer">
+        2026 The Sports Portal. All rights reserved.
+    </footer>
+
+    <script>
+        const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L'];
+
+        // picks[groupLetter] = { advance: [teamId, ...], next8: teamId | null }
+        const picks = {};
+        let totalNext8 = 0;
+        let allTeams = {}; // { groupLetter: [team, ...] }
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                window.location.href = '/login/index.html';
+                return;
+            }
+
+            const leagueId = sessionStorage.getItem('league_id');
+            if (!leagueId) {
+                window.location.href = '/dashboard/';
+                return;
+            }
+
+            const leagueName = sessionStorage.getItem('league_name');
+            if (leagueName) {
+                document.getElementById('league-name-display').textContent = leagueName + ' — Group Stage Picks';
+            }
+
+            // Load teams, existing picks, and profile in parallel
+            const [teamsResult, existingResult, profileResult] = await Promise.all([
+                supabase.from('wc_teams').select('id, name, group_letter, flag_emoji').order('group_letter'),
+                supabase.from('wc_group_picks').select('group_letter, advance_1, advance_2, next_8')
+                    .eq('league_id', leagueId).eq('user_id', session.user.id),
+                supabase.from('profiles').select('display_name').eq('id', session.user.id).maybeSingle()
+            ]);
+
+            if (teamsResult.error || !teamsResult.data) {
+                document.getElementById('groups-grid').innerHTML = '<p>Failed to load teams. Please refresh.</p>';
+                return;
+            }
+
+            // Initialise blank state
+            GROUPS.forEach(g => {
+                allTeams[g] = [];
+                picks[g] = { advance: [], next8: null };
+            });
+            teamsResult.data.forEach(t => {
+                if (allTeams[t.group_letter]) allTeams[t.group_letter].push(t);
+            });
+
+            // Populate bracket name if saved
+            if (profileResult.data?.display_name) {
+                const input = document.getElementById('bracket-name');
+                input.value = profileResult.data.display_name;
+                document.getElementById('bracket-name-counter').textContent = 30 - input.value.length;
+            }
+
+            // Hydrate saved picks if they exist
+            if (existingResult.data && existingResult.data.length > 0) {
+                existingResult.data.forEach(row => {
+                    if (!picks[row.group_letter]) return;
+                    if (row.advance_1) picks[row.group_letter].advance.push(row.advance_1);
+                    if (row.advance_2) picks[row.group_letter].advance.push(row.advance_2);
+                    if (row.next_8)    { picks[row.group_letter].next8 = row.next_8; totalNext8++; }
+                });
+
+                // Switch button label to reflect existing saves
+                document.getElementById('submit-btn').textContent = 'Update Picks';
+            }
+
+            render();
+        }
+
+        function renderGroupCard(groupLetter) {
+            const teams = allTeams[groupLetter] || [];
+            const g = picks[groupLetter];
+            const advanceFull = g.advance.length >= 2;
+            const next8Taken = g.next8 !== null;
+            const next8Full = totalNext8 >= 8;
+            const isComplete = advanceFull;
+
+            const teamsHtml = teams.map(team => {
+                const isAdvance = g.advance.includes(team.id);
+                const isNext8 = g.next8 === team.id;
+
+                let cls = 'team-row';
+                let badge = '';
+
+                if (isAdvance) {
+                    cls += ' state-advance';
+                    badge = '<span class="badge advance-badge">✓</span>';
+                } else if (isNext8) {
+                    cls += ' state-next8';
+                    badge = '<span class="badge next8-badge">★</span>';
+                } else if (advanceFull && !next8Taken && !next8Full) {
+                    cls += ' state-next8-eligible';
+                } else if (advanceFull) {
+                    cls += ' state-disabled';
+                }
+
+                return `<div class="${cls}" onclick="toggleTeam('${team.id}','${groupLetter}')">
+                    <span class="flag">${team.flag_emoji || ''}</span>
+                    <span class="team-name">${team.name}</span>
+                    ${badge}
+                </div>`;
+            }).join('');
+
+            return `<div class="group-card${isComplete ? ' complete' : ''}">
+                <div class="group-header">Group ${groupLetter}</div>
+                ${teamsHtml}
+            </div>`;
+        }
+
+        function render() {
+            document.getElementById('groups-grid').innerHTML = GROUPS.map(renderGroupCard).join('');
+            updateCounters();
+        }
+
+        function toggleTeam(teamId, groupLetter) {
+            const g = picks[groupLetter];
+
+            if (g.advance.includes(teamId)) {
+                g.advance = g.advance.filter(t => t !== teamId);
+            } else if (g.next8 === teamId) {
+                g.next8 = null;
+                totalNext8--;
+            } else if (g.advance.length < 2) {
+                g.advance.push(teamId);
+            } else if (g.next8 === null && totalNext8 < 8) {
+                g.next8 = teamId;
+                totalNext8++;
+            }
+
+            render();
+        }
+
+        function updateCounters() {
+            const groupsComplete = GROUPS.filter(g => picks[g].advance.length >= 2).length;
+            document.getElementById('groups-counter').textContent = `${groupsComplete} / 12`;
+            document.getElementById('next8-counter').textContent = `${totalNext8} / 8`;
+
+            const allComplete = groupsComplete === 12;
+            const btn = document.getElementById('submit-btn');
+            btn.disabled = !allComplete;
+
+            const hint = document.getElementById('submit-hint');
+            if (allComplete) {
+                const n8msg = totalNext8 === 0
+                    ? 'You can still add up to 8 Next 8 picks (optional).'
+                    : `${totalNext8} Next 8 pick${totalNext8 !== 1 ? 's' : ''} selected.`;
+                hint.textContent = 'All groups complete! ' + n8msg;
+                hint.classList.add('hint-ready');
+            } else {
+                hint.textContent = `Pick 2 teams to advance from each group to unlock submit.`;
+                hint.classList.remove('hint-ready');
+            }
+        }
+
+        async function submitPicks() {
+            const btn = document.getElementById('submit-btn');
+            btn.textContent = 'Saving...';
+            btn.disabled = true;
+
+            const { data: { session } } = await supabase.auth.getSession();
+            const leagueId = sessionStorage.getItem('league_id');
+
+            if (!session || !leagueId) {
+                alert('Session expired. Please log in again.');
+                window.location.href = '/login/index.html';
+                return;
+            }
+
+            const bracketName = document.getElementById('bracket-name').value.trim();
+
+            const rows = GROUPS.map(g => ({
+                league_id: leagueId,
+                user_id: session.user.id,
+                group_letter: g,
+                advance_1: picks[g].advance[0] || null,
+                advance_2: picks[g].advance[1] || null,
+                next_8: picks[g].next8 || null
+            }));
+
+            const [picksRes, profileRes] = await Promise.all([
+                supabase
+                    .from('wc_group_picks')
+                    .upsert(rows, { onConflict: 'league_id,user_id,group_letter' }),
+                bracketName
+                    ? supabase.from('profiles').upsert(
+                        { id: session.user.id, display_name: bracketName, updated_at: new Date().toISOString() },
+                        { onConflict: 'id' }
+                      )
+                    : Promise.resolve({ error: null })
+            ]);
+
+            if (picksRes.error) {
+                console.error(picksRes.error);
+                alert('Failed to save picks. Please try again.');
+                btn.textContent = 'Update Picks';
+                btn.disabled = false;
+                return;
+            }
+
+            window.location.href = '/soccer/world-cup-bracket-challenge/bracket/';
+        }
+
+        init();
+        renderDashboardLink();
+    </script>
+</body>
+</html>

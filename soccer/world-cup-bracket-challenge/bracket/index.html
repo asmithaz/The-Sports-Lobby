@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Knockout Bracket — World Cup Bracket Challenge</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="navbar-links">
+            <ul>
+                <li><a href="/soccer/world-cup-bracket-challenge/picks/">Group Picks</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main>
+        <h1>World Cup Bracket Challenge</h1>
+        <p class="subtitle" id="league-name-display">Knockout Bracket</p>
+
+        <div class="bracket-name-row">
+            <label class="bracket-name-label" for="bracket-name">Bracket Name</label>
+            <input type="text" id="bracket-name" class="bracket-name-input"
+                   maxlength="30" placeholder="Enter a name for your bracket"
+                   oninput="document.getElementById('bracket-name-counter').textContent = (30 - this.value.length)" />
+            <span id="bracket-name-counter" class="bracket-name-counter">30</span>
+        </div>
+
+        <div class="bracket-note">
+            Click a team to pick them as the match winner. Winners advance to the next round.
+            <span id="picks-count"></span>
+        </div>
+
+        <div class="bracket-container">
+            <div class="bracket" id="bracket">
+                <p class="loading">Loading bracket...</p>
+            </div>
+        </div>
+
+        <div class="third-place-wrapper">
+            <p class="third-place-header">3rd Place Match</p>
+            <div id="third-place-section"></div>
+        </div>
+
+        <div class="tiebreaker-section">
+            <p class="tiebreaker-title">Tiebreakers</p>
+            <div class="tiebreaker-row">
+                <label class="tiebreaker-label" for="tb-final">Total goals — Final</label>
+                <input type="number" id="tb-final" class="tiebreaker-input" min="0" max="30"
+                       oninput="tiebreakers.final = this.value" />
+            </div>
+            <div class="tiebreaker-row">
+                <label class="tiebreaker-label" for="tb-third">Total goals — 3rd Place</label>
+                <input type="number" id="tb-third" class="tiebreaker-input" min="0" max="30"
+                       oninput="tiebreakers.third = this.value" />
+            </div>
+        </div>
+
+        <div class="submit-row">
+            <button id="submit-btn" onclick="submitBracket()">Save Bracket</button>
+            <a href="/dashboard/" class="btn-back">Back to Dashboard</a>
+        </div>
+    </main>
+
+    <footer class="footer">
+        2026 The Sports Portal. All rights reserved.
+    </footer>
+
+    <script>
+        const ROUND_ORDER  = ['r32', 'r16', 'qf', 'sf', 'final'];
+        const ROUND_SIZES  = { r32: 16, r16: 8, qf: 4, sf: 2, final: 1 };
+        const ROUND_LABELS = { r32: 'Round of 32', r16: 'Round of 16', qf: 'Quarterfinals', sf: 'Semifinals', final: 'Final' };
+
+        // Official 2026 WC bracket seeding
+        // [matchNum, group1, pos1, group2, pos2]  pos: 1=winner, 2=runner-up, 'n8'=next8
+        const R32_SEED = [
+            [1,  'A', 1,  'B', 2 ],
+            [2,  'C', 1,  'D', 2 ],
+            [3,  'E', 1,  'F', 2 ],
+            [4,  'G', 1,  'H', 2 ],
+            [5,  'I', 1,  'J', 2 ],
+            [6,  'K', 1,  'L', 2 ],
+            [7, 'n8', 1, 'n8', 2 ],
+            [8, 'n8', 3, 'n8', 4 ],
+            [9,  'A', 2,  'B', 1 ],
+            [10, 'C', 2,  'D', 1 ],
+            [11, 'E', 2,  'F', 1 ],
+            [12, 'G', 2,  'H', 1 ],
+            [13, 'I', 2,  'J', 1 ],
+            [14, 'K', 2,  'L', 1 ],
+            [15,'n8', 5, 'n8', 6 ],
+            [16,'n8', 7, 'n8', 8 ],
+        ];
+
+        let r32Seeds       = {};
+        let teamLookup     = {};
+        let winners        = { r32: {}, r16: {}, qf: {}, sf: {}, final: {}, third: {} };
+        let tiebreakers    = { final: null, third: null };
+        let actualMatchData = {}; // { 'r32-1': { home_team_id, away_team_id, home_score, away_score, winner_id } }
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { window.location.href = '/login/index.html'; return; }
+
+            const leagueId = sessionStorage.getItem('league_id');
+            if (!leagueId) { window.location.href = '/dashboard/'; return; }
+
+            const leagueName = sessionStorage.getItem('league_name');
+            if (leagueName) {
+                document.getElementById('league-name-display').textContent = leagueName + ' — Knockout Bracket';
+            }
+
+            const [teamsRes, groupPicksRes, bracketPicksRes, tbRes, matchesRes, profileRes] = await Promise.all([
+                supabase.from('wc_teams').select('id, name, group_letter, flag_emoji'),
+                supabase.from('wc_group_picks')
+                    .select('group_letter, advance_1, advance_2, next_8')
+                    .eq('league_id', leagueId)
+                    .eq('user_id', session.user.id),
+                supabase.from('wc_bracket_picks')
+                    .select('round, match_number, predicted_winner_id')
+                    .eq('league_id', leagueId)
+                    .eq('user_id', session.user.id),
+                supabase.from('wc_bracket_tiebreakers')
+                    .select('tb_final_goals, tb_third_goals')
+                    .eq('league_id', leagueId)
+                    .eq('user_id', session.user.id)
+                    .maybeSingle(),
+                supabase.from('wc_matches')
+                    .select('round, match_number, home_team_id, away_team_id, home_score, away_score, winner_id'),
+                supabase.from('profiles').select('display_name').eq('id', session.user.id).maybeSingle()
+            ]);
+
+            if (teamsRes.error || !teamsRes.data) {
+                document.getElementById('bracket').innerHTML = '<p>Failed to load teams. Please refresh.</p>';
+                return;
+            }
+
+            teamsRes.data.forEach(t => { teamLookup[t.id] = t; });
+
+            const groupPicks = {};
+            if (groupPicksRes.data) {
+                groupPicksRes.data.forEach(r => { groupPicks[r.group_letter] = r; });
+            }
+
+            const next8 = ['A','B','C','D','E','F','G','H','I','J','K','L']
+                .map(g => groupPicks[g]?.next_8)
+                .filter(Boolean);
+
+            R32_SEED.forEach(([match, g1, pos1, g2, pos2]) => {
+                r32Seeds[match] = [
+                    resolveSlot(g1, pos1, groupPicks, next8),
+                    resolveSlot(g2, pos2, groupPicks, next8)
+                ];
+            });
+
+            if (bracketPicksRes.data && bracketPicksRes.data.length > 0) {
+                bracketPicksRes.data.forEach(row => {
+                    if (!winners[row.round]) winners[row.round] = {};
+                    if (row.predicted_winner_id) {
+                        winners[row.round][row.match_number] = row.predicted_winner_id;
+                    }
+                });
+                document.getElementById('submit-btn').textContent = 'Update Bracket';
+            }
+
+            if (tbRes.data) {
+                if (tbRes.data.tb_final_goals !== null) {
+                    tiebreakers.final = tbRes.data.tb_final_goals;
+                    document.getElementById('tb-final').value = tbRes.data.tb_final_goals;
+                }
+                if (tbRes.data.tb_third_goals !== null) {
+                    tiebreakers.third = tbRes.data.tb_third_goals;
+                    document.getElementById('tb-third').value = tbRes.data.tb_third_goals;
+                }
+            }
+
+            if (matchesRes.data) {
+                matchesRes.data.forEach(row => {
+                    actualMatchData[`${row.round}-${row.match_number}`] = row;
+                });
+            }
+
+            if (profileRes.data?.display_name) {
+                const input = document.getElementById('bracket-name');
+                input.value = profileRes.data.display_name;
+                document.getElementById('bracket-name-counter').textContent = 30 - input.value.length;
+            }
+
+            render();
+        }
+
+        function resolveSlot(group, pos, groupPicks, next8) {
+            if (group === 'n8') {
+                const teamId = next8[pos - 1];
+                const label  = `Next 8 #${pos}`;
+                return teamId
+                    ? { ...teamLookup[teamId], slotLabel: label }
+                    : { id: null, name: label, flag_emoji: '❓', slotLabel: label };
+            }
+            const gp     = groupPicks[group];
+            const teamId = gp ? (pos === 1 ? gp.advance_1 : gp.advance_2) : null;
+            const label  = `Group ${group} ${pos === 1 ? 'Winner' : '2nd'}`;
+            return teamId
+                ? { ...teamLookup[teamId], slotLabel: label }
+                : { id: null, name: label, flag_emoji: '❓', slotLabel: label };
+        }
+
+        function getMatchTeams(round, matchNum) {
+            if (round === 'r32') return r32Seeds[matchNum] || [null, null];
+            const prevRound = ROUND_ORDER[ROUND_ORDER.indexOf(round) - 1];
+            const m1 = (matchNum - 1) * 2 + 1;
+            const m2 = (matchNum - 1) * 2 + 2;
+            const w1 = winners[prevRound][m1];
+            const w2 = winners[prevRound][m2];
+            return [
+                w1 ? teamLookup[w1] : null,
+                w2 ? teamLookup[w2] : null
+            ];
+        }
+
+        function getSFLoser(sfMatchNum) {
+            const [t1, t2] = getMatchTeams('sf', sfMatchNum);
+            const w = winners['sf'][sfMatchNum];
+            if (!w) return null;
+            return (t1 && t1.id === w) ? t2 : t1;
+        }
+
+        function pickWinner(round, matchNum, teamId) {
+            const prev = winners[round][matchNum];
+            winners[round][matchNum] = teamId;
+            if (prev && prev !== teamId) cascadeClear(round, matchNum, prev);
+            // If an SF pick changed, clear 3rd-place winner if it's no longer a valid SF loser
+            if (round === 'sf') {
+                const l1 = getSFLoser(1);
+                const l2 = getSFLoser(2);
+                const tw = winners['third'][1];
+                if (tw && (!l1 || l1.id !== tw) && (!l2 || l2.id !== tw)) {
+                    delete winners['third'][1];
+                }
+            }
+            render();
+        }
+
+        function cascadeClear(round, matchNum, teamId) {
+            if (round === 'third') return;
+            const idx = ROUND_ORDER.indexOf(round);
+            if (idx >= ROUND_ORDER.length - 1) return;
+            const nextRound = ROUND_ORDER[idx + 1];
+            const nextMatch = Math.ceil(matchNum / 2);
+            if (winners[nextRound][nextMatch] === teamId) {
+                delete winners[nextRound][nextMatch];
+                cascadeClear(nextRound, nextMatch, teamId);
+            }
+        }
+
+        function render() {
+            document.getElementById('bracket').innerHTML =
+                ROUND_ORDER.map(renderRoundCol).join('');
+            document.getElementById('third-place-section').innerHTML =
+                render3rdPlace();
+
+            const total = ROUND_ORDER.reduce((sum, r) => sum + Object.keys(winners[r]).length, 0)
+                + Object.keys(winners['third']).length;
+            const max = 16 + 8 + 4 + 2 + 1 + 1;
+            document.getElementById('picks-count').textContent =
+                ` · ${total} / ${max} picks made`;
+        }
+
+        function render3rdPlace() {
+            const l1 = getSFLoser(1) || { id: null, name: 'SF Match 1 Loser', flag_emoji: '❓' };
+            const l2 = getSFLoser(2) || { id: null, name: 'SF Match 2 Loser', flag_emoji: '❓' };
+            const w  = winners['third'][1];
+            return `<div class="match">
+                ${teamSlot('third', 1, l1, 1, w)}
+                ${teamSlot('third', 1, l2, 2, w)}
+            </div>`;
+        }
+
+        function renderRoundCol(round) {
+            const size = ROUND_SIZES[round];
+            let groups = '';
+
+            if (round === 'final') {
+                groups = `<div class="match-group">${renderMatch(round, 1)}</div>`;
+            } else {
+                for (let i = 1; i <= size; i += 2) {
+                    groups += `<div class="match-group">
+                        ${renderMatch(round, i)}
+                        ${renderMatch(round, i + 1)}
+                    </div>`;
+                }
+            }
+
+            return `<div class="round-col">
+                <div class="round-label">${ROUND_LABELS[round]}</div>
+                <div class="round-matches">${groups}</div>
+            </div>`;
+        }
+
+        function renderMatch(round, matchNum) {
+            const [team1, team2] = getMatchTeams(round, matchNum);
+            const winner = winners[round][matchNum];
+            return `<div class="match">
+                ${teamSlot(round, matchNum, team1, 1, winner)}
+                ${teamSlot(round, matchNum, team2, 2, winner)}
+            </div>`;
+        }
+
+        function teamSlot(round, matchNum, team, slotIdx, winner) {
+            const hasId    = team && team.id;
+            const isWinner = hasId && winner === team.id;
+            const isLoser  = winner && hasId && winner !== team.id;
+
+            const matchInfo   = actualMatchData[`${round}-${matchNum}`];
+            const actualWinner = matchInfo?.winner_id;
+
+            let cls = 'team-slot';
+            if (isWinner) {
+                cls += ' winner';
+                if (actualWinner) cls += (actualWinner === team.id) ? ' correct' : ' incorrect';
+            } else if (isLoser) {
+                cls += ' loser';
+            } else if (!hasId) {
+                cls += ' empty';
+            }
+
+            const onclick = hasId
+                ? `onclick="pickWinner('${round}',${matchNum},'${team.id}')"`
+                : '';
+            const flag  = team?.flag_emoji || '';
+            const name  = team?.name || 'TBD';
+
+            let displayScore = '';
+            if (matchInfo && hasId) {
+                const s = team.id === matchInfo.home_team_id ? matchInfo.home_score
+                        : team.id === matchInfo.away_team_id ? matchInfo.away_score
+                        : null;
+                if (s !== null && s !== undefined) displayScore = s;
+            }
+
+            return `<div class="${cls}" ${onclick}>
+                <span class="slot-flag">${flag}</span>
+                <span class="slot-name">${name}</span>
+                ${hasId ? `<span class="score-input">${displayScore}</span>
+                <span class="slot-check">${isWinner ? '✓' : ''}</span>` : ''}
+            </div>`;
+        }
+
+        async function submitBracket() {
+            const btn = document.getElementById('submit-btn');
+            btn.textContent = 'Saving...';
+            btn.disabled = true;
+
+            const { data: { session } } = await supabase.auth.getSession();
+            const leagueId = sessionStorage.getItem('league_id');
+
+            if (!session || !leagueId) {
+                alert('Session expired. Please log in again.');
+                window.location.href = '/login/index.html';
+                return;
+            }
+
+            const bracketName = document.getElementById('bracket-name').value.trim();
+
+            const rows = [];
+            ROUND_ORDER.forEach(round => {
+                Object.entries(winners[round]).forEach(([matchNum, teamId]) => {
+                    if (!teamId) return;
+                    const mn = parseInt(matchNum);
+                    rows.push({
+                        league_id:           leagueId,
+                        user_id:             session.user.id,
+                        round,
+                        match_number:        mn,
+                        predicted_winner_id: teamId
+                    });
+                });
+            });
+
+            // 3rd place
+            if (winners['third'][1]) {
+                rows.push({
+                    league_id:           leagueId,
+                    user_id:             session.user.id,
+                    round:               'third',
+                    match_number:        1,
+                    predicted_winner_id: winners['third'][1]
+                });
+            }
+
+            const { error } = await supabase
+                .from('wc_bracket_picks')
+                .upsert(rows, { onConflict: 'league_id,user_id,round,match_number' });
+
+            if (error) {
+                console.error(error);
+                alert('Failed to save bracket. Please try again.');
+                btn.textContent = 'Update Bracket';
+                btn.disabled = false;
+                return;
+            }
+
+            // Save bracket name to profile
+            if (bracketName) {
+                await supabase.from('profiles').upsert(
+                    { id: session.user.id, display_name: bracketName, updated_at: new Date().toISOString() },
+                    { onConflict: 'id' }
+                );
+            }
+
+            // Save tiebreakers
+            const tbFinal = tiebreakers.final !== null && tiebreakers.final !== '' ? parseInt(tiebreakers.final) : null;
+            const tbThird = tiebreakers.third !== null && tiebreakers.third !== '' ? parseInt(tiebreakers.third) : null;
+            if (tbFinal !== null || tbThird !== null) {
+                await supabase
+                    .from('wc_bracket_tiebreakers')
+                    .upsert({
+                        league_id:      leagueId,
+                        user_id:        session.user.id,
+                        tb_final_goals: tbFinal,
+                        tb_third_goals: tbThird
+                    }, { onConflict: 'league_id,user_id' });
+            }
+
+            window.location.href = '/soccer/world-cup-bracket-challenge/leaderboard/';
+        }
+
+        init();
+        renderDashboardLink();
+    </script>
+</body>
+</html>

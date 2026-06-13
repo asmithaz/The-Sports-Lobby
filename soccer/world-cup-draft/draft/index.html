@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>World Cup 2026 Country Draft</title>
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/js/supabase.js"></script>
+  <script src="/js/auth.js"></script>
+</head>
+<body>
+
+  <nav class="navbar">
+    <div class="navbar-links">
+      <ul>
+        <li><a href="/index.html">Home</a></li>
+        <li><a href="/soccer/">Soccer</a></li>
+        <li><a href="/login/index.html">Login</a></li>
+        <li><a href="/login/index.html">Signup</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main>
+    <div class="page-max">
+      <h1>World Cup 2026 Country Draft</h1>
+      <p class="subtitle">Draft your teams — compete all tournament</p>
+
+      <!-- VIEW: SETUP -->
+      <div id="view-setup">
+
+        <div class="panel">
+          <h2>Team Rankings</h2>
+          <p id="rankings-loading">Loading live odds…</p>
+          <div class="rankings-wrap">
+            <table class="data-table" id="rankings-table" hidden>
+              <thead>
+                <tr>
+                  <th class="rank-num">Rank</th>
+                  <th>Team</th>
+                  <th class="odds-val">Odds</th>
+                </tr>
+              </thead>
+              <tbody id="rankings-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Drafters (2–12)</h2>
+          <div id="drafter-inputs">
+            <div class="drafter-row"><input type="text" placeholder="Drafter 1" /></div>
+            <div class="drafter-row"><input type="text" placeholder="Drafter 2" /></div>
+          </div>
+          <div class="drafter-controls">
+            <button class="btn-sm" id="add-drafter">+ Add Drafter</button>
+            <button class="btn-sm" id="remove-drafter">− Remove</button>
+          </div>
+          <div class="order-preview" id="order-preview"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Scoring Rules</h2>
+          <div class="scoring-cols">
+            <div>
+              <h3>Group Stage</h3>
+              <table>
+                <tr><td>Win</td><td>2 pts</td></tr>
+                <tr><td>Draw</td><td>1 pt</td></tr>
+                <tr><td>Loss</td><td>0 pts</td></tr>
+              </table>
+            </div>
+            <div>
+              <h3>Knockout Stage</h3>
+              <table>
+                <tr><td>Win</td><td>2 pts</td></tr>
+                <tr><td>Champion</td><td>4 pts</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="cta-row">
+          <button class="btn-primary" id="start-draft">Start Draft →</button>
+        </div>
+      </div>
+
+      <!-- VIEW: DRAFT -->
+      <div id="view-draft" hidden>
+
+        <div class="pick-banner" id="pick-banner"></div>
+
+        <div class="draft-layout">
+
+          <div class="panel avail-panel">
+            <h2>Available Teams</h2>
+            <div class="avail-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th class="rank-num">#</th>
+                    <th>Team</th>
+                    <th class="odds-val">Odds</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="avail-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel board-panel">
+            <h2>Draft Board</h2>
+            <div class="board-wrap">
+              <table class="board-table" id="board-table"></table>
+            </div>
+          </div>
+
+        </div>
+
+        <button class="reset-link" id="reset-btn">Reset draft</button>
+      </div>
+
+      <!-- VIEW: COMPLETE -->
+      <div id="view-complete" hidden>
+
+        <h2>Draft Complete!</h2>
+
+        <div class="panel">
+          <div class="board-wrap" style="max-height: none;">
+            <table class="board-table" id="complete-table"></table>
+          </div>
+        </div>
+
+        <div class="cta-row">
+          <button class="btn-primary" id="reset-btn-complete">Start New Draft</button>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="footer">2026 The Sports Portal. All rights reserved.</footer>
+
+  <script src="draft.js"></script>
+  <script>renderDashboardLink();</script>
+</body>
+</html>

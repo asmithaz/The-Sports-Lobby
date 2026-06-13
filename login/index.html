@@ -69,7 +69,7 @@
                 return;
             }
 
-            const redirect = sessionStorage.getItem('sp_redirect_after_login') || '/index.html';
+            const redirect = sessionStorage.getItem('sp_redirect_after_login') || '/dashboard/';
             sessionStorage.removeItem('sp_redirect_after_login');
             window.location.href = redirect;
         }

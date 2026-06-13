@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>World Cup Country Draft — Draft Time & Invites</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="navbar-links">
+            <ul>
+                <li><a href="/index.html">Home</a></li>
+                <li><a href="/soccer/">Soccer</a></li>
+                <li><a href="/login/index.html">Login</a></li>
+                <li><a href="/login/index.html">Signup</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main>
+        <h1>World Cup Country Draft</h1>
+        <p class="subtitle">Step 2 of 2 — Draft Time &amp; Invites</p>
+
+        <form id="invite-form">
+
+            <!-- Draft Date & Time -->
+            <div class="form-card">
+                <div class="form-group">
+                    <label for="draft-date">Draft Date &amp; Time</label>
+                    <div class="datetime-row">
+                        <input type="date" id="draft-date" name="draft-date" required />
+                        <select id="draft-time" name="draft-time" required></select>
+                    </div>
+                    <span class="hint">Drafts must be scheduled before June 27, 2026 at 12:00 PM ET.</span>
+                </div>
+            </div>
+
+            <!-- Invite Method -->
+            <div class="form-card">
+                <div class="form-group">
+                    <label>Invite Friends</label>
+                    <div class="radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="invite-method" value="email" checked onchange="showInviteMethod('email')" />
+                            <span class="radio-label">
+                                <strong>Send Email Invites</strong>
+                                <span>Send invitations directly to your friends' email addresses</span>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="invite-method" value="link" onchange="showInviteMethod('link')" />
+                            <span class="radio-label">
+                                <strong>Generate Invite Link</strong>
+                                <span>Share a link that anyone can use to join your league</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Email input -->
+                <div class="invite-section" id="email-section">
+                    <label class="section-label">Email Addresses</label>
+                    <div class="email-tag-container" id="email-tag-container" onclick="document.getElementById('email-input').focus()">
+                        <input type="text" id="email-input" placeholder="Enter email and press Enter or comma" />
+                    </div>
+                    <span class="hint">Press Enter or , to add each address</span>
+                </div>
+
+                <!-- Link -->
+                <div class="invite-section hidden" id="link-section">
+                    <label class="section-label">Invite Link</label>
+                    <div class="link-row">
+                        <input type="text" id="invite-link" readonly />
+                        <button type="button" class="copy-btn" onclick="copyLink()">Copy</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit">Launch League</button>
+            </div>
+
+        </form>
+    </main>
+
+    <footer class="footer">
+        2026 The Sports Portal. All rights reserved.
+    </footer>
+
+    <script>
+        // Lock draft scheduling at 12:00 PM ET = 16:00 UTC on June 27, 2026
+        const DRAFT_LOCK_UTC = '2026-06-27T16:00';
+
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const localMinDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+        const localMinTime = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+        // Max in local time — convert lock UTC to local date/time
+        const lockDate = new Date(DRAFT_LOCK_UTC + ':00Z');
+        const localMaxDate = `${lockDate.getFullYear()}-${pad(lockDate.getMonth()+1)}-${pad(lockDate.getDate())}`;
+        const localMaxTime = `${pad(lockDate.getHours())}:${pad(lockDate.getMinutes())}`;
+
+        const TIME_STEP_MIN = 15;
+        function buildTimeOptions() {
+            let html = '';
+            for (let mins = 0; mins < 24 * 60; mins += TIME_STEP_MIN) {
+                const h = Math.floor(mins / 60), m = mins % 60;
+                const value = `${pad(h)}:${pad(m)}`;
+                const hour12 = h % 12 === 0 ? 12 : h % 12;
+                const label = `${hour12}:${pad(m)} ${h < 12 ? 'AM' : 'PM'}`;
+                html += `<option value="${value}">${label}</option>`;
+            }
+            return html;
+        }
+
+        function refreshTimeOptions(dateInput, timeSelect) {
+            const selectedDate = dateInput.value;
+            const prevValue = timeSelect.value;
+            Array.from(timeSelect.options).forEach(opt => {
+                opt.disabled =
+                    (selectedDate === localMinDate && opt.value < localMinTime) ||
+                    (selectedDate === localMaxDate && opt.value > localMaxTime);
+            });
+            const selectedOption = timeSelect.options[timeSelect.selectedIndex];
+            if (!selectedOption || selectedOption.disabled) {
+                const firstEnabled = Array.from(timeSelect.options).find(o => !o.disabled);
+                if (firstEnabled) timeSelect.value = firstEnabled.value;
+            } else {
+                timeSelect.value = prevValue;
+            }
+        }
+
+        const draftDateInput = document.getElementById('draft-date');
+        const draftTimeSelect = document.getElementById('draft-time');
+        draftDateInput.min = localMinDate;
+        draftDateInput.max = localMaxDate;
+        draftTimeSelect.innerHTML = buildTimeOptions();
+        refreshTimeOptions(draftDateInput, draftTimeSelect);
+        draftDateInput.addEventListener('change', () => refreshTimeOptions(draftDateInput, draftTimeSelect));
+
+        // Populate invite link from session
+        const inviteCode = sessionStorage.getItem('league_invite_code') || 'XXXXXXXX';
+        document.getElementById('invite-link').value =
+            window.location.origin + '/join/wcd-' + inviteCode.toLowerCase();
+
+        function showInviteMethod(method) {
+            document.getElementById('email-section').classList.toggle('hidden', method !== 'email');
+            document.getElementById('link-section').classList.toggle('hidden', method !== 'link');
+        }
+
+        const emailInput = document.getElementById('email-input');
+        emailInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                addEmailTag(this.value.trim().replace(/,$/, ''));
+            }
+        });
+
+        function addEmailTag(email) {
+            if (!email) return;
+            const container = document.getElementById('email-tag-container');
+            const tag = document.createElement('span');
+            tag.className = 'email-tag';
+            tag.innerHTML = `${email} <button type="button" onclick="this.parentElement.remove()" aria-label="Remove">&times;</button>`;
+            container.insertBefore(tag, emailInput);
+            emailInput.value = '';
+        }
+
+        function copyLink() {
+            const link = document.getElementById('invite-link');
+            navigator.clipboard.writeText(link.value).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = 'Copy', 2000);
+            });
+        }
+
+        document.getElementById('invite-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const btn = this.querySelector('button[type="submit"]');
+            btn.textContent = 'Launching…';
+            btn.disabled = true;
+
+            const leagueId = sessionStorage.getItem('league_id');
+            if (!leagueId) {
+                window.location.href = '/soccer/world-cup-draft/setup/';
+                return;
+            }
+
+            const draftDate = document.getElementById('draft-date').value;
+            const draftTime = document.getElementById('draft-time').value;
+            if (!draftDate || !draftTime) {
+                alert('Please select a draft date and time.');
+                btn.textContent = 'Launch League';
+                btn.disabled = false;
+                return;
+            }
+
+            // Convert local date + time selection to ISO string
+            const draftTimeISO = new Date(`${draftDate}T${draftTime}`).toISOString();
+
+            const { error } = await supabase
+                .from('wcd_leagues')
+                .insert({
+                    league_id: leagueId,
+                    draft_format: 'snake',
+                    draft_status: 'pending',
+                    draft_time: draftTimeISO
+                });
+
+            if (error) {
+                alert('Failed to save draft settings. Please try again.');
+                console.error(error);
+                btn.textContent = 'Launch League';
+                btn.disabled = false;
+                return;
+            }
+
+            sessionStorage.setItem('draft_time', draftTimeISO);
+            window.location.href = '/soccer/world-cup-draft/dashboard/';
+        });
+
+        renderDashboardLink();
+    </script>
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Leaderboard — World Cup Bracket Challenge</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="navbar-links">
+            <ul>
+                <li><a href="/soccer/world-cup-bracket-challenge/picks/">Group Picks</a></li>
+                <li><a href="/soccer/world-cup-bracket-challenge/bracket/">Bracket</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main>
+        <h1>World Cup Bracket Challenge</h1>
+        <p class="subtitle" id="league-name-display">Leaderboard</p>
+        <div id="leaderboard"><p class="loading">Loading leaderboard…</p></div>
+    </main>
+
+    <footer class="footer">
+        2026 The Sports Portal. All rights reserved.
+    </footer>
+
+    <script>
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.appendChild(document.createTextNode(str ?? ''));
+            return d.innerHTML;
+        }
+
+        function renderPreTournament(rows) {
+            if (!rows.length) {
+                return '<p class="empty">No members in this league yet.</p>';
+            }
+            const rowsHtml = rows.map((r, i) => `
+                <tr>
+                    <td class="col-rank">${i + 1}</td>
+                    <td class="col-name">${escapeHtml(r.display_name)}</td>
+                    <td class="col-submitted ${r.picks_submitted ? 'yes' : 'no'}">
+                        ${r.picks_submitted ? '✓' : '—'}
+                    </td>
+                </tr>
+            `).join('');
+
+            return `
+                <p class="note">
+                    Rankings will appear once the World Cup begins and match results are recorded.
+                </p>
+                <table class="leaderboard-table">
+                    <thead>
+                        <tr>
+                            <th style="text-align:center">#</th>
+                            <th>Username</th>
+                            <th style="text-align:center">Bracket Submitted</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            `;
+        }
+
+        function renderPostTournament(rows) {
+            if (!rows.length) {
+                return '<p class="empty">No members in this league yet.</p>';
+            }
+            const rowsHtml = rows.map((r, i) => `
+                <tr class="${i === 0 ? 'rank-gold' : i === 1 ? 'rank-silver' : i === 2 ? 'rank-bronze' : ''}">
+                    <td class="col-rank">${i + 1}</td>
+                    <td class="col-name">${escapeHtml(r.display_name)}</td>
+                    <td class="col-champion">
+                        ${r.champion_flag ? `<span class="flag">${r.champion_flag}</span>` : ''}
+                        ${escapeHtml(r.champion_name)}
+                    </td>
+                    <td class="col-correct">${r.picks_correct}</td>
+                    <td class="col-points">${r.points_achieved}</td>
+                    <td class="col-possible">${r.points_possible}</td>
+                </tr>
+            `).join('');
+
+            return `
+                <table class="leaderboard-table">
+                    <thead>
+                        <tr>
+                            <th style="text-align:center">#</th>
+                            <th>Username</th>
+                            <th>Champion Pick</th>
+                            <th style="text-align:right">Correct Picks</th>
+                            <th style="text-align:right">Points</th>
+                            <th style="text-align:right">Max Possible</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            `;
+        }
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { window.location.href = '/login/index.html'; return; }
+
+            const leagueId = sessionStorage.getItem('league_id');
+            if (!leagueId) { window.location.href = '/dashboard/'; return; }
+
+            const leagueName = sessionStorage.getItem('league_name');
+            if (leagueName) {
+                document.getElementById('league-name-display').textContent =
+                    leagueName + ' — Leaderboard';
+            }
+
+            const [resultsRes, leaderboardRes] = await Promise.all([
+                supabase
+                    .from('wc_matches')
+                    .select('id')
+                    .not('winner_id', 'is', null)
+                    .limit(1),
+                supabase.rpc('get_league_leaderboard', { p_league_id: leagueId })
+            ]);
+
+            if (leaderboardRes.error) {
+                console.error(leaderboardRes.error);
+                document.getElementById('leaderboard').innerHTML =
+                    `<p class="error">Failed to load leaderboard: ${leaderboardRes.error.message}</p>`;
+                return;
+            }
+
+            const tournamentStarted = resultsRes.data && resultsRes.data.length > 0;
+            const rows = leaderboardRes.data || [];
+
+            document.getElementById('leaderboard').innerHTML = tournamentStarted
+                ? renderPostTournament(rows)
+                : renderPreTournament(rows);
+        }
+
+        init();
+        renderDashboardLink();
+    </script>
+</body>
+</html>

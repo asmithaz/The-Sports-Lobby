@@ -1,0 +1,314 @@
+/* ── Base ── */
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    font-family: Arial, Helvetica, sans-serif;
+    min-height: 100vh;
+    background-color: rgb(204, 204, 204);
+}
+
+/* ── Navbar ── */
+.navbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 20px;
+}
+
+.navbar-links ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    font-weight: bold;
+}
+
+.navbar-links li {
+    margin-left: 40px;
+    margin-right: 40px;
+}
+
+.navbar-links a {
+    color: #151F30;
+    text-decoration: none;
+    padding: 5px 10px;
+    border-radius: 8px;
+    transition: background-color 0.3s;
+}
+
+.navbar-links a:hover {
+    color: white;
+    background-color: #151F30;
+}
+
+/* ── Main ── */
+main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    flex: 1;
+}
+
+h1 {
+    color: #151F30;
+    margin-bottom: 4px;
+}
+
+.subtitle {
+    color: #3e4455;
+    font-size: 16px;
+    margin: 0 0 24px 0;
+}
+
+/* ── Footer ── */
+.footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #151F30;
+    padding: 50px 0;
+    margin-top: auto;
+    font-weight: bold;
+}
+
+/* ── Page wrapper ── */
+.page-max {
+    width: 100%;
+    max-width: 960px;
+}
+
+/* ── Panel card ── */
+.panel {
+    background: #f9faf886;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+}
+
+.panel h2 {
+    color: #151F30;
+    font-size: 13px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0 0 14px 0;
+}
+
+/* ── Data table (rankings + available teams) ── */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.data-table th {
+    position: sticky;
+    top: 0;
+    background: #151F30;
+    color: #F9FAF8;
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    z-index: 1;
+}
+
+.data-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #ddd;
+    color: #151F30;
+}
+
+.data-table tr:hover td { background: #e8eaf0; }
+
+.rank-num { width: 48px; font-weight: bold; }
+.odds-val { width: 80px; text-align: right; font-family: monospace; }
+.rankings-wrap { max-height: 320px; overflow-y: auto; }
+#rankings-loading { color: #3e4455; font-size: 14px; margin: 0; }
+
+/* ── Drafter inputs ── */
+.drafter-row { margin-bottom: 8px; }
+
+.drafter-row input {
+    padding: 8px 12px;
+    border: 2px solid #151F30;
+    border-radius: 6px;
+    font-size: 14px;
+    width: 240px;
+    background: #F9FAF8;
+    color: #151F30;
+    font-family: Arial, Helvetica, sans-serif;
+    outline: none;
+}
+
+.drafter-row input:focus { border-color: #4d63dd; }
+
+.drafter-controls { display: flex; gap: 10px; margin: 8px 0 14px; }
+
+.btn-sm {
+    padding: 6px 14px;
+    background: #151F30;
+    color: #F9FAF8;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: Arial, Helvetica, sans-serif;
+    transition: background-color 0.2s;
+}
+
+.btn-sm:hover { background: #4d63dd; }
+
+.order-preview { font-size: 13px; color: #3e4455; line-height: 1.9; }
+
+/* ── Scoring legend ── */
+.scoring-cols { display: flex; gap: 48px; flex-wrap: wrap; }
+
+.scoring-cols h3 {
+    color: #151F30;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 8px 0;
+}
+
+.scoring-cols table { border-collapse: collapse; font-size: 14px; }
+
+.scoring-cols td {
+    padding: 5px 6px;
+    color: #151F30;
+    border-bottom: 1px solid #ddd;
+}
+
+.scoring-cols td:last-child {
+    text-align: right;
+    font-weight: bold;
+    padding-left: 28px;
+}
+
+/* ── CTA row + primary button ── */
+.cta-row { display: flex; justify-content: flex-end; margin-top: 4px; }
+
+.btn-primary {
+    padding: 10px 28px;
+    background: #151F30;
+    color: #F9FAF8;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 15px;
+    cursor: pointer;
+    font-family: Arial, Helvetica, sans-serif;
+    transition: background-color 0.2s;
+}
+
+.btn-primary:hover { background: #4d63dd; }
+
+/* ── Pick banner ── */
+.pick-banner {
+    background: #4d63dd;
+    color: #F9FAF8;
+    padding: 14px 20px;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* ── Draft two-column layout ── */
+.draft-layout { display: flex; gap: 20px; align-items: flex-start; }
+.avail-panel  { flex: 0 0 360px; }
+.board-panel  { flex: 1 1 0; min-width: 0; }
+.avail-wrap   { max-height: 520px; overflow-y: auto; }
+.board-wrap   { overflow-x: auto; max-height: 560px; overflow-y: auto; }
+
+/* ── Pick button ── */
+.pick-btn {
+    padding: 4px 12px;
+    background: #151F30;
+    color: #F9FAF8;
+    border: none;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: Arial, Helvetica, sans-serif;
+    transition: background-color 0.2s;
+}
+
+.pick-btn:hover { background: #4d63dd; }
+
+/* ── Draft board table ── */
+.board-table {
+    border-collapse: collapse;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.board-table th {
+    background: #151F30;
+    color: #F9FAF8;
+    padding: 8px 12px;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.board-table th.rnd-head { min-width: 44px; }
+
+.board-table td {
+    padding: 6px 14px;
+    border: 1px solid #ccc;
+    text-align: center;
+    color: #151F30;
+    min-width: 110px;
+}
+
+.board-table td.rnd-num {
+    font-weight: bold;
+    background: #e8eaf0;
+    min-width: 44px;
+}
+
+.board-table td.active-cell {
+    border: 2px solid #4d63dd;
+    background: #eef0fb;
+}
+
+/* ── Complete view ── */
+#view-complete > h2 {
+    color: #151F30;
+    font-size: 22px;
+    margin: 0 0 16px 0;
+}
+
+#view-complete .cta-row { justify-content: flex-start; margin-top: 20px; }
+
+/* ── Reset link ── */
+.reset-link {
+    font-size: 12px;
+    color: #3e4455;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    margin-top: 10px;
+    display: inline-block;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.reset-link:hover { color: #151F30; }
+
+@media (max-width: 700px) {
+    .draft-layout { flex-direction: column; }
+    .avail-panel  { flex: none; width: 100%; }
+}

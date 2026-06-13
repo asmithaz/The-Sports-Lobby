@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>World Cup Country Draft — Dashboard</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="navbar-links">
+            <ul>
+                <li><a href="/index.html">Home</a></li>
+                <li><a href="/soccer/">Soccer</a></li>
+                <li><a href="/login/index.html">Login</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main>
+        <h1>World Cup Country Draft</h1>
+        <p class="league-name" id="league-name">Loading…</p>
+        <div id="status-badge" class="status-badge"></div>
+
+        <div class="info-strip" id="info-strip"></div>
+
+        <div class="content-stack">
+            <div id="main-content"><p class="loading">Loading…</p></div>
+
+            <div class="commissioner-panel scoring-card">
+                <h3>Scoring Rules</h3>
+                <div class="scoring-cols">
+                    <div>
+                        <h4>Group Stage</h4>
+                        <table>
+                            <tr><td>Win</td><td>2 pts</td></tr>
+                            <tr><td>Draw</td><td>1 pt</td></tr>
+                            <tr><td>Loss</td><td>0 pts</td></tr>
+                        </table>
+                    </div>
+                    <div>
+                        <h4>Knockout Stage</h4>
+                        <table>
+                            <tr><td>Win</td><td>2 pts</td></tr>
+                            <tr><td>Champion</td><td>4 pts</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        2026 The Sports Portal. All rights reserved.
+    </footer>
+
+    <script>
+        let currentUserId = null;
+        const DRAFT_LOCK_UTC = new Date('2026-06-27T16:00:00Z');
+        const pad = n => String(n).padStart(2, '0');
+        const toLocalDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+        const toLocalTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+        const TIME_STEP_MIN = 15;
+        function buildTimeOptions(selected) {
+            let html = '';
+            for (let mins = 0; mins < 24 * 60; mins += TIME_STEP_MIN) {
+                const h = Math.floor(mins / 60), m = mins % 60;
+                const value = `${pad(h)}:${pad(m)}`;
+                const hour12 = h % 12 === 0 ? 12 : h % 12;
+                const label = `${hour12}:${pad(m)} ${h < 12 ? 'AM' : 'PM'}`;
+                html += `<option value="${value}"${value === selected ? ' selected' : ''}>${label}</option>`;
+            }
+            return html;
+        }
+
+        function refreshRescheduleTimeOptions() {
+            const row = document.getElementById('reschedule-row');
+            const dateInput = document.getElementById('reschedule-date');
+            const timeSelect = document.getElementById('reschedule-time-select');
+            const { minDate, minTime, maxDate, maxTime } = row.dataset;
+            const selectedDate = dateInput.value;
+            const prevValue = timeSelect.value;
+            Array.from(timeSelect.options).forEach(opt => {
+                opt.disabled =
+                    (selectedDate === minDate && opt.value < minTime) ||
+                    (selectedDate === maxDate && opt.value > maxTime);
+            });
+            const selectedOption = timeSelect.options[timeSelect.selectedIndex];
+            if (!selectedOption || selectedOption.disabled) {
+                const firstEnabled = Array.from(timeSelect.options).find(o => !o.disabled);
+                if (firstEnabled) timeSelect.value = firstEnabled.value;
+            } else {
+                timeSelect.value = prevValue;
+            }
+        }
+
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.appendChild(document.createTextNode(str ?? ''));
+            return d.innerHTML;
+        }
+
+        function formatDate(iso) {
+            return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        }
+
+        function formatDraftTime(iso) {
+            if (!iso) return '—';
+            return new Date(iso).toLocaleString(undefined, {
+                month: 'short', day: 'numeric',
+                hour: 'numeric', minute: '2-digit'
+            });
+        }
+
+        async function copyInviteLink(code) {
+            const url = window.location.origin + '/join/wcd-' + code.toLowerCase();
+            await navigator.clipboard.writeText(url);
+            const btn = document.getElementById('copy-invite-btn');
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = 'Copy Link', 2000);
+        }
+
+        async function startDraft(leagueId) {
+            const btn = document.getElementById('start-draft-btn');
+            btn.textContent = 'Starting…';
+            btn.disabled = true;
+
+            const { error } = await supabase
+                .from('wcd_leagues')
+                .upsert({ league_id: leagueId, draft_status: 'active', draft_format: 'snake' },
+                         { onConflict: 'league_id' });
+
+            if (error) {
+                alert('Failed to start draft: ' + error.message);
+                btn.textContent = 'Start Draft';
+                btn.disabled = false;
+                return;
+            }
+            window.location.reload();
+        }
+
+        async function completeDraft(leagueId) {
+            const btn = document.getElementById('complete-draft-btn');
+            btn.textContent = 'Saving…';
+            btn.disabled = true;
+
+            const { error } = await supabase
+                .from('wcd_leagues')
+                .update({ draft_status: 'completed' })
+                .eq('league_id', leagueId);
+
+            if (error) {
+                alert('Error: ' + error.message);
+                btn.textContent = 'Mark Draft Complete';
+                btn.disabled = false;
+                return;
+            }
+            window.location.reload();
+        }
+
+        // ── Render: info strip ────────────────────────────────────────────────
+        function renderInfoStrip(league, wcdLeague, memberCount) {
+            const format = wcdLeague?.draft_format ?? 'snake';
+            const status = wcdLeague?.draft_status ?? 'pending';
+            const formatLabel = format === 'auction' ? 'Auction Draft' : 'Snake Draft';
+            const max = league.max_players ?? '—';
+            const draftTime = wcdLeague?.draft_time ?? null;
+
+            const inviteCard = status === 'pending' ? `
+                <div class="info-card info-card--invite">
+                    <span class="info-label">Invite Code</span>
+                    <span class="info-value mono">${escapeHtml(league.invite_code)}</span>
+                    <button class="copy-btn" id="copy-invite-btn"
+                            data-code="${escapeHtml(league.invite_code)}"
+                            onclick="copyInviteLink(this.dataset.code)">Copy Link</button>
+                </div>` : '';
+
+            const draftTimeCard = `
+                <div class="info-card">
+                    <span class="info-label">Draft Time</span>
+                    <span class="info-value">${escapeHtml(formatDraftTime(draftTime))}</span>
+                </div>`;
+
+            return `
+                <div class="info-card">
+                    <span class="info-label">Format</span>
+                    <span class="info-value">${formatLabel}</span>
+                </div>
+                <div class="info-card">
+                    <span class="info-label">Players</span>
+                    <span class="info-value">${memberCount} / ${max}</span>
+                </div>
+                ${draftTimeCard}
+                ${inviteCard}
+            `;
+        }
+
+        // ── Render: pending state ─────────────────────────────────────────────
+        function renderPending(members, league, wcdLeague, isCommissioner) {
+            const canStart = members.length >= 2;
+            const max = league.max_players ?? 0;
+            const draftTime = wcdLeague?.draft_time ?? null;
+            const canReschedule = new Date() < DRAFT_LOCK_UTC;
+
+            let rescheduleMinDate = '', rescheduleMinTime = '';
+            let rescheduleMaxDate = '', rescheduleMaxTime = '';
+            let rescheduleValueDate = '', rescheduleValueTime = '';
+            if (canReschedule) {
+                const now = new Date();
+                rescheduleMinDate = toLocalDate(now);
+                rescheduleMinTime = toLocalTime(now);
+                rescheduleMaxDate = toLocalDate(DRAFT_LOCK_UTC);
+                rescheduleMaxTime = toLocalTime(DRAFT_LOCK_UTC);
+                if (draftTime) {
+                    const dt = new Date(draftTime);
+                    rescheduleValueDate = toLocalDate(dt);
+                    rescheduleValueTime = toLocalTime(dt);
+                }
+            }
+
+            const memberRows = members.length
+                ? members.map(m => `
+                    <tr>
+                        <td class="col-name">${escapeHtml(m.display_name)}</td>
+                        <td class="col-date">${formatDate(m.joined_at)}</td>
+                    </tr>`).join('')
+                : '<tr><td colspan="2" class="empty-cell">No members have joined yet.</td></tr>';
+
+            const settingsBlock = isCommissioner ? `
+                <div class="commissioner-panel">
+                    <h3>Draft Schedule</h3>
+                    <p class="comm-note">Draft scheduled for: <strong>${escapeHtml(formatDraftTime(draftTime))}</strong></p>
+                    ${canReschedule ? `
+                    <div class="reschedule-row" id="reschedule-row" style="display:none;"
+                         data-min-date="${rescheduleMinDate}" data-min-time="${rescheduleMinTime}"
+                         data-max-date="${rescheduleMaxDate}" data-max-time="${rescheduleMaxTime}">
+                        <input type="date" id="reschedule-date" min="${rescheduleMinDate}" max="${rescheduleMaxDate}"
+                               value="${rescheduleValueDate}" onchange="refreshRescheduleTimeOptions()" />
+                        <select id="reschedule-time-select">${buildTimeOptions(rescheduleValueTime)}</select>
+                        <button class="btn-primary" onclick="saveReschedule('${escapeHtml(league.id)}')">Save</button>
+                        <button class="btn-text" onclick="toggleReschedule()">Cancel</button>
+                    </div>
+                    <button class="btn-outline" id="reschedule-toggle" onclick="toggleReschedule()">Reschedule Draft</button>
+                    ` : `<p class="comm-note warn">Draft lock is in effect — time cannot be changed.</p>`}
+                </div>` : '';
+
+            const commissionerBlock = isCommissioner ? `
+                <div class="commissioner-panel">
+                    <h3>Commissioner Controls</h3>
+                    <p class="comm-note">
+                        ${canStart
+                            ? members.length >= max
+                                ? 'League is full — ready to start the draft.'
+                                : `${members.length} of ${max} players joined. You can start early or wait for the full league.`
+                            : 'At least 2 players must join before you can start the draft.'}
+                    </p>
+                    <button id="start-draft-btn" class="btn-primary" onclick="startDraft('${league.id}')" ${canStart ? '' : 'disabled'}>
+                        Start Draft
+                    </button>
+                </div>` : '';
+
+            const waitingBlock = !isCommissioner ? `
+                <div class="commissioner-panel">
+                    <p class="comm-note" style="margin:0;">
+                        Draft scheduled for: <strong>${escapeHtml(formatDraftTime(draftTime))}</strong>.
+                        The commissioner will start the draft when the league is ready.
+                    </p>
+                </div>` : '';
+
+            return `
+                <div class="section">
+                    <h2>Members <span class="count">${members.length}</span></h2>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Joined</th>
+                            </tr>
+                        </thead>
+                        <tbody>${memberRows}</tbody>
+                    </table>
+                </div>
+                ${settingsBlock}
+                ${commissionerBlock}
+                ${waitingBlock}
+            `;
+        }
+
+        function toggleReschedule() {
+            const row = document.getElementById('reschedule-row');
+            const btn = document.getElementById('reschedule-toggle');
+            const visible = row.style.display !== 'none';
+            row.style.display = visible ? 'none' : 'flex';
+            btn.style.display = visible ? '' : 'none';
+            if (!visible) refreshRescheduleTimeOptions();
+        }
+
+        async function saveReschedule(leagueId) {
+            const dateVal = document.getElementById('reschedule-date').value;
+            const timeVal = document.getElementById('reschedule-time-select').value;
+            if (!dateVal || !timeVal) return;
+            const iso = new Date(`${dateVal}T${timeVal}`).toISOString();
+            const { error } = await supabase
+                .from('wcd_leagues')
+                .update({ draft_time: iso })
+                .eq('league_id', leagueId);
+            if (error) { alert('Failed to reschedule: ' + error.message); return; }
+            window.location.reload();
+        }
+
+        // ── Render: active draft ────────────────────────────────────────────────
+        function renderActiveDraft(members, league, isCommissioner) {
+            const memberRows = members.length
+                ? members.map(m => `
+                    <tr>
+                        <td class="col-name">${escapeHtml(m.display_name)}</td>
+                        <td class="col-date">${formatDate(m.joined_at)}</td>
+                    </tr>`).join('')
+                : '';
+
+            const commissionerBlock = isCommissioner ? `
+                <div class="commissioner-panel">
+                    <h3>Commissioner Controls</h3>
+                    <p class="comm-note">Once all picks are complete, mark the draft as finished to lock in rosters.</p>
+                    <button id="complete-draft-btn" class="btn-primary" onclick="completeDraft('${league.id}')">
+                        Mark Draft Complete
+                    </button>
+                </div>` : '';
+
+            return `
+                <div class="draft-active-banner">
+                    <strong>Draft is in progress.</strong>
+                    <a href="/soccer/world-cup-draft/draft/" class="draft-link">Open Draft Board →</a>
+                </div>
+                <div class="section">
+                    <h2>Members <span class="count">${members.length}</span></h2>
+                    <table class="data-table">
+                        <thead><tr><th>Name</th><th>Joined</th></tr></thead>
+                        <tbody>${memberRows}</tbody>
+                    </table>
+                </div>
+                ${commissionerBlock}
+            `;
+        }
+
+        // ── Render: standings (draft complete / tournament running) ───────────
+        function renderStandings(members, picks, scores) {
+            const picksByUser = {};
+            (picks ?? []).forEach(p => {
+                if (!picksByUser[p.user_id]) picksByUser[p.user_id] = [];
+                if (p.wc_teams) picksByUser[p.user_id].push({ ...p.wc_teams, pick_number: p.pick_number });
+            });
+            Object.values(picksByUser).forEach(arr => arr.sort((a, b) => a.pick_number - b.pick_number));
+
+            const scoreMap = {};
+            (scores ?? []).forEach(s => { scoreMap[s.user_id] = s.total_points; });
+
+            const sorted = [...members].sort((a, b) => (scoreMap[b.user_id] ?? 0) - (scoreMap[a.user_id] ?? 0));
+
+            const rows = sorted.map((m, i) => {
+                const pts = scoreMap[m.user_id] ?? 0;
+                const teams = picksByUser[m.user_id] ?? [];
+                const rankCls = i === 0 ? 'rank-gold' : i === 1 ? 'rank-silver' : i === 2 ? 'rank-bronze' : '';
+
+                const flags = teams.length
+                    ? teams.map(t => {
+                        const elimCls = t.eliminated ? 'team-out' : 'team-in';
+                        return `<span class="team-badge ${elimCls}" title="${escapeHtml(t.name)}">${t.flag_emoji ?? ''} <span class="team-name">${escapeHtml(t.name)}</span></span>`;
+                    }).join('')
+                    : '<span class="no-picks">No picks yet</span>';
+
+                return `
+                    <tr class="${rankCls}">
+                        <td class="col-rank">${i + 1}</td>
+                        <td class="col-name">${escapeHtml(m.display_name)}</td>
+                        <td class="col-countries">${flags}</td>
+                        <td class="col-points">${pts}</td>
+                    </tr>`;
+            }).join('');
+
+            return `
+                <div class="section">
+                    <h2>Standings</h2>
+                    <table class="data-table standings-table">
+                        <thead>
+                            <tr>
+                                <th class="th-rank">#</th>
+                                <th>Name</th>
+                                <th>Countries</th>
+                                <th class="th-right">Points</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // ── Main ──────────────────────────────────────────────────────────────
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { window.location.href = '/login/index.html'; return; }
+            currentUserId = session.user.id;
+
+            const leagueId = sessionStorage.getItem('league_id');
+            if (!leagueId) { window.location.href = '/soccer/index.html'; return; }
+
+            const [leagueRes, wcdRes, membersRes, picksRes, scoresRes] = await Promise.all([
+                supabase.from('leagues').select('*').eq('id', leagueId).single(),
+                supabase.from('wcd_leagues').select('*').eq('league_id', leagueId).maybeSingle(),
+                supabase.from('league_members').select('user_id, joined_at').eq('league_id', leagueId),
+                supabase.from('wcd_picks')
+                    .select('user_id, pick_number, wc_teams(name, flag_emoji, group_letter, eliminated)')
+                    .eq('league_id', leagueId),
+                supabase.from('wcd_scores').select('user_id, total_points').eq('league_id', leagueId)
+            ]);
+
+            if (leagueRes.error) {
+                document.getElementById('main-content').innerHTML = `<p class="error">Failed to load league: ${leagueRes.error.message}</p>`;
+                return;
+            }
+
+            const league = leagueRes.data;
+            const wcdLeague = wcdRes.data ?? null;
+            const memberRows = membersRes.data ?? [];
+
+            // Load profiles
+            const ids = memberRows.map(m => m.user_id);
+            const profileMap = {};
+            if (ids.length) {
+                const { data: profiles } = await supabase
+                    .from('profiles').select('id, display_name').in('id', ids);
+                (profiles ?? []).forEach(p => { profileMap[p.id] = p.display_name; });
+            }
+
+            const members = memberRows.map(m => ({
+                ...m,
+                display_name: profileMap[m.user_id] ?? 'Unknown'
+            }));
+
+            // Header
+            document.getElementById('league-name').textContent = league.name;
+            document.title = league.name + ' — World Cup Country Draft';
+
+            // Status badge
+            const status = wcdLeague?.draft_status ?? 'pending';
+            const statusMap = {
+                pending:   { label: 'Waiting for Players', cls: 'badge-waiting'  },
+                active:    { label: 'Draft In Progress',   cls: 'badge-active'   },
+                completed: { label: 'Draft Complete',      cls: 'badge-complete' }
+            };
+            const { label, cls } = statusMap[status] ?? statusMap.pending;
+            const badge = document.getElementById('status-badge');
+            badge.textContent = label;
+            badge.className = 'status-badge ' + cls;
+
+            // Info strip
+            document.getElementById('info-strip').innerHTML =
+                renderInfoStrip(league, wcdLeague, members.length);
+
+            // Main content
+            const isCommissioner = league.commissioner_id === currentUserId;
+
+            if (status === 'pending') {
+                document.getElementById('main-content').innerHTML =
+                    renderPending(members, league, wcdLeague, isCommissioner);
+            } else if (status === 'active') {
+                document.getElementById('main-content').innerHTML =
+                    renderActiveDraft(members, league, isCommissioner);
+            } else {
+                document.getElementById('main-content').innerHTML =
+                    renderStandings(members, picksRes.data, scoresRes.data);
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

@@ -158,6 +158,18 @@
         function updatePasswordCounter(input) {
             document.getElementById('pass-counter').textContent = input.value.length + ' / 30';
         }
+
+        document.getElementById('invite-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const leagueType = sessionStorage.getItem('league_type');
+            if (leagueType === 'knockout-only') {
+                window.location.href = '/soccer/world-cup-bracket-challenge/dashboard/';
+            } else {
+                window.location.href = '/soccer/world-cup-bracket-challenge/picks/';
+            }
+        });
+
+        renderDashboardLink();
     </script>
 </body>
 </html>

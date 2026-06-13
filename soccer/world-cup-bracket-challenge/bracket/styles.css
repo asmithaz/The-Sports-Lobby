@@ -1,0 +1,459 @@
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    font-family: Arial, Helvetica, sans-serif;
+    min-height: 100vh;
+    background-color: rgb(204, 204, 204);
+}
+
+.navbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 20px;
+}
+
+.navbar-links ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    font-weight: bold;
+}
+
+.navbar-links li { margin: 0 40px; }
+
+.navbar-links a {
+    color: #151F30;
+    text-decoration: none;
+    padding: 5px 10px;
+    border-radius: 8px;
+    transition: background-color 0.3s;
+}
+
+.navbar-links a:hover {
+    color: white;
+    background-color: #151F30;
+}
+
+main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px 40px;
+}
+
+h1 {
+    color: #151F30;
+    margin-bottom: 4px;
+}
+
+.subtitle {
+    color: #3e4455;
+    font-size: 16px;
+    margin: 0 0 12px 0;
+}
+
+/* ── Bracket name ── */
+.bracket-name-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.bracket-name-label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #151F30;
+    white-space: nowrap;
+}
+
+.bracket-name-input {
+    width: 280px;
+    padding: 8px 12px;
+    border: 1.5px solid #151F30;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #151F30;
+    background: #f9faf8;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.bracket-name-input:focus { border-color: #4d63dd; }
+
+.bracket-name-counter {
+    font-size: 12px;
+    color: #888;
+    min-width: 24px;
+}
+
+.bracket-note {
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+/* ── Bracket container ── */
+.bracket-container {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: visible;
+    padding-bottom: 12px;
+    display: flex;
+    justify-content: center;
+}
+
+.bracket {
+    display: flex;
+    gap: 40px;
+    min-width: fit-content;
+    /* Height is driven by R32 column: 16 matches * 88px each = 1408px min */
+    height: 1850px;
+    padding: 0 8px;
+}
+
+.loading {
+    color: #666;
+    padding: 40px;
+}
+
+/* ── Round column ── */
+.round-col {
+    display: flex;
+    flex-direction: column;
+    width: 210px;
+    flex-shrink: 0;
+}
+
+.round-label {
+    text-align: center;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #555;
+    padding: 6px 0 8px;
+    height: 28px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.round-matches {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ── Match group (wraps the pair of matches feeding one next-round slot) ── */
+.match-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    position: relative;
+}
+
+/* Right horizontal stub from each match into the gap */
+.round-col:not(:last-child) .match::after {
+    content: '';
+    position: absolute;
+    right: -20px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 2px;
+    background: #151F30;
+    pointer-events: none;
+}
+
+/* Vertical connector between the two matches in a group */
+.round-col:not(:last-child) .match-group::before {
+    content: '';
+    position: absolute;
+    right: -21px;
+    top: 25%;
+    height: 50%;
+    width: 2px;
+    background: #151F30;
+    pointer-events: none;
+}
+
+/* Horizontal mid-line from vertical connector to next column */
+.round-col:not(:last-child) .match-group::after {
+    content: '';
+    position: absolute;
+    right: -40px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 2px;
+    background: #151F30;
+    pointer-events: none;
+}
+
+/* ── Match ── */
+.match {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: relative;
+    outline: 1.5px solid #151F30;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+/* ── Team slot ── */
+.team-slot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    background-color: #f9faf8;
+    border: 1.5px solid #151F30;
+    cursor: pointer;
+    min-height: 30px;
+    transition: background-color 0.15s;
+    overflow: hidden;
+}
+
+.team-slot:hover:not(.empty):not(.loser) {
+    background-color: #e8eaf0;
+}
+
+.team-slot.winner {
+    background-color: #4d63dd;
+    border-color: #4d63dd;
+    color: #fff;
+}
+
+.team-slot.winner.correct {
+    background-color: #16a34a;
+    border-color: #16a34a;
+    color: #fff;
+}
+
+.team-slot.winner.correct .score-input {
+    border-left-color: rgba(255, 255, 255, 0.3);
+}
+
+.team-slot.winner.incorrect {
+    background-color: #dc2626;
+    border-color: #dc2626;
+    color: #fff;
+}
+
+.team-slot.winner.incorrect .score-input {
+    border-left-color: rgba(255, 255, 255, 0.3);
+}
+
+.team-slot.loser {
+    opacity: 0.3;
+    cursor: pointer;
+}
+
+.team-slot.loser:hover {
+    opacity: 0.6;
+}
+
+.team-slot.empty {
+    background-color: #ebebeb;
+    border-color: #ccc;
+    cursor: default;
+    color: #aaa;
+}
+
+.slot-flag {
+    font-size: 14px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.slot-name {
+    flex: 1;
+    font-size: 11px;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: inherit;
+}
+
+.team-slot.empty .slot-name {
+    font-weight: normal;
+    font-style: italic;
+}
+
+.slot-check {
+    font-size: 11px;
+    flex-shrink: 0;
+    font-weight: bold;
+    min-width: 16px;
+    text-align: center;
+}
+
+/* ── Submit row ── */
+.submit-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 28px;
+}
+
+#submit-btn {
+    padding: 12px 32px;
+    background-color: #151F30;
+    color: #f9faf8;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+#submit-btn:hover:not(:disabled) {
+    background-color: #4d63dd;
+}
+
+#submit-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.btn-back {
+    padding: 12px 20px;
+    background-color: transparent;
+    color: #151F30;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 14px;
+    text-decoration: none;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.btn-back:hover {
+    background-color: #151F30;
+    color: #f9faf8;
+}
+
+/* ── Score display (read-only, populated by API/admin) ── */
+.score-input {
+    width: 36px;
+    min-width: 36px;
+    flex-shrink: 0;
+    align-self: stretch;
+    border-left: 1.5px solid rgba(21, 31, 48, 0.2);
+    background: transparent;
+    font-size: 12px;
+    font-weight: bold;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.team-slot.winner .score-input {
+    border-left-color: rgba(255, 255, 255, 0.3);
+}
+
+.team-slot.loser .score-input {
+    border-left-color: rgba(21, 31, 48, 0.12);
+}
+
+/* ── 3rd Place Match ── */
+.third-place-wrapper {
+    margin-top: 36px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.third-place-header {
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #555;
+    margin: 0;
+    text-align: center;
+}
+
+.third-place-wrapper .match {
+    width: 175px;
+}
+
+/* ── Tiebreakers ── */
+.tiebreaker-section {
+    margin-top: 28px;
+    padding: 16px 24px;
+    background: #f9faf8;
+    border: 1.5px solid #151F30;
+    border-radius: 8px;
+    min-width: 320px;
+}
+
+.tiebreaker-title {
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #555;
+    margin: 0 0 12px 0;
+}
+
+.tiebreaker-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 10px;
+}
+
+.tiebreaker-row:last-child { margin-bottom: 0; }
+
+.tiebreaker-label {
+    font-size: 12px;
+    font-weight: bold;
+    color: #151F30;
+}
+
+.tiebreaker-input {
+    width: 56px;
+    padding: 5px 8px;
+    border: 1.5px solid #151F30;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: bold;
+    color: #151F30;
+    background: white;
+    -moz-appearance: textfield;
+    appearance: textfield;
+    outline: none;
+}
+
+.tiebreaker-input::-webkit-inner-spin-button,
+.tiebreaker-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+}
+
+.footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #151F30;
+    padding: 50px 0;
+    margin-top: auto;
+    font-weight: bold;
+}

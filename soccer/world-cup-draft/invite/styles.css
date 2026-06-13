@@ -1,0 +1,405 @@
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    font-family: Arial, Helvetica, sans-serif;
+    min-height: 100vh;
+    background-color: rgb(204, 204, 204);
+}
+
+.navbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 20px;
+}
+
+.navbar-links ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    font-weight: bold;
+}
+
+.navbar-links li {
+    margin-left: 40px;
+    margin-right: 40px;
+}
+
+.navbar-links a {
+    color: #151F30;
+    text-decoration: none;
+    padding: 5px 10px;
+    border-radius: 8px;
+    transition: background-color 0.3s;
+}
+
+.navbar-links a:hover {
+    color: white;
+    background-color: #151F30;
+    transition: background-color 0.3s;
+}
+
+main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+}
+
+h1 {
+    color: #151F30;
+    margin-bottom: 4px;
+}
+
+.subtitle {
+    color: #3e4455;
+    font-size: 16px;
+    margin: 0 0 24px 0;
+}
+
+.footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #151F30;
+    padding: 50px 0;
+    margin-top: auto;
+    font-weight: bold;
+}
+
+.form-card {
+    width: 100%;
+    max-width: 380px;
+    background-color: #f9faf886;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    padding: 28px;
+    box-sizing: border-box;
+    margin-bottom: 16px;
+}
+
+#invite-form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0;
+}
+
+.form-group label {
+    display: block;
+    font-weight: bold;
+    color: #151F30;
+    margin-bottom: 10px;
+    border: none;
+    padding: 0;
+    min-width: unset;
+    flex: unset;
+    cursor: default;
+    transition: none;
+}
+
+.radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.form-group .radio-option {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 12px;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.2s, background-color 0.2s;
+    font-weight: normal;
+    min-width: unset;
+    flex: unset;
+}
+
+.form-group .radio-option:hover {
+    background-color: #e8eaf0;
+}
+
+.radio-option input[type="radio"] {
+    display: inline-block;
+    flex-shrink: 0;
+    accent-color: #4d63dd;
+}
+
+.radio-option input[type="radio"]:checked ~ .radio-label {
+    color: #4d63dd;
+}
+
+.form-group .radio-option:has(input:checked) {
+    border-color: #4d63dd;
+    background-color: #eef0fa;
+}
+
+.radio-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 14px;
+    color: #151F30;
+    text-align: left;
+}
+
+.radio-label strong {
+    font-size: 14px;
+}
+
+.radio-label span {
+    color: #666;
+    font-size: 12px;
+}
+
+.hidden {
+    display: none;
+}
+
+/* Date & time inputs */
+.datetime-row {
+    display: flex;
+    gap: 8px;
+}
+
+.form-group input[type="date"],
+.form-group select {
+    padding: 10px 12px;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: #fff;
+    color: #151F30;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.form-group input[type="date"] {
+    flex: 1.2;
+}
+
+.form-group select {
+    flex: 1;
+}
+
+.form-group input[type="date"]:focus,
+.form-group select:focus {
+    border-color: #4d63dd;
+}
+
+/* Invite sections */
+.invite-section {
+    margin-top: 16px;
+}
+
+.invite-section.hidden {
+    display: none;
+}
+
+.section-label {
+    display: block;
+    font-weight: bold;
+    font-size: 13px;
+    color: #151F30;
+    margin-bottom: 6px;
+    border: none;
+    padding: 0;
+    min-width: unset;
+    flex: unset;
+    cursor: default;
+    transition: none;
+}
+
+/* Email tag input */
+.email-tag-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    min-height: 44px;
+    background: #fff;
+    cursor: text;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+.email-tag-container:focus-within {
+    border-color: #4d63dd;
+}
+
+.email-tag-container input {
+    border: none;
+    outline: none;
+    flex: 1;
+    min-width: 160px;
+    font-size: 13px;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #151F30;
+    background: transparent;
+    padding: 2px 0;
+}
+
+.email-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background-color: #4d63dd;
+    color: #fff;
+    padding: 3px 8px 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.email-tag button {
+    background: none;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    padding: 0;
+    opacity: 0.8;
+}
+
+.email-tag button:hover {
+    opacity: 1;
+}
+
+.hint {
+    display: block;
+    font-size: 11px;
+    color: #999;
+    margin-top: 4px;
+}
+
+/* Invite link row */
+.link-row {
+    display: flex;
+    gap: 8px;
+}
+
+.link-row input[type="text"] {
+    flex: 1;
+    padding: 10px 12px;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: #f0f0f0;
+    color: #555;
+    outline: none;
+}
+
+.copy-btn {
+    padding: 10px 16px;
+    background-color: #151F30;
+    color: #F9FAF8;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.3s;
+}
+
+.copy-btn:hover {
+    background-color: #4d63dd;
+}
+
+/* Password field */
+.password-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.password-wrapper input {
+    width: 100%;
+    padding: 10px 44px 10px 12px;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: #fff;
+    color: #151F30;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+.password-wrapper input:focus {
+    border-color: #4d63dd;
+}
+
+.eye-btn {
+    position: absolute;
+    right: 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #666;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+}
+
+.eye-btn:hover {
+    color: #151F30;
+}
+
+.optional {
+    font-weight: normal;
+    font-size: 12px;
+    color: #999;
+}
+
+.char-counter {
+    font-size: 11px;
+    color: #999;
+    margin-top: 4px;
+    text-align: left;
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    max-width: 380px;
+    margin-top: 8px;
+}
+
+.form-actions button {
+    padding: 10px 28px;
+    background-color: #151F30;
+    color: #F9FAF8;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.form-actions button:hover {
+    background-color: #4d63dd;
+}

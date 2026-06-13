@@ -11,6 +11,9 @@
 
     <!-- Stylesheet (create styles.css in same folder) -->
     <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
 </head>
 <body>
 
@@ -233,7 +236,7 @@
                         <p>Settings you can customize for your league`s perfect fit.</p>
                     </div>
                     <ul>
-                        <div class="container-9"><li><a href="#">World Cup Country Draft</a></li></div>
+                        <div class="container-9"><li><a href="/soccer/world-cup-draft/worldcup-draft.html">World Cup Country Draft</a></li></div>
                         <div class="container-9"><li><a href="#">World Cup Salary Pick 'em</a></li></div>
                         <div class="container-9"><li><a href="#">MLS Tournament Bracket</a></li></div>
                         <div class="container-9"><li><a href="#">EuroLeague Tournament Brackets</a></li></div>
@@ -267,5 +270,7 @@
     </footer>
 
     </main>
+
+    <script>renderDashboardLink();</script>
 </body>
-</html> 
+</html>
