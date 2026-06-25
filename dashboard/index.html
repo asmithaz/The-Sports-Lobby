@@ -73,7 +73,8 @@
     <script>
         const GAME_LABELS = {
             'world-cup-bracket-challenge': 'World Cup Bracket Challenge',
-            'world-cup-draft':             'World Cup Country Draft'
+            'world-cup-draft':             'World Cup Country Draft',
+            'fedex-playoffs':              'FedEx Cup Playoffs'
         };
 
         const TYPE_LABELS = {
@@ -84,7 +85,8 @@
 
         const GAME_ICONS = {
             'world-cup-bracket-challenge': '⚽',
-            'world-cup-draft':              '⚽'
+            'world-cup-draft':              '⚽',
+            'fedex-playoffs':               '⛳'
         };
 
         async function init() {
@@ -189,6 +191,8 @@
 
             if (gameType === 'world-cup-draft') {
                 window.location.href = '/soccer/world-cup-draft/dashboard/';
+            } else if (gameType === 'fedex-playoffs') {
+                window.location.href = '/golf/fedex-playoffs/dashboard/';
             } else if (leagueType === 'knockout-only') {
                 window.location.href = '/soccer/world-cup-bracket-challenge/bracket/';
             } else {

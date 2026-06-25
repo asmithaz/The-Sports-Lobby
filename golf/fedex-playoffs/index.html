@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>World Cup Country Draft</title>
+    <title>FedEx Cup Playoffs Fantasy Golf</title>
     <link rel="icon" href="/favicon.ico" />
     <link rel="stylesheet" href="styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -16,7 +16,7 @@
         <div class="navbar-links">
             <ul>
                 <li><a href="/index.html">Home</a></li>
-                <li><a href="/soccer/">Soccer</a></li>
+                <li><a href="/golf/index.html">Golf</a></li>
                 <li><a href="/login/index.html">Login</a></li>
                 <li><a href="/login/index.html">Signup</a></li>
             </ul>
@@ -24,11 +24,11 @@
     </nav>
 
     <main>
-        <h1>World Cup Country Draft</h1>
-        <p class="subtitle">Draft countries, compete all tournament long</p>
+        <h1>FedEx Cup Playoffs Fantasy Golf</h1>
+        <p class="subtitle">Draft your golfers, score across all three playoff events</p>
 
         <div class="cta-group">
-            <a href="/soccer/world-cup-draft/setup/" class="btn-primary">Create League</a>
+            <a href="/golf/fedex-playoffs/setup/" class="btn-primary">Create League</a>
         </div>
 
         <div class="join-card">
@@ -54,9 +54,9 @@
                 return;
             }
             errEl.classList.add('hidden');
-            const match = val.match(/wcd-([a-z0-9]+)/i);
+            const match = val.match(/fcp-([a-z0-9]+)/i);
             const code = match ? match[1].toLowerCase() : val.toLowerCase();
-            window.location.href = '/join/?code=wcd-' + code;
+            window.location.href = '/join/?code=fcp-' + code;
         }
 
         document.getElementById('invite-input').addEventListener('keydown', function(e) {

@@ -1,0 +1,41 @@
+name: FedEx Cup Playoffs Score Sync
+
+# Runs every 10 minutes, but the job exits immediately unless today falls
+# within the FedEx Cup Playoffs window (St. Jude Championship through the
+# TOUR Championship + a buffer day). Update PLAYOFFS_START / PLAYOFFS_END
+# each season.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+env:
+  PLAYOFFS_START: "2026-08-06"
+  PLAYOFFS_END: "2026-08-25"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check playoff window
+        id: window
+        run: |
+          today=$(date -u +%Y-%m-%d)
+          if [[ "$today" < "$PLAYOFFS_START" || "$today" > "$PLAYOFFS_END" ]]; then
+            echo "Outside FedEx Cup Playoffs window ($PLAYOFFS_START to $PLAYOFFS_END) — skipping."
+            echo "in_window=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "in_window=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Call fcp-sync-scores Edge Function
+        if: steps.window.outputs.in_window == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          curl -sS -X POST "${SUPABASE_URL}/functions/v1/fcp-sync-scores" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --fail-with-body
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

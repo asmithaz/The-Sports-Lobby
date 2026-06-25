@@ -330,6 +330,41 @@ h1 {
 
 .pick-btn:hover { background: #4d63dd; }
 
+.pick-disabled {
+    font-size: 11px;
+    color: #999;
+    font-style: italic;
+}
+
+/* ── Roster slot status ── */
+.roster-status {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.roster-status-item {
+    background: #f9faf886;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: bold;
+    color: #151F30;
+}
+
+.tier-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: bold;
+    color: #4d63dd;
+    background: #eef0fa;
+    border-radius: 4px;
+    padding: 1px 4px;
+    margin-left: 4px;
+}
+
 /* ── Draft board table ── */
 .board-table {
     border-collapse: collapse;

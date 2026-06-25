@@ -1,23 +1,26 @@
-// ─── World Cup Country Draft — Live Draft Room ─────────────────────────
-// All state lives in Supabase. wcd_leagues / wcd_picks / wcd_draft_order
-// are kept in sync across clients via Realtime; turn order, team
-// availability, and the pick clock are enforced server-side by the
-// make_draft_pick / autopick_if_expired / start_draft RPCs.
+// ─── FedEx Cup Playoffs — Live Draft Room ──────────────────────────────
+// All state lives in Supabase. fcp_leagues / fcp_picks / fcp_draft_order
+// are kept in sync across clients via Realtime; turn order, golfer
+// availability, tier-slot limits, and the pick clock are enforced
+// server-side by the fcp_make_draft_pick / fcp_autopick_if_expired /
+// fcp_start_draft RPCs.
 
 let currentUserId = null;
 let leagueId      = null;
 
 let league     = null;  // leagues row
-let wcdLeague  = null;  // wcd_leagues row
-let draftOrder = [];    // wcd_draft_order rows [{user_id, position}]
-let teams      = [];    // wc_teams rows
-let picks      = [];    // wcd_picks rows
+let fcpLeague  = null;  // fcp_leagues row (roster_mode, roster_size, tier1_count..3_count, draft state)
+let draftOrder = [];    // fcp_draft_order rows [{user_id, position}]
+let golfers    = [];    // golfers rows [{id, name, fedex_rank, tier}]
+let picks      = [];    // fcp_picks rows [{user_id, golfer_id, pick_number, tier_slot}]
 let profileMap = {};    // user_id -> display_name
 
 let lobbyOrderIds  = null; // working copy of draft order while in the lobby
 let timerInterval    = null;
 let autopickInterval = null;
 let lobbyInterval    = null;
+
+const TIER_RANGES = { 1: 'Rank 1-30', 2: 'Rank 31-50', 3: 'Rank 51-70' };
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 function escHtml(s) {
@@ -48,6 +51,14 @@ function clearAllTimers() {
   timerInterval = autopickInterval = lobbyInterval = null;
 }
 
+function rosterSize() {
+  return fcpLeague?.roster_size ?? 4;
+}
+
+function tierCount(tier) {
+  return fcpLeague?.[`tier${tier}_count`] ?? 0;
+}
+
 // Mirrors the _expected_drafter() snake-order formula in schema.sql.
 function expectedDrafterId(pickNumber) {
   const n = draftOrder.length;
@@ -58,23 +69,36 @@ function expectedDrafterId(pickNumber) {
   return entry ? entry.user_id : null;
 }
 
+// Counts of golfers already drafted by a user, grouped by tier.
+function tierCountsForUser(userId) {
+  const golferById = {};
+  golfers.forEach(g => { golferById[g.id] = g; });
+
+  const counts = { 1: 0, 2: 0, 3: 0 };
+  picks.filter(p => p.user_id === userId).forEach(p => {
+    const g = golferById[p.golfer_id];
+    if (g) counts[g.tier] = (counts[g.tier] ?? 0) + 1;
+  });
+  return counts;
+}
+
 // ─── Data loading ───────────────────────────────────────────────────────
 async function loadAll() {
-  const [leagueRes, wcdRes, orderRes, teamsRes, picksRes] = await Promise.all([
+  const [leagueRes, fcpRes, orderRes, golfersRes, picksRes] = await Promise.all([
     supabase.from('leagues').select('*').eq('id', leagueId).single(),
-    supabase.from('wcd_leagues').select('*').eq('league_id', leagueId).maybeSingle(),
-    supabase.from('wcd_draft_order').select('user_id, position').eq('league_id', leagueId).order('position'),
-    supabase.from('wc_teams').select('id, name, group_letter, flag_emoji').order('group_letter').order('name'),
-    supabase.from('wcd_picks').select('user_id, team_id, pick_number').eq('league_id', leagueId).order('pick_number')
+    supabase.from('fcp_leagues').select('*').eq('league_id', leagueId).maybeSingle(),
+    supabase.from('fcp_draft_order').select('user_id, position').eq('league_id', leagueId).order('position'),
+    supabase.from('golfers').select('id, name, fedex_rank, tier').order('fedex_rank'),
+    supabase.from('fcp_picks').select('user_id, golfer_id, pick_number, tier_slot').eq('league_id', leagueId).order('pick_number')
   ]);
 
   league     = leagueRes.data;
-  wcdLeague  = wcdRes.data;
+  fcpLeague  = fcpRes.data;
   draftOrder = orderRes.data ?? [];
-  teams      = teamsRes.data ?? [];
+  golfers    = golfersRes.data ?? [];
   picks      = picksRes.data ?? [];
 
-  // Member count/identity comes from wcd_draft_order — readable by all
+  // Member count/identity comes from fcp_draft_order — readable by all
   // league members, unlike league_members whose RLS only returns the
   // caller's own row.
   const ids = draftOrder.map(o => o.user_id);
@@ -89,30 +113,30 @@ async function loadAll() {
 async function render() {
   clearAllTimers();
 
-  if (!league || !wcdLeague) {
+  if (!league || !fcpLeague) {
     showView('loading');
     return;
   }
 
-  if (wcdLeague.draft_format === 'auction') {
+  if (fcpLeague.draft_format === 'auction') {
     showView('auction');
     return;
   }
 
-  if (wcdLeague.draft_status === 'completed') {
+  if (fcpLeague.draft_status === 'completed') {
     renderBoard('complete-table');
     showView('complete');
     return;
   }
 
-  if (wcdLeague.draft_status === 'active') {
+  if (fcpLeague.draft_status === 'active') {
     renderDraftView();
     showView('draft');
     return;
   }
 
   // pending
-  const draftTime = wcdLeague.draft_time ? new Date(wcdLeague.draft_time) : null;
+  const draftTime = fcpLeague.draft_time ? new Date(fcpLeague.draft_time) : null;
   const lobbyOpensAt = draftTime ? new Date(draftTime.getTime() - 30 * 60 * 1000) : null;
   const now = new Date();
 
@@ -123,7 +147,7 @@ async function render() {
   }
 
   if (draftOrder.length === 0) {
-    await supabase.rpc('ensure_draft_order', { p_league_id: leagueId });
+    await supabase.rpc('fcp_ensure_draft_order', { p_league_id: leagueId });
     await loadAll();
   }
 
@@ -133,7 +157,7 @@ async function render() {
 
 // ─── Lobby view ─────────────────────────────────────────────────────────
 function renderLobby() {
-  document.getElementById('lobby-draft-time').textContent = formatDraftTime(wcdLeague.draft_time);
+  document.getElementById('lobby-draft-time').textContent = formatDraftTime(fcpLeague.draft_time);
 
   if (!lobbyOrderIds || lobbyOrderIds.length !== draftOrder.length) {
     lobbyOrderIds = [...draftOrder].sort((a, b) => a.position - b.position).map(o => o.user_id);
@@ -172,7 +196,7 @@ function renderLobby() {
 async function saveLobbyOrder() {
   const statusEl = document.getElementById('lobby-save-status');
   statusEl.textContent = 'Saving…';
-  const { error } = await supabase.rpc('set_draft_order', {
+  const { error } = await supabase.rpc('fcp_set_draft_order', {
     p_league_id: leagueId,
     p_user_ids: lobbyOrderIds
   });
@@ -191,7 +215,7 @@ function startLobbyCountdown() {
 }
 
 async function updateLobbyCountdown() {
-  const draftTimeMs = new Date(wcdLeague.draft_time).getTime();
+  const draftTimeMs = new Date(fcpLeague.draft_time).getTime();
   const remaining = Math.max(0, Math.floor((draftTimeMs - Date.now()) / 1000));
 
   const el = document.getElementById('lobby-countdown');
@@ -205,16 +229,33 @@ async function updateLobbyCountdown() {
   if (remaining <= 0) {
     clearInterval(lobbyInterval);
     lobbyInterval = null;
-    await supabase.rpc('start_draft', { p_league_id: leagueId });
+    await supabase.rpc('fcp_start_draft', { p_league_id: leagueId });
     await loadAll();
     await render();
   }
 }
 
 // ─── Draft view ─────────────────────────────────────────────────────────
+function renderRosterStatus() {
+  const el = document.getElementById('roster-status');
+
+  if (fcpLeague.roster_mode === 'open') {
+    const myPickCount = picks.filter(p => p.user_id === currentUserId).length;
+    el.innerHTML = `<div class="roster-status-item">Your roster: <strong>${myPickCount} / ${rosterSize()}</strong></div>`;
+    return;
+  }
+
+  const counts = tierCountsForUser(currentUserId);
+  el.innerHTML = [1, 2, 3].filter(t => tierCount(t) > 0).map(t => `
+    <div class="roster-status-item">
+      ${escHtml(TIER_RANGES[t])}: <strong>${counts[t] ?? 0} / ${tierCount(t)}</strong>
+    </div>
+  `).join('');
+}
+
 function renderDraftView() {
   const n = draftOrder.length;
-  const pickNum = wcdLeague.current_pick_number;
+  const pickNum = fcpLeague.current_pick_number;
   const rnd = Math.floor((pickNum - 1) / n) + 1;
   const posInRound = ((pickNum - 1) % n) + 1;
   const expectedUser = expectedDrafterId(pickNum);
@@ -224,17 +265,44 @@ function renderDraftView() {
   document.getElementById('pick-banner-text').textContent =
     `Now Picking: ${who} — Round ${rnd}, Pick ${posInRound} of ${n}`;
 
-  const pickedIds = new Set(picks.map(p => p.team_id));
-  const avail = teams.filter(t => !pickedIds.has(t.id));
+  renderRosterStatus();
+
+  const pickedIds = new Set(picks.map(p => p.golfer_id));
+  const avail = golfers.filter(g => !pickedIds.has(g.id));
+  const myTierCounts = tierCountsForUser(currentUserId);
 
   const tbody = document.getElementById('avail-body');
-  tbody.innerHTML = avail.map(t => `
-    <tr>
-      <td class="rank-num">${escHtml(t.group_letter)}</td>
-      <td>${t.flag_emoji ?? ''} ${escHtml(t.name)}</td>
-      <td>${isMyTurn ? `<button class="pick-btn" data-id="${escHtml(t.id)}">Pick</button>` : ''}</td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = avail.map(g => {
+    let canPick = isMyTurn;
+    let disabledReason = '';
+
+    if (canPick && fcpLeague.roster_mode === 'tiered') {
+      if ((myTierCounts[g.tier] ?? 0) >= tierCount(g.tier)) {
+        canPick = false;
+        disabledReason = 'Tier full';
+      }
+    } else if (canPick && fcpLeague.roster_mode === 'open') {
+      const myPickCount = picks.filter(p => p.user_id === currentUserId).length;
+      if (myPickCount >= rosterSize()) {
+        canPick = false;
+        disabledReason = 'Roster full';
+      }
+    }
+
+    const action = isMyTurn
+      ? (canPick
+          ? `<button class="pick-btn" data-id="${escHtml(g.id)}">Pick</button>`
+          : `<span class="pick-disabled">${escHtml(disabledReason)}</span>`)
+      : '';
+
+    return `
+      <tr>
+        <td class="rank-num">${g.fedex_rank ?? '—'}</td>
+        <td>${escHtml(g.name)}</td>
+        <td>${escHtml(TIER_RANGES[g.tier] ?? '')}</td>
+        <td>${action}</td>
+      </tr>`;
+  }).join('');
 
   tbody.querySelectorAll('.pick-btn').forEach(btn => {
     btn.addEventListener('click', () => makePick(btn.dataset.id));
@@ -245,11 +313,11 @@ function renderDraftView() {
   startAutopickWatcher();
 }
 
-async function makePick(teamId) {
+async function makePick(golferId) {
   document.querySelectorAll('#avail-body .pick-btn').forEach(b => b.disabled = true);
-  const { error } = await supabase.rpc('make_draft_pick', {
+  const { error } = await supabase.rpc('fcp_make_draft_pick', {
     p_league_id: leagueId,
-    p_team_id: teamId
+    p_golfer_id: golferId
   });
   if (error) {
     alert(error.message);
@@ -267,9 +335,9 @@ function startTimer() {
 
 function updateTimer() {
   const el = document.getElementById('pick-timer');
-  if (!wcdLeague?.pick_deadline) { el.textContent = ''; return; }
+  if (!fcpLeague?.pick_deadline) { el.textContent = ''; return; }
 
-  const remaining = Math.max(0, Math.floor((new Date(wcdLeague.pick_deadline).getTime() - Date.now()) / 1000));
+  const remaining = Math.max(0, Math.floor((new Date(fcpLeague.pick_deadline).getTime() - Date.now()) / 1000));
   const m = Math.floor(remaining / 60);
   const s = remaining % 60;
   el.textContent = `${m}:${String(s).padStart(2, '0')}`;
@@ -279,9 +347,9 @@ function updateTimer() {
 function startAutopickWatcher() {
   clearInterval(autopickInterval);
   autopickInterval = setInterval(async () => {
-    if (wcdLeague?.draft_status !== 'active' || !wcdLeague.pick_deadline) return;
-    if (Date.now() > new Date(wcdLeague.pick_deadline).getTime()) {
-      await supabase.rpc('autopick_if_expired', { p_league_id: leagueId });
+    if (fcpLeague?.draft_status !== 'active' || !fcpLeague.pick_deadline) return;
+    if (Date.now() > new Date(fcpLeague.pick_deadline).getTime()) {
+      await supabase.rpc('fcp_autopick_if_expired', { p_league_id: leagueId });
     }
   }, 3000);
 }
@@ -293,13 +361,13 @@ function renderBoard(tableId) {
   if (n === 0) { table.innerHTML = ''; return; }
 
   const order  = [...draftOrder].sort((a, b) => a.position - b.position);
-  const rounds = Math.ceil(48 / n);
-  const curPickNum = wcdLeague.draft_status === 'active' ? wcdLeague.current_pick_number : -1;
+  const rounds = rosterSize();
+  const curPickNum = fcpLeague.draft_status === 'active' ? fcpLeague.current_pick_number : -1;
 
   const pickByNumber = {};
   picks.forEach(p => { pickByNumber[p.pick_number] = p; });
-  const teamById = {};
-  teams.forEach(t => { teamById[t.id] = t; });
+  const golferById = {};
+  golfers.forEach(g => { golferById[g.id] = g; });
 
   let html = '<thead><tr><th class="rnd-head">Rnd</th>';
   order.forEach(o => { html += `<th>${escHtml(profileMap[o.user_id] ?? 'Unknown')}</th>`; });
@@ -311,9 +379,10 @@ function renderBoard(tableId) {
       const slot = (r % 2 === 0) ? idx : n - 1 - idx;
       const pickNum = r * n + slot + 1;
       const pick = pickByNumber[pickNum];
-      const team = pick ? teamById[pick.team_id] : null;
+      const golfer = pick ? golferById[pick.golfer_id] : null;
       const active = pickNum === curPickNum ? ' class="active-cell"' : '';
-      const label = team ? `${team.flag_emoji ?? ''} ${escHtml(team.name)}` : '';
+      const tierTag = golfer ? `<span class="tier-tag">T${golfer.tier}</span>` : '';
+      const label = golfer ? `${escHtml(golfer.name)} ${tierTag}` : '';
       html += `<td${active}>${label}</td>`;
     });
     html += '</tr>';
@@ -327,10 +396,10 @@ function subscribeRealtime() {
   const refresh = async () => { await loadAll(); await render(); };
 
   supabase
-    .channel(`wcd-draft-${leagueId}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'wcd_picks',       filter: `league_id=eq.${leagueId}` }, refresh)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'wcd_leagues',     filter: `league_id=eq.${leagueId}` }, refresh)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'wcd_draft_order', filter: `league_id=eq.${leagueId}` }, refresh)
+    .channel(`fcp-draft-${leagueId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'fcp_picks',       filter: `league_id=eq.${leagueId}` }, refresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'fcp_leagues',     filter: `league_id=eq.${leagueId}` }, refresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'fcp_draft_order', filter: `league_id=eq.${leagueId}` }, refresh)
     .subscribe();
 }
 
@@ -341,7 +410,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   currentUserId = session.user.id;
 
   leagueId = sessionStorage.getItem('league_id');
-  if (!leagueId) { window.location.href = '/soccer/index.html'; return; }
+  if (!leagueId) { window.location.href = '/golf/index.html'; return; }
 
   document.getElementById('lobby-save-order').addEventListener('click', saveLobbyOrder);
 

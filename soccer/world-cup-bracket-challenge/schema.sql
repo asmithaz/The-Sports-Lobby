@@ -731,3 +731,53 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION get_league_leaderboard(uuid) TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 14. JOIN-BY-INVITE-CODE FUNCTION
+-- Used by /join/?code=<prefix>-<code> (shared across all games).
+-- SECURITY DEFINER so it can look up private leagues (which RLS
+-- hides from non-members) and insert the caller as a member.
+-- ------------------------------------------------------------
+DROP FUNCTION IF EXISTS join_league_by_invite_code(text);
+
+CREATE OR REPLACE FUNCTION join_league_by_invite_code(p_invite_code text)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_league  leagues;
+    v_user_id uuid;
+BEGIN
+    v_user_id := auth.uid();
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'Must be logged in to join a league';
+    END IF;
+
+    -- Case-insensitive match (invite codes are stored uppercase, links lowercase)
+    SELECT * INTO v_league
+    FROM   public.leagues
+    WHERE  upper(invite_code) = upper(p_invite_code);
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Invalid invite code';
+    END IF;
+
+    -- Idempotent insert — safe to call even if already a member
+    INSERT INTO public.league_members (league_id, user_id)
+    VALUES (v_league.id, v_user_id)
+    ON CONFLICT DO NOTHING;
+
+    RETURN jsonb_build_object(
+        'id',          v_league.id,
+        'name',        v_league.name,
+        'game_type',   v_league.game_type,
+        'league_type', v_league.league_type,
+        'invite_code', v_league.invite_code,
+        'visibility',  v_league.visibility
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION join_league_by_invite_code(text) TO authenticated;

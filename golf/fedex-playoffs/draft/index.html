@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>World Cup 2026 Country Draft</title>
+  <title>FedEx Cup Playoffs Draft</title>
   <link rel="icon" href="/favicon.ico" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -16,7 +16,7 @@
     <div class="navbar-links">
       <ul>
         <li><a href="/index.html">Home</a></li>
-        <li><a href="/soccer/">Soccer</a></li>
+        <li><a href="/golf/index.html">Golf</a></li>
         <li><a href="/login/index.html">Login</a></li>
         <li><a href="/login/index.html">Signup</a></li>
       </ul>
@@ -25,8 +25,8 @@
 
   <main>
     <div class="page-max">
-      <h1>World Cup 2026 Country Draft</h1>
-      <p class="subtitle">Draft your teams — compete all tournament</p>
+      <h1>FedEx Cup Playoffs Draft</h1>
+      <p class="subtitle">Draft your roster — compete across all three playoff events</p>
 
       <!-- VIEW: LOADING -->
       <div id="view-loading">
@@ -42,7 +42,7 @@
           </p>
           <p class="comm-note">Draft scheduled for: <strong id="early-draft-time"></strong></p>
           <div class="cta-row">
-            <a class="btn-primary" href="/soccer/world-cup-draft/dashboard/">← Back to Dashboard</a>
+            <a class="btn-primary" href="/golf/fedex-playoffs/dashboard/">← Back to Dashboard</a>
           </div>
         </div>
       </div>
@@ -74,9 +74,9 @@
       <div id="view-auction" hidden>
         <div class="panel">
           <h2>Auction Draft</h2>
-          <p class="comm-note">Auction drafts are coming soon. Check back closer to the tournament.</p>
+          <p class="comm-note">Auction drafts are coming soon. Check back closer to the playoffs.</p>
           <div class="cta-row">
-            <a class="btn-primary" href="/soccer/world-cup-draft/dashboard/">← Back to Dashboard</a>
+            <a class="btn-primary" href="/golf/fedex-playoffs/dashboard/">← Back to Dashboard</a>
           </div>
         </div>
       </div>
@@ -89,16 +89,19 @@
           <span class="pick-timer" id="pick-timer"></span>
         </div>
 
+        <div class="roster-status" id="roster-status"></div>
+
         <div class="draft-layout">
 
           <div class="panel avail-panel">
-            <h2>Available Teams</h2>
+            <h2>Available Golfers</h2>
             <div class="avail-wrap">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th class="rank-num">Grp</th>
-                    <th>Team</th>
+                    <th class="rank-num">Rank</th>
+                    <th>Golfer</th>
+                    <th>Tier</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -129,7 +132,7 @@
         </div>
 
         <div class="cta-row">
-          <a class="btn-primary" href="/soccer/world-cup-draft/dashboard/">← Back to Dashboard</a>
+          <a class="btn-primary" href="/golf/fedex-playoffs/dashboard/">← Back to Dashboard</a>
         </div>
 
       </div>

@@ -1,0 +1,529 @@
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    font-family: Arial, Helvetica, sans-serif;
+    min-height: 100vh;
+    background-color: rgb(204, 204, 204);
+}
+
+/* ── Navbar ── */
+.navbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 20px;
+}
+
+.navbar-links ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    font-weight: bold;
+}
+
+.navbar-links li { margin: 0 40px; }
+
+.navbar-links a {
+    color: #151F30;
+    text-decoration: none;
+    padding: 5px 10px;
+    border-radius: 8px;
+    transition: background-color 0.3s;
+}
+
+.navbar-links a:hover {
+    color: white;
+    background-color: #151F30;
+}
+
+/* ── Main layout ── */
+main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px 60px;
+}
+
+.content-stack {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 780px;
+}
+
+h1 {
+    color: #151F30;
+    margin-bottom: 2px;
+}
+
+.league-name {
+    color: #3e4455;
+    font-size: 18px;
+    font-weight: bold;
+    margin: 0 0 12px 0;
+}
+
+/* ── Status badge ── */
+.status-badge {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 24px;
+    border: 2px solid;
+}
+
+.badge-waiting  { color: #b45309; border-color: #b45309; background: #fefce8; }
+.badge-active   { color: #1d4ed8; border-color: #1d4ed8; background: #eff6ff; }
+.badge-complete { color: #15803d; border-color: #15803d; background: #f0fdf4; }
+
+/* ── Info strip ── */
+.info-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    width: 100%;
+    max-width: 780px;
+}
+
+.info-card {
+    background: #f9faf8;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    padding: 12px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 120px;
+}
+
+.info-card--invite {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.info-card--invite .info-label { align-self: center; }
+
+.info-label {
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #888;
+}
+
+.info-value {
+    font-size: 16px;
+    font-weight: bold;
+    color: #151F30;
+}
+
+.info-value.mono {
+    font-family: monospace;
+    font-size: 15px;
+    letter-spacing: 0.1em;
+}
+
+.copy-btn {
+    padding: 6px 14px;
+    background-color: #151F30;
+    color: #f9faf8;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.2s;
+}
+
+.copy-btn:hover { background-color: #4d63dd; }
+
+/* ── Sections ── */
+.section {
+    width: 100%;
+    max-width: 780px;
+    margin-bottom: 24px;
+}
+
+.section h2 {
+    color: #151F30;
+    font-size: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0 0 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.count {
+    background: #151F30;
+    color: #f9faf8;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* ── Data table ── */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #f9faf8;
+    border: 1.5px solid #151F30;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.data-table thead tr {
+    background-color: #151F30;
+    color: #f9faf8;
+}
+
+.data-table thead th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+}
+
+.th-rank  { text-align: center; width: 40px; }
+.th-right { text-align: right; }
+
+.data-table tbody tr {
+    border-top: 1px solid #e2e4ea;
+    transition: background-color 0.15s;
+}
+
+.data-table tbody tr:hover { background-color: #eef0f6; }
+
+.data-table tbody td {
+    padding: 12px 16px;
+    font-size: 13px;
+    color: #151F30;
+}
+
+/* ── Medal rows ── */
+.rank-gold   { background-color: #fefce8 !important; }
+.rank-silver { background-color: #f8f9fa !important; }
+.rank-bronze { background-color: #fff7ed !important; }
+
+.rank-gold:hover   { background-color: #fef9c3 !important; }
+.rank-silver:hover { background-color: #f1f3f5 !important; }
+.rank-bronze:hover { background-color: #ffedd5 !important; }
+
+/* ── Table columns ── */
+.col-rank {
+    width: 40px;
+    text-align: center;
+    font-weight: bold;
+    color: #888;
+}
+
+.col-name  { font-weight: bold; white-space: nowrap; }
+.col-date  { color: #888; white-space: nowrap; }
+
+.col-points {
+    text-align: right;
+    font-weight: bold;
+    font-size: 14px;
+    color: #4d63dd;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.col-countries {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+/* ── Team badges ── */
+.team-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    font-weight: bold;
+    border: 1.5px solid;
+}
+
+.team-in {
+    background-color: #eef0fa;
+    border-color: #4d63dd;
+    color: #151F30;
+}
+
+.team-out {
+    background-color: #f3f4f6;
+    border-color: #ccc;
+    color: #999;
+    text-decoration: line-through;
+}
+
+.team-name { font-weight: normal; }
+
+.no-picks  { color: #aaa; font-size: 12px; font-style: italic; }
+.empty-cell { color: #aaa; text-align: center; font-style: italic; padding: 20px !important; }
+
+/* ── Draft active banner ── */
+.draft-active-banner {
+    width: 100%;
+    max-width: 780px;
+    background: #eff6ff;
+    border: 2px solid #1d4ed8;
+    border-radius: 8px;
+    padding: 16px 20px;
+    color: #1d4ed8;
+    font-size: 14px;
+    margin-bottom: 24px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.draft-link {
+    color: #1d4ed8;
+    font-weight: bold;
+    text-decoration: underline;
+    white-space: nowrap;
+}
+
+.draft-link:hover {
+    color: #4d63dd;
+}
+
+/* ── Reschedule row ── */
+.reschedule-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.reschedule-row input[type="date"],
+.reschedule-row select {
+    padding: 8px 12px;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #fff;
+    color: #151F30;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.reschedule-row input[type="date"]:focus,
+.reschedule-row select:focus {
+    border-color: #4d63dd;
+}
+
+.btn-outline {
+    padding: 8px 20px;
+    background: transparent;
+    color: #151F30;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.btn-outline:hover {
+    background-color: #151F30;
+    color: #f9faf8;
+}
+
+.btn-text {
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: Arial, Helvetica, sans-serif;
+    text-decoration: underline;
+}
+
+.btn-text:hover { color: #151F30; }
+
+.comm-note.warn {
+    color: #b45309;
+}
+
+/* ── Commissioner panel ── */
+.commissioner-panel {
+    width: 100%;
+    max-width: 780px;
+    background: #f9faf8;
+    border: 2px solid #151F30;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+}
+
+.commissioner-panel h3 {
+    color: #151F30;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0 0 8px 0;
+}
+
+.comm-note {
+    font-size: 13px;
+    color: #555;
+    margin: 0 0 16px 0;
+}
+
+.btn-primary {
+    padding: 10px 24px;
+    background-color: #151F30;
+    color: #f9faf8;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.btn-primary:hover:not(:disabled) { background-color: #4d63dd; }
+
+.btn-primary:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+/* ── Utility ── */
+.loading, .error {
+    color: #555;
+    font-size: 14px;
+    padding: 24px 0;
+    text-align: center;
+}
+
+.error { color: #dc2626; }
+
+/* ── Scoring rules ── */
+.commissioner-panel.scoring-card {
+    margin-bottom: 0;
+    width: fit-content;
+}
+
+.scoring-cols { display: flex; gap: 48px; flex-wrap: wrap; }
+
+.scoring-cols h4 {
+    color: #151F30;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 8px 0;
+}
+
+.scoring-cols table { border-collapse: collapse; font-size: 14px; }
+
+.scoring-cols td {
+    padding: 5px 6px;
+    color: #151F30;
+    border-bottom: 1px solid #ddd;
+}
+
+.scoring-cols td:last-child {
+    text-align: right;
+    font-weight: bold;
+    padding-left: 28px;
+}
+
+/* ── Footer ── */
+.footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #151F30;
+    padding: 50px 0;
+    margin-top: auto;
+    font-weight: bold;
+}
+
+/* ── Standings — clickable rows ── */
+.clickable-row {
+    cursor: pointer;
+}
+
+.selected-row {
+    background-color: #eef0fa !important;
+    box-shadow: inset 3px 0 0 #4d63dd;
+}
+
+/* ── Roster breakdown table ── */
+.breakdown-table th.col-event {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: bold;
+    color: #151F30;
+    background: #f9faf8;
+    border-right: 1px solid #e2e4ea;
+    white-space: nowrap;
+}
+
+.breakdown-table thead th.col-event {
+    background-color: #151F30;
+    color: #f9faf8;
+}
+
+.breakdown-table tbody td {
+    text-align: center;
+}
+
+.cell-cut {
+    color: #c0392b;
+    font-weight: bold;
+    font-size: 11px;
+}
+
+.row-total th,
+.row-total td {
+    border-top: 2px solid #151F30;
+    font-weight: bold;
+}
+
+.row-team-total th,
+.row-team-total td {
+    font-weight: bold;
+    color: #4d63dd;
+    font-size: 15px;
+}

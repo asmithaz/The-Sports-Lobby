@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>World Cup Country Draft — Draft Time & Invites</title>
+    <title>FedEx Cup Playoffs — Draft Time &amp; Invites</title>
     <link rel="icon" href="/favicon.ico" />
     <link rel="stylesheet" href="styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -16,7 +16,7 @@
         <div class="navbar-links">
             <ul>
                 <li><a href="/index.html">Home</a></li>
-                <li><a href="/soccer/">Soccer</a></li>
+                <li><a href="/golf/index.html">Golf</a></li>
                 <li><a href="/login/index.html">Login</a></li>
                 <li><a href="/login/index.html">Signup</a></li>
             </ul>
@@ -24,10 +24,33 @@
     </nav>
 
     <main>
-        <h1>World Cup Country Draft</h1>
+        <h1>FedEx Cup Playoffs Fantasy Golf</h1>
         <p class="subtitle">Step 2 of 2 — Draft Time &amp; Invites</p>
 
         <form id="invite-form">
+
+            <!-- Draft Format -->
+            <div class="form-card">
+                <div class="form-group">
+                    <label>Draft Format</label>
+                    <div class="radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="draft-format" value="snake" checked />
+                            <span class="radio-label">
+                                <strong>Snake Draft</strong>
+                                <span>Pick order reverses each round</span>
+                            </span>
+                        </label>
+                        <label class="radio-option radio-option--disabled">
+                            <input type="radio" name="draft-format" value="auction" disabled />
+                            <span class="radio-label">
+                                <strong>Auction Draft</strong>
+                                <span>Coming soon</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+            </div>
 
             <!-- Draft Date & Time -->
             <div class="form-card">
@@ -37,7 +60,7 @@
                         <input type="date" id="draft-date" name="draft-date" required />
                         <select id="draft-time" name="draft-time" required></select>
                     </div>
-                    <span class="hint">Drafts must be scheduled before June 27, 2026 at 12:00 PM ET.</span>
+                    <span class="hint">Drafts must be scheduled before the FedEx St. Jude Championship begins on August 8, 2026.</span>
                 </div>
             </div>
 
@@ -94,8 +117,9 @@
     </footer>
 
     <script>
-        // Lock draft scheduling at 12:00 PM ET = 16:00 UTC on June 27, 2026
-        const DRAFT_LOCK_UTC = '2026-06-27T16:00';
+        // Lock draft scheduling at 8:00 AM ET = 12:00 UTC on August 8, 2026
+        // (the morning the FedEx St. Jude Championship begins).
+        const DRAFT_LOCK_UTC = '2026-08-08T12:00';
 
         const now = new Date();
         const pad = n => String(n).padStart(2, '0');
@@ -148,7 +172,7 @@
         // Populate invite link from session
         const inviteCode = sessionStorage.getItem('league_invite_code') || 'XXXXXXXX';
         document.getElementById('invite-link').value =
-            window.location.origin + '/join/?code=wcd-' + inviteCode.toLowerCase();
+            window.location.origin + '/join/?code=fcp-' + inviteCode.toLowerCase();
 
         function showInviteMethod(method) {
             document.getElementById('email-section').classList.toggle('hidden', method !== 'email');
@@ -190,7 +214,7 @@
 
             const leagueId = sessionStorage.getItem('league_id');
             if (!leagueId) {
-                window.location.href = '/soccer/world-cup-draft/setup/';
+                window.location.href = '/golf/fedex-playoffs/setup/';
                 return;
             }
 
@@ -205,14 +229,20 @@
 
             // Convert local date + time selection to ISO string
             const draftTimeISO = new Date(`${draftDate}T${draftTime}`).toISOString();
+            const draftFormat = document.querySelector('input[name="draft-format"]:checked').value;
 
             const { error } = await supabase
-                .from('wcd_leagues')
+                .from('fcp_leagues')
                 .insert({
                     league_id: leagueId,
-                    draft_format: 'snake',
+                    draft_format: draftFormat,
                     draft_status: 'pending',
-                    draft_time: draftTimeISO
+                    draft_time: draftTimeISO,
+                    roster_mode: sessionStorage.getItem('fcp_roster_mode') || 'tiered',
+                    roster_size: parseInt(sessionStorage.getItem('fcp_roster_size'), 10) || 4,
+                    tier1_count: parseInt(sessionStorage.getItem('fcp_tier1_count'), 10) || 0,
+                    tier2_count: parseInt(sessionStorage.getItem('fcp_tier2_count'), 10) || 0,
+                    tier3_count: parseInt(sessionStorage.getItem('fcp_tier3_count'), 10) || 0
                 });
 
             if (error) {
@@ -224,7 +254,7 @@
             }
 
             sessionStorage.setItem('draft_time', draftTimeISO);
-            window.location.href = '/soccer/world-cup-draft/dashboard/';
+            window.location.href = '/golf/fedex-playoffs/dashboard/';
         });
 
         renderDashboardLink();

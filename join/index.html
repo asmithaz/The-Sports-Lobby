@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Join League — Sports Portal</title>
+    <link rel="icon" href="/favicon.ico" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 3rem 2.5rem;
+            text-align: center;
+            max-width: 440px;
+            width: 90%;
+        }
+        .card h1 { font-size: 1.75rem; margin-bottom: .75rem; }
+        .card p  { color: #94a3b8; line-height: 1.6; margin-bottom: 1.5rem; }
+        .spinner {
+            width: 44px; height: 44px;
+            border: 4px solid #334155;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin .75s linear infinite;
+            margin: 1.5rem auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .btn {
+            display: inline-block;
+            padding: .75rem 1.75rem;
+            background: #3b82f6;
+            color: #fff;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: background .15s;
+        }
+        .btn:hover { background: #2563eb; }
+        .icon { font-size: 3rem; margin-bottom: 1rem; display: block; }
+        .league-name { font-size: 1.25rem; font-weight: 700; color: #f8fafc; }
+        strong { color: #f8fafc; }
+    </style>
+</head>
+<body>
+
+<div class="card" id="card">
+    <div class="spinner"></div>
+    <p>Joining league&hellip;</p>
+</div>
+
+<script>
+async function joinFlow() {
+    const card = document.getElementById('card');
+
+    function show(html) { card.innerHTML = html; }
+
+    function showError(msg) {
+        show(`
+            <span class="icon">⚠️</span>
+            <h1>Couldn't Join</h1>
+            <p>${msg}</p>
+            <a href="/dashboard/" class="btn">Go to Dashboard</a>
+        `);
+    }
+
+    // Parse invite code from query string: ?code=fcp-abc123 or ?code=wcd-abc123
+    const params = new URLSearchParams(location.search);
+    const rawCode = (params.get('code') || '').trim();
+
+    if (!rawCode) {
+        showError('No invite code found in this link. Make sure you used the full invite link shared with you.');
+        return;
+    }
+
+    // Strip game prefix (fcp-, wcd-, wcbc-) — the DB stores the bare alphanumeric code
+    const inviteCode = rawCode.replace(/^[a-z]+-/i, '');
+
+    // Check auth — if not logged in, stash the full current URL and redirect to login
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+        sessionStorage.setItem('sp_redirect_after_login', location.href);
+        window.location.href = '/login/';
+        return;
+    }
+
+    show('<div class="spinner"></div><p>Joining league&hellip;</p>');
+
+    const { data, error } = await supabase.rpc('join_league_by_invite_code', {
+        p_invite_code: inviteCode
+    });
+
+    if (error) {
+        const msg = (error.message || '').includes('Invalid invite code')
+            ? 'That invite code is invalid or doesn\'t exist. Double-check the link and try again.'
+            : ('Error: ' + error.message);
+        showError(msg);
+        return;
+    }
+
+    // Store league context so the game dashboard can pick it up
+    sessionStorage.setItem('league_id',          data.id);
+    sessionStorage.setItem('league_name',        data.name);
+    sessionStorage.setItem('league_type',        data.league_type || '');
+    sessionStorage.setItem('league_invite_code', data.invite_code);
+    sessionStorage.setItem('league_visibility',  data.visibility);
+
+    show(`
+        <span class="icon">✅</span>
+        <h1>You're in!</h1>
+        <p>Welcome to <span class="league-name">${data.name}</span>.<br>Taking you there now&hellip;</p>
+    `);
+
+    // Route to the correct game dashboard (mirrors dashboard/index.html enterLeague logic)
+    setTimeout(() => {
+        if (data.game_type === 'fedex-playoffs') {
+            window.location.href = '/golf/fedex-playoffs/dashboard/';
+        } else if (data.game_type === 'world-cup-draft') {
+            window.location.href = '/soccer/world-cup-draft/dashboard/';
+        } else if (data.league_type === 'knockout-only') {
+            window.location.href = '/soccer/world-cup-bracket-challenge/bracket/';
+        } else {
+            window.location.href = '/soccer/world-cup-bracket-challenge/picks/';
+        }
+    }, 1500);
+}
+
+joinFlow();
+</script>
+
+</body>
+</html>

@@ -17,7 +17,7 @@ async function renderDashboardLink() {
     link.textContent = '← Dashboard';
     link.className = 'dashboard-return-link';
     link.style.cssText =
-        'position:fixed;top:14px;right:20px;z-index:1000;padding:8px 16px;' +
+        'position:fixed;top:10px;right:20px;z-index:1000;padding:5px 16px;' +
         'background-color:#151F30;color:#fff;font-weight:bold;font-family:Arial,Helvetica,sans-serif;' +
         'text-decoration:none;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.15);transition:background-color 0.3s;';
     link.onmouseenter = () => { link.style.backgroundColor = '#4d63dd'; };
