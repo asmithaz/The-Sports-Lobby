@@ -1,131 +1,141 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>World Cup Bracket Challenge</title>
     <link rel="icon" href="favicon.ico" />
-    <link rel="stylesheet" href="styles.css" />
+
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
 
-    <nav class="navbar">
-        <div class="navbar-links">
-            <ul>
-                <li><a href="/index.html">Home</a></li>
-                <li><a href="/soccer/">Soccer</a></li>
-                <li><a href="/login/index.html">Login</a></li>
-                <li><a href="/login/index.html">Signup</a></li>
-            </ul>
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">Sports Portal</a>
+        <div class="nav-links">
+            <a href="/index.html" class="nav-link">Home</a>
+            <a href="/soccer/" class="nav-link">Soccer</a>
+            <a href="/login/index.html" class="nav-link">Login</a>
+            <a href="/login/index.html" class="nav-link">Signup</a>
         </div>
     </nav>
 
-    <main>
-        <h1>World Cup Bracket Challenge</h1>
-        <p class="subtitle">Choose your format — three ways to play</p>
+    <main class="page-wrapper page-wrapper--center">
+        <h1 class="page-heading">World Cup Bracket Challenge</h1>
+        <p class="page-subhead">Choose your format — three ways to play</p>
 
         <div class="tab-wrapper">
-            <section>
-                <input type="radio" id="tab1" name="tabs" checked>
-                <label for="tab1">Option 1 — Group Stage Start</label>
+            <div class="tabs" id="format-tabs">
+                <span class="tab active" data-target="content1">Option 1 — Group Stage Start</span>
+                <span class="tab" data-target="content2">Option 2 — Knockout Only</span>
+                <span class="tab" data-target="content3">Option 3 — Group + Repick</span>
+            </div>
 
-                <input type="radio" id="tab2" name="tabs">
-                <label for="tab2">Option 2 — Knockout Only</label>
-
-                <input type="radio" id="tab3" name="tabs">
-                <label for="tab3">Option 3 — Group + Repick</label>
-
+            <div class="card tab-panel">
                 <!-- Option 1 -->
-                <div class="tab-content" id="content1">
-                    <div class="option-layout">
-                        <div class="option-desc">
-                            <h2>Pick before the Group Stage only</h2>
-                            <p>Pick group stage winners, runners-up, and the next 8 teams in and use these 32 teams to fill out your full bracket before the tournament begins. You earn points only for picks that match the actual results — your group stage picks carry forward into the knockout rounds.</p>
+                <div class="tab-content active" id="content1">
+                    <div class="card-grid mb-4">
+                        <div>
+                            <h2 class="text-lg font-bold text-primary mb-2">Pick before the Group Stage only</h2>
+                            <p class="text-sm text-secondary">Pick group stage winners, runners-up, and the next 8 teams in and use these 32 teams to fill out your full bracket before the tournament begins. You earn points only for picks that match the actual results — your group stage picks carry forward into the knockout rounds.</p>
                         </div>
-                        <div class="scoring-block">
-                            <h3>Group Stage</h3>
-                            <table>
-                                <tr><td>Correct Group Winner</td><td class="pts">20 pts</td></tr>
-                                <tr><td>Correct Second Place</td><td class="pts">10 pts</td></tr>
-                                <tr><td>Correct in Next 8</td><td class="pts">5 pts</td></tr>
-                            </table>
-                            <h3>Knockout Rounds</h3>
-                            <table>
-                                <tr><td>Round of 32</td><td class="pts">40 pts</td></tr>
-                                <tr><td>Round of 16</td><td class="pts">80 pts</td></tr>
-                                <tr><td>Quarterfinals</td><td class="pts">160 pts</td></tr>
-                                <tr><td>Semifinals</td><td class="pts">320 pts</td></tr>
-                                <tr><td>Final</td><td class="pts">640 pts</td></tr>
-                            </table>
+                        <div class="rules-grid">
+                            <div class="rules-card">
+                                <p class="rules-card__title">Group Stage</p>
+                                <div class="rule-row"><span class="rule-row__name">Correct Group Winner</span><span class="rule-row__pts">20 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Correct Second Place</span><span class="rule-row__pts">10 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Correct in Next 8</span><span class="rule-row__pts">5 pts</span></div>
+                            </div>
+                            <div class="rules-card">
+                                <p class="rules-card__title">Knockout Rounds</p>
+                                <div class="rule-row"><span class="rule-row__name">Round of 32</span><span class="rule-row__pts">40 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Round of 16</span><span class="rule-row__pts">80 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Quarterfinals</span><span class="rule-row__pts">160 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Semifinals</span><span class="rule-row__pts">320 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Final</span><span class="rule-row__pts">640 pts</span></div>
+                            </div>
                         </div>
                     </div>
-                    <div class="cta-row">
-                        <button onclick="startLeague('/soccer/world-cup-bracket-challenge/setup/')">Set Up This League</button>
+                    <div class="flex-end">
+                        <button class="btn btn--primary" onclick="startLeague('/soccer/world-cup-bracket-challenge/setup/')">Set Up This League</button>
                     </div>
                 </div>
 
                 <!-- Option 2 -->
                 <div class="tab-content" id="content2">
-                    <div class="option-layout">
-                        <div class="option-desc">
-                            <h2>Pick before the Knockout Stage only</h2>
-                            <p>Skip the group stage entirely. Once the Round of 32 field is set, members fill out their bracket and compete through the knockout rounds with a clean, straightforward scoring structure.</p>
+                    <div class="card-grid mb-4">
+                        <div>
+                            <h2 class="text-lg font-bold text-primary mb-2">Pick before the Knockout Stage only</h2>
+                            <p class="text-sm text-secondary">Skip the group stage entirely. Once the Round of 32 field is set, members fill out their bracket and compete through the knockout rounds with a clean, straightforward scoring structure.</p>
                         </div>
-                        <div class="scoring-block">
-                            <h3>Knockout Rounds</h3>
-                            <table>
-                                <tr><td>Round of 32</td><td class="pts">10 pts</td></tr>
-                                <tr><td>Round of 16</td><td class="pts">20 pts</td></tr>
-                                <tr><td>Quarterfinals</td><td class="pts">40 pts</td></tr>
-                                <tr><td>Semifinals</td><td class="pts">80 pts</td></tr>
-                                <tr><td>Final</td><td class="pts">160 pts</td></tr>
-                            </table>
+                        <div class="rules-grid">
+                            <div class="rules-card">
+                                <p class="rules-card__title">Knockout Rounds</p>
+                                <div class="rule-row"><span class="rule-row__name">Round of 32</span><span class="rule-row__pts">10 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Round of 16</span><span class="rule-row__pts">20 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Quarterfinals</span><span class="rule-row__pts">40 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Semifinals</span><span class="rule-row__pts">80 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Final</span><span class="rule-row__pts">160 pts</span></div>
+                            </div>
                         </div>
                     </div>
-                    <div class="cta-row">
-                        <button onclick="startLeague('/soccer/world-cup-bracket-challenge/setup/')">Set Up This League</button>
+                    <div class="flex-end">
+                        <button class="btn btn--primary" onclick="startLeague('/soccer/world-cup-bracket-challenge/setup/')">Set Up This League</button>
                     </div>
                 </div>
 
                 <!-- Option 3 -->
                 <div class="tab-content" id="content3">
-                    <div class="option-layout">
-                        <div class="option-desc">
-                            <h2>Group Stage start, then Repick the Knockout bracket</h2>
-                            <p>Pick the group stage before the tournament, then once the knockout field is set every member repicks the full bracket. Scores from both stages are cumulative — the best overall predictor wins.</p>
+                    <div class="card-grid mb-4">
+                        <div>
+                            <h2 class="text-lg font-bold text-primary mb-2">Group Stage start, then Repick the Knockout bracket</h2>
+                            <p class="text-sm text-secondary">Pick the group stage before the tournament, then once the knockout field is set every member repicks the full bracket. Scores from both stages are cumulative — the best overall predictor wins.</p>
                         </div>
-                        <div class="scoring-block">
-                            <h3>Group Stage</h3>
-                            <table>
-                                <tr><td>Correct Group Winner</td><td class="pts">20 pts</td></tr>
-                                <tr><td>Correct Second Place</td><td class="pts">10 pts</td></tr>
-                                <tr><td>Correct in Next 8</td><td class="pts">5 pts</td></tr>
-                            </table>
-                            <h3>Knockout Rounds <span class="note">(cumulative)</span></h3>
-                            <table>
-                                <tr><td>Round of 32</td><td class="pts">10 pts</td></tr>
-                                <tr><td>Round of 16</td><td class="pts">20 pts</td></tr>
-                                <tr><td>Quarterfinals</td><td class="pts">40 pts</td></tr>
-                                <tr><td>Semifinals</td><td class="pts">80 pts</td></tr>
-                                <tr><td>Final</td><td class="pts">160 pts</td></tr>
-                            </table>
+                        <div class="rules-grid">
+                            <div class="rules-card">
+                                <p class="rules-card__title">Group Stage</p>
+                                <div class="rule-row"><span class="rule-row__name">Correct Group Winner</span><span class="rule-row__pts">20 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Correct Second Place</span><span class="rule-row__pts">10 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Correct in Next 8</span><span class="rule-row__pts">5 pts</span></div>
+                            </div>
+                            <div class="rules-card">
+                                <p class="rules-card__title">Knockout Rounds <span class="text-xs text-muted normal-case">(cumulative)</span></p>
+                                <div class="rule-row"><span class="rule-row__name">Round of 32</span><span class="rule-row__pts">10 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Round of 16</span><span class="rule-row__pts">20 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Quarterfinals</span><span class="rule-row__pts">40 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Semifinals</span><span class="rule-row__pts">80 pts</span></div>
+                                <div class="rule-row"><span class="rule-row__name">Final</span><span class="rule-row__pts">160 pts</span></div>
+                            </div>
                         </div>
                     </div>
-                    <div class="cta-row">
-                        <button onclick="startLeague('/soccer/world-cup-bracket-challenge/setup/')">Set Up This League</button>
+                    <div class="flex-end">
+                        <button class="btn btn--primary" onclick="startLeague('/soccer/world-cup-bracket-challenge/setup/')">Set Up This League</button>
                     </div>
                 </div>
-            </section>
+            </div>
         </div>
     </main>
 
-    <footer class="footer">
+    <footer class="site-footer">
         2026 The Sports Portal. All rights reserved.
     </footer>
 
-    <script>renderDashboardLink();</script>
+    <script>
+        document.querySelectorAll('#format-tabs .tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('#format-tabs .tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.getElementById(tab.dataset.target).classList.add('active');
+            });
+        });
+
+        renderDashboardLink();
+    </script>
 </body>
 </html>

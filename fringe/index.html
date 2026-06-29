@@ -1,130 +1,116 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="description" content="Generic starter index.html for a web project" />
+    <meta name="description" content="The Fringe fantasy challenges" />
     <title>Sports Portal Fringe</title>
 
-    <!-- Favicon -->
     <link rel="icon" href="favicon.ico" />
 
-    <!-- Stylesheet (create styles.css in same folder) -->
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
 
-    <nav class="navbar">      
-        <div class="navbar-links">
-            <ul>
-                <li><a href="/index.html">Home</a></li>
-                <li><a href="Login.html">Login</a></li>
-                <li><a href="/login/index.html">Signup</a></li>
-                <li><a href="about.html">About</a></li>
-            </ul>
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">Sports Portal</a>
+        <div class="nav-links">
+            <a href="/index.html" class="nav-link">Home</a>
+            <a href="Login.html" class="nav-link">Login</a>
+            <a href="/login/index.html" class="nav-link">Signup</a>
+            <a href="about.html" class="nav-link">About</a>
         </div>
     </nav>
-    <main>  
 
-            <p>The Fringe Challenges</p>
-            <div class="container-2">
-                <div class="container-4">
-                    <div class="container-8">
-                        Triple Crown Season
-                        <button onclick="startLeague('/fringe/triple-crown/')">Start your League!</button>
-                    </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Select a stable of horses for each of the Big 3 Horse Races — Kentucky Derby, The Preakness, and Belmont Stakes.</li>
-                            <li>Score points based on horse's finishes at each race.</li>
-                            <li>Customizable scoring options including bonus points, member groups, multiple entries, and more.</li>
-                        </ul>
-                    </div>
+    <main class="page-wrapper">
+        <p class="hub-title">The Fringe Challenges</p>
+        <div class="hub-list">
+
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">Triple Crown Season</span>
+                    <button class="btn btn--primary" onclick="startLeague('/fringe/triple-crown/')">Start your League!</button>
                 </div>
-
-                <div class="container-4">
-                    <div class="container-8">
-                        Kentucky Derby Salary Draft
-                        <button onclick="startLeague('/fringe/kentucky-derby/')">Start your League!</button>
-                    </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Select a stable of horses for the Kentucky Derby.</li>
-                            <li>Score points based on horse's finishes at each race.</li>
-                            <li>Customizable scoring options including bonus points, member groups, multiple entries, and more.</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="container-4">
-                    <div class="container-8">
-                        Homerun Derby
-                        <button onclick="startLeague('/fringe/homerun-derby/')">Start your League!</button>
-                    </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Select a team of players based on a set salary for the homerun derby.</li>
-                            <li>Score points based on homeruns hit through the rounds.</li>
-                            <li>Customizable scoring options including bonus points, member groups, multiple entries, and more.</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="container-4">
-                    <div class="container-8">
-                        College Baseball Tournament Bracket
-                        <button onclick="startLeague('/fringe/college-baseball/')">Start your League!</button>
-                    </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Player's select winner for every game in the bracket.</li>
-                            <li>Points awarded for every correct pick.</li>
-                            <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
-                            <li>Real time standings report and what if scenarios.</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="container-4">
-                    <div class="container-8">
-                        College Softball Tournament Bracket
-                        <button onclick="startLeague('/fringe/college-softball/')">Start your League!</button>
-                    </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Player's select winner for every game in the bracket.</li>
-                            <li>Points awarded for every correct pick.</li>
-                            <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
-                            <li>Real time standings report and what if scenarios.</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="container-4">
-                    <div class="container-8">
-                        Submit a New Idea!
-                        <button onclick="startLeague('/fringe/submit-idea/')">Submit!</button>
-                    </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Got a fun game you and your friends track on spreadsheets?</li>
-                            <li>Always wanted a way to look back at seasons past without the hassle?</li>
-                            <li>Make money playing fantasy sports — royalties available for submitted games that others are playing!</li>
-                        </ul>
-                    </div>
-                </div>
-
+                <ul class="hub-feature-list">
+                    <li>Select a stable of horses for each of the Big 3 Horse Races — Kentucky Derby, The Preakness, and Belmont Stakes.</li>
+                    <li>Score points based on horse's finishes at each race.</li>
+                    <li>Customizable scoring options including bonus points, member groups, multiple entries, and more.</li>
+                </ul>
             </div>
 
-    </div>
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">Kentucky Derby Salary Draft</span>
+                    <button class="btn btn--primary" onclick="startLeague('/fringe/kentucky-derby/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Select a stable of horses for the Kentucky Derby.</li>
+                    <li>Score points based on horse's finishes at each race.</li>
+                    <li>Customizable scoring options including bonus points, member groups, multiple entries, and more.</li>
+                </ul>
+            </div>
 
-    <footer class="footer">
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">Homerun Derby</span>
+                    <button class="btn btn--primary" onclick="startLeague('/fringe/homerun-derby/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Select a team of players based on a set salary for the homerun derby.</li>
+                    <li>Score points based on homeruns hit through the rounds.</li>
+                    <li>Customizable scoring options including bonus points, member groups, multiple entries, and more.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">College Baseball Tournament Bracket</span>
+                    <button class="btn btn--primary" onclick="startLeague('/fringe/college-baseball/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Player's select winner for every game in the bracket.</li>
+                    <li>Points awarded for every correct pick.</li>
+                    <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
+                    <li>Real time standings report and what if scenarios.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">College Softball Tournament Bracket</span>
+                    <button class="btn btn--primary" onclick="startLeague('/fringe/college-softball/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Player's select winner for every game in the bracket.</li>
+                    <li>Points awarded for every correct pick.</li>
+                    <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
+                    <li>Real time standings report and what if scenarios.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">Submit a New Idea!</span>
+                    <button class="btn btn--primary" onclick="startLeague('/fringe/submit-idea/')">Submit!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Got a fun game you and your friends track on spreadsheets?</li>
+                    <li>Always wanted a way to look back at seasons past without the hassle?</li>
+                    <li>Make money playing fantasy sports — royalties available for submitted games that others are playing!</li>
+                </ul>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="site-footer">
         2026 The Sports Portal. All rights reserved.
     </footer>
 
-    </main>
 </body>
-</html> 
+</html>

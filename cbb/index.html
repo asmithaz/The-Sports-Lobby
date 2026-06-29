@@ -1,124 +1,111 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="description" content="Generic starter index.html for a web project" />
+    <meta name="description" content="College Basketball fantasy challenges" />
     <title>Sports Portal CBB</title>
 
-    <!-- Favicon -->
     <link rel="icon" href="favicon.ico" />
 
-    <!-- Stylesheet (create styles.css in same folder) -->
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
 
-    <nav class="navbar">     
-        <div class="navbar-links">
-            <ul>
-                <li><a href="/index.html">Home</a></li>
-                <li><a href="Login.html">Login</a></li>
-                <li><a href="/login/index.html">Signup</a></li>
-                <li><a href="about.html">About</a></li>
-            </ul>
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">Sports Portal</a>
+        <div class="nav-links">
+            <a href="/index.html" class="nav-link">Home</a>
+            <a href="Login.html" class="nav-link">Login</a>
+            <a href="/login/index.html" class="nav-link">Signup</a>
+            <a href="about.html" class="nav-link">About</a>
         </div>
     </nav>
-    <main>  
-        
-            <p>College Basketball Challenges</p>
-            <div class="container-2">
-                <div class="container-4">
-                    <div class="container-8">
-                        Conference Tournament Brackets
-                        <button onclick="startLeague('/cbb/conference-brackets/')">Start your League!</button>
-                    </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Men's and Women's tournaments for every conference tournament available.</li>
-                            <li>Player's select winner for every game in the bracket.</li>
-                            <li>Points awarded for every correct pick.</li>
-                            <li>Players win individual brackets and all bracket points are totaled for an overall winner.</li>
-                            <li>Choose only the conferences you want or choose from our default groupings.</li>
-                            <li>Customizable scoring settings including point values per round, multiple entries, member groupings, and more.</li>
-                            <li>Real time standings report and what if scenarios.</li>
-                        </ul>
-                    </div>
-                </div>
 
-                    <div class="container-4">
-                        <div class="container-8">
-                        March Madness Bracket
-                        <button onclick="startLeague('/cbb/march-madness-bracket/')">Start your League!</button>
-                    </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Men's and Women's tournaments available.</li>
-                            <li>Player's select winner for every game in the bracket.</li>
-                            <li>Points awarded for every correct pick.</li>
-                            <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
-                            <li>Real time standings report and what if scenarios.</li> 
-                        </ul>
-                    </div>
-                    </div>
+    <main class="page-wrapper">
+        <p class="hub-title">College Basketball Challenges</p>
+        <div class="hub-list">
 
-                    <div class="container-4">
-                        <div class="container-8">
-                            March Madness Team Draft
-                            <button onclick="startLeague('/cbb/march-madness-draft/')">Start your League!</button>
-                        </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Men's and Women's tournaments available.</li>
-                            <li>Teams are selected in a snake or auction draft.</li>
-                            <li>Players keep the teams that are drafted through the tournament and accumulate points.</li>
-                            <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
-                        </ul>
-                    </div>
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">Conference Tournament Brackets</span>
+                    <button class="btn btn--primary" onclick="startLeague('/cbb/conference-brackets/')">Start your League!</button>
                 </div>
-    
-                    <div class="container-4">
-                        <div class="container-8">
-                            NIT Tournament Bracket
-                            <button onclick="startLeague('/cbb/nit-bracket/')">Start your League!</button>
-                        </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Men's and Women's tournaments available.</li>
-                            <li>Player's select winner for every game in the bracket.</li>
-                            <li>Points awarded for every correct pick.</li>
-                            <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
-                            <li>Real time standings report and what if scenarios.</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="container-4">
-                        <div class="container-8">
-                            Gauntlet Tournament
-                            <button onclick="startLeague('/cbb/gauntlet/')">Start your League!</button>
-                        </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Men's and Women's tournaments available.</li>
-                            <li>Each player is randomly assigned one team or more (up to 64 entries).</li>
-                            <li>Player's with losing teams move on while losing teams are eliminated.</li>                       </ul>
-                    </div>
-                </div>
-
-               
+                <ul class="hub-feature-list">
+                    <li>Men's and Women's tournaments for every conference tournament available.</li>
+                    <li>Player's select winner for every game in the bracket.</li>
+                    <li>Points awarded for every correct pick.</li>
+                    <li>Players win individual brackets and all bracket points are totaled for an overall winner.</li>
+                    <li>Choose only the conferences you want or choose from our default groupings.</li>
+                    <li>Customizable scoring settings including point values per round, multiple entries, member groupings, and more.</li>
+                    <li>Real time standings report and what if scenarios.</li>
+                </ul>
             </div>
-            
-           
-    </div>
 
-    <footer class="footer">
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">March Madness Bracket</span>
+                    <button class="btn btn--primary" onclick="startLeague('/cbb/march-madness-bracket/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Men's and Women's tournaments available.</li>
+                    <li>Player's select winner for every game in the bracket.</li>
+                    <li>Points awarded for every correct pick.</li>
+                    <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
+                    <li>Real time standings report and what if scenarios.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">March Madness Team Draft</span>
+                    <button class="btn btn--primary" onclick="startLeague('/cbb/march-madness-draft/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Men's and Women's tournaments available.</li>
+                    <li>Teams are selected in a snake or auction draft.</li>
+                    <li>Players keep the teams that are drafted through the tournament and accumulate points.</li>
+                    <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">NIT Tournament Bracket</span>
+                    <button class="btn btn--primary" onclick="startLeague('/cbb/nit-bracket/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Men's and Women's tournaments available.</li>
+                    <li>Player's select winner for every game in the bracket.</li>
+                    <li>Points awarded for every correct pick.</li>
+                    <li>Customizable scoring settings including point values per round, multiple entries, member groupings, confidence rankings and more.</li>
+                    <li>Real time standings report and what if scenarios.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">Gauntlet Tournament</span>
+                    <button class="btn btn--primary" onclick="startLeague('/cbb/gauntlet/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Men's and Women's tournaments available.</li>
+                    <li>Each player is randomly assigned one team or more (up to 64 entries).</li>
+                    <li>Player's with losing teams move on while losing teams are eliminated.</li>
+                </ul>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="site-footer">
         2026 The Sports Portal. All rights reserved.
     </footer>
 
-    </main>
 </body>
-</html> 
+</html>

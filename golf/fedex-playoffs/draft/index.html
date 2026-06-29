@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>FedEx Cup Playoffs Draft</title>
   <link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/css/design-tokens.css" />
+  <link rel="stylesheet" href="/css/components.css" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/js/supabase.js"></script>
@@ -12,14 +14,13 @@
 </head>
 <body>
 
-  <nav class="navbar">
-    <div class="navbar-links">
-      <ul>
-        <li><a href="/index.html">Home</a></li>
-        <li><a href="/golf/index.html">Golf</a></li>
-        <li><a href="/login/index.html">Login</a></li>
-        <li><a href="/login/index.html">Signup</a></li>
-      </ul>
+  <nav class="nav">
+    <a href="/index.html" class="nav-logo">Sports Portal</a>
+    <div class="nav-links">
+      <a href="/index.html" class="nav-link">Home</a>
+      <a href="/golf/index.html" class="nav-link">Golf</a>
+      <a href="/login/index.html" class="nav-link">Login</a>
+      <a href="/login/index.html" class="nav-link">Signup</a>
     </div>
   </nav>
 
@@ -140,7 +141,7 @@
     </div>
   </main>
 
-  <footer class="footer">2026 The Sports Portal. All rights reserved.</footer>
+  <footer class="site-footer">2026 The Sports Portal. All rights reserved.</footer>
 
   <script src="draft.js"></script>
   <script>renderDashboardLink();</script>

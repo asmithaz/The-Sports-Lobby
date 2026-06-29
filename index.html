@@ -1,276 +1,219 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="description" content="Generic starter index.html for a web project" />
+    <meta name="description" content="Sports Portal — your destination for unique fantasy games" />
     <title>Sports Portal</title>
 
-    <!-- Favicon -->
     <link rel="icon" href="favicon.ico" />
 
-    <!-- Stylesheet (create styles.css in same folder) -->
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
     <link rel="stylesheet" href="styles.css" />
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
 
-    <nav class="navbar"> 
-        <div class="navbar-links">
-            <ul>
-                <li><a href="index.html">Home</a></li>
-                <li><a href="/login/index.html">Login</a></li>
-                <li><a href="/login/index.html">Signup</a></li>
-                <li><a href="about.html">About</a></li>
-            </ul>
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">Sports Portal</a>
+        <div class="nav-links">
+            <a href="/index.html" class="nav-link active">Home</a>
+            <a href="/login/index.html" class="nav-link">Login</a>
+            <a href="/login/index.html" class="nav-link">Signup</a>
+            <a href="about.html" class="nav-link">About</a>
         </div>
     </nav>
-    <main>  
-        <img src="images/logo-8.png" alt="Sports Portal Logo">
-        <p>Your destination for unique fantasy games</p>
-        <div class="container-1">
-            <p>Let's get started!</p>
-            <div class="container-2">        
-                <div class="container-3">
+
+    <main class="page-wrapper">
+
+        <div class="hero">
+            <img src="images/logo-8.png" alt="Sports Portal Logo" class="hero-logo">
+            <p class="hero-tagline">Your destination for unique fantasy games</p>
+        </div>
+
+        <section class="mt-5">
+            <p class="section-label hero-section-label">Let's get started!</p>
+            <div class="card-grid">
+                <div class="card text-sm text-secondary">
                     Choose your game and customize the settings. There are tons of unique options to choose from!
                 </div>
-                <div class="container-3">
+                <div class="card text-sm text-secondary">
                     Invite friends to join your league. They'll get an email with instructions to sign up and join
                 </div>
-                <div class="container-3">
-                    The Sports Portal collects an entry fee (if applicable) from the commissioner or each participant                
+                <div class="card text-sm text-secondary">
+                    The Sports Portal collects an entry fee (if applicable) from the commissioner or each participant
                 </div>
-                <!-- <div class="container-3">
-                    Optionally send The Sports Portal the prize pot to pay out at the end
-                </div> -->
-                <div class="container-3">
+                <div class="card text-sm text-secondary">
                     Draft your teams, set your lineups, and enjoy the game!
                 </div>
-                <div class="container-3">
+                <div class="card text-sm text-secondary">
                     The Sports Portal handles scoring, standings, and tiebreakers and payouts at the end of the pool
                 </div>
             </div>
-            
-            <p>Sports Categories</p>
-            <div class="container-2">
+        </section>
 
-                <a href="/nfl/" class="button">
-                    <div class="container-4">
-                        Pro Football
-                    </div>
-                </a>
-
-                <a href="/cbb/" class="button">
-                    <div class="container-4">
-                        College Basketball
-                    </div>
-                </a>
-
-                <a href="/golf/" class="button">
-                    <div class="container-4">
-                        Golf
-                    </div>
-                </a>
-
-                <a href="/cfb/" class="button">
-                    <div class="container-4">
-                        College Football
-                    </div>
-                </a>
-
-                <a href="/olympics/" class="button">
-                    <div class="container-4">
-                        Olympics
-                    </div>
-                </a>
-
-                <a href="/soccer/" class="button">
-                    <div class="container-4">
-                        Soccer
-                    </div>
-                </a>
-
-                <a href="/fringe/" class="button">
-                    <div class="container-4">
-                        The Fringe
-                    </div>
-                </a>
+        <section class="mt-5">
+            <p class="section-label hero-section-label">Sports Categories</p>
+            <div class="card-grid">
+                <a href="/nfl/" class="card sport-card">Pro Football</a>
+                <a href="/cbb/" class="card sport-card">College Basketball</a>
+                <a href="/golf/" class="card sport-card">Golf</a>
+                <a href="/cfb/" class="card sport-card">College Football</a>
+                <a href="/olympics/" class="card sport-card">Olympics</a>
+                <a href="/soccer/" class="card sport-card">Soccer</a>
+                <a href="/fringe/" class="card sport-card">The Fringe</a>
             </div>
-            
-    <p>What makes our site different?</p>
-            <div class="container-2">
-                <div class="container-3">
+        </section>
+
+        <section class="mt-5">
+            <p class="section-label hero-section-label">What makes our site different?</p>
+            <div class="card-grid">
+                <div class="card text-sm text-secondary">
                     Unique fantasy game formats you won't find anywhere else
                 </div>
-                <div class="container-3">
+                <div class="card text-sm text-secondary">
                     Customizable settings to make your league your own
                 </div>
-                <div class="container-3">
-                    User-friendly interface for easy league management                
+                <div class="card text-sm text-secondary">
+                    User-friendly interface for easy league management
                 </div>
-                <div class="container-3">
+                <div class="card text-sm text-secondary">
                     Secure payment processing for entry fees and payouts
                 </div>
-                <div class="container-3">
+                <div class="card text-sm text-secondary">
                     Dedicated customer support to assist you whenever needed
                 </div>
             </div>
-    
-    <p>Contest Formats</p>
-    <div class="container-6">
-        <section>
-            <!-- Radio buttons -->
-            
-            <input type="radio" id="tab1" name="tabs" checked>
-            <label for="tab1">Pro Football</label>
+        </section>
 
-            <input type="radio" id="tab2" name="tabs">
-            <label for="tab2">College Basketball</label>
-
-            <input type="radio" id="tab3" name="tabs">
-            <label for="tab3">Golf</label>
-
-            <input type="radio" id="tab4" name="tabs">
-            <label for="tab4">College Football</label>
-
-            <input type="radio" id="tab5" name="tabs">
-            <label for="tab5">Olympics</label>
-
-            <input type="radio" id="tab6" name="tabs">
-            <label for="tab6">Soccer</label>
-
-            <input type="radio" id="tab7" name="tabs">
-            <label for="tab7">The Fringe</label>
-
-            <!-- Content -->
-            <div class="tab-content" id="content1"><!-- Pro Football -->
-                <div class="container-7">
-                    <h2>NFL fantasy leagues have never been more fun!</h2>
-                    <div class="container-8">
-                        <p>Choose from a variety of unique formats to keep your league exciting all season long.</p>
-                        <p>Regular Season and Playoff formats available.</p>
-                        <p>Customizable settings to fit your league's style.</p>
-                    </div>
-                    <ul>
-                        <div class="container-9"><li><a href="#">Teams Playoff Draft</a></li></div>
-                        <div class="container-9"><li><a href="#">Playoffs DFS</a></li></div>
-                        <div class="container-9"><li><a href="#">Playoff Bracket</a></li></div>
-                        <div class="container-9"><li><a href="#">Season Pick 'em</a></li></div>
-                        <div class="container-9"><li><a href="#">Set it Forget it</a></li></div>
-                        <div class="container-9"><li><a href="#">Leg League</a></li></div>
-                    </ul>
-                </div>
-            </div>
-            <div class="tab-content" id="content2"> <!-- College Basketball -->
-                <div class="container-7">
-                    <h2>College Basketball ramps up in February!</h2>
-                    <div class="container-8">
-                        <p>Men's and Women's Bracket challenges available.</p>
-                        <p>Conference Tournament Bracket challenges available to wet your whistle before March Madness.</p>
-                        <p>Tailor settings to match your league's unique preferences.</p>
-                    </div>
-                    <ul>
-                        <div class="container-9"><li><a href="#">Conference Tournament Brackets</a></li></div>
-                        <div class="container-9"><li><a href="#">March Madness Bracket</a></li></div>
-                        <div class="container-9"><li><a href="#">March Madness Team Draft</a></li></div>
-                        <div class="container-9"><li><a href="#">NIT Tournament Bracket</a></li></div>
-                        <div class="container-9"><li><a href="#">March Madness Survivor</a></li></div>
-                    </ul>
-                </div>
-            </div>
-            <div class="tab-content" id="content3"> <!-- Golf -->
-                <div class="container-7">
-                    <h2>Fantasy Golf was never supposed to be this good!</h2>
-                    <div class="container-8">
-                        <p>Men's and Women's Pro Golf Available.</p>
-                        <p>Flexible configurations designed for your league's style.</p>
-                        <p>In season bracket tournament available.</p> 
-                    </div>
-                    <ul>
-                        <div class="container-9"><li><a href="#">Majors Season</a></li></div>
-                        <div class="container-9"><li><a href="#">Full Season</a></li></div>
-                        <div class="container-9"><li><a href="#">Weekly Pick 'em</a></li></div>
-                        <div class="container-9"><li><a href="#">In Season Tournament Bracket</a></li></div>
-                    </ul>
-                </div>
+        <section class="mt-5">
+            <p class="section-label hero-section-label">Contest Formats</p>
+            <div class="tabs" id="format-tabs">
+                <span class="tab active" data-target="content1">Pro Football</span>
+                <span class="tab" data-target="content2">College Basketball</span>
+                <span class="tab" data-target="content3">Golf</span>
+                <span class="tab" data-target="content4">College Football</span>
+                <span class="tab" data-target="content5">Olympics</span>
+                <span class="tab" data-target="content6">Soccer</span>
+                <span class="tab" data-target="content7">The Fringe</span>
             </div>
 
-            <div class="tab-content" id="content4"> <!-- College Football -->
-                <div class="container-7">
-                    <h2>College Football makes fall feel like fall!</h2>
-                    <div class="container-8">
-                        <p>Keep the fun going from opening weekend through the CFP Championship.</p>
-                        <p>Spread, Moneyline, and Confidence Pick 'em's available</p>
-                        <p>Adaptable settings to align with your league`s vision.</p>
-                    </div>
-                    <ul>
-                        <div class="container-9"><li><a href="#">Weekly Pick 'em</a></li></div>
-                        <div class="container-9"><li><a href="#">Bowl Season Pick 'em Challenge</a></li></div>
+            <div class="card tab-panel">
+                <div class="tab-content active" id="content1">
+                    <h2 class="page-title">NFL fantasy leagues have never been more fun!</h2>
+                    <p class="text-sm text-secondary mb-2">Choose from a variety of unique formats to keep your league exciting all season long.</p>
+                    <p class="text-sm text-secondary mb-2">Regular Season and Playoff formats available.</p>
+                    <p class="text-sm text-secondary mb-3">Customizable settings to fit your league's style.</p>
+                    <ul class="format-list">
+                        <li><a href="#">Teams Playoff Draft</a></li>
+                        <li><a href="#">Playoffs DFS</a></li>
+                        <li><a href="#">Playoff Bracket</a></li>
+                        <li><a href="#">Season Pick 'em</a></li>
+                        <li><a href="#">Set it Forget it</a></li>
+                        <li><a href="#">Leg League</a></li>
                     </ul>
                 </div>
-            </div>
 
-            <div class="tab-content" id="content5"> <!-- Olympics -->
-                <div class="container-7">
-                    <h2>Every two years the world comes together!</h2>
-                    <div class="container-8">
-                        <p>Country vs Country for the gold, silver, and bronze!</p>
-                        <p>Salary challenge and draft challenge!</p>
-                        <p>Make adjustments to fit your league`s specific requirements.</p>
-                    </div>
-                    <ul>
-                        <div class="container-9"><li><a href="#">Country Draft</a></li></div>
-                        <div class="container-9"><li><a href="#">Country Salary </a></li></div>
+                <div class="tab-content" id="content2">
+                    <h2 class="page-title">College Basketball ramps up in February!</h2>
+                    <p class="text-sm text-secondary mb-2">Men's and Women's Bracket challenges available.</p>
+                    <p class="text-sm text-secondary mb-2">Conference Tournament Bracket challenges available to wet your whistle before March Madness.</p>
+                    <p class="text-sm text-secondary mb-3">Tailor settings to match your league's unique preferences.</p>
+                    <ul class="format-list">
+                        <li><a href="#">Conference Tournament Brackets</a></li>
+                        <li><a href="#">March Madness Bracket</a></li>
+                        <li><a href="#">March Madness Team Draft</a></li>
+                        <li><a href="#">NIT Tournament Bracket</a></li>
+                        <li><a href="#">March Madness Survivor</a></li>
                     </ul>
                 </div>
-            </div>
 
-            <div class="tab-content" id="content6"> <!-- Soccer -->
-                <div class="container-7">
-                    <h2>Add tension to any soccer match!</h2>
-                    <div class="container-8">
-                        <p>World Cup, MLS, and EuroLeague available!</p>
-                        <p>Country Draft and Salary challenges available.</p>
-                        <p>Settings you can customize for your league`s perfect fit.</p>
-                    </div>
-                    <ul>
-                        <div class="container-9"><li><a href="/soccer/world-cup-draft/worldcup-draft.html">World Cup Country Draft</a></li></div>
-                        <div class="container-9"><li><a href="#">World Cup Salary Pick 'em</a></li></div>
-                        <div class="container-9"><li><a href="#">MLS Tournament Bracket</a></li></div>
-                        <div class="container-9"><li><a href="#">EuroLeague Tournament Brackets</a></li></div>
+                <div class="tab-content" id="content3">
+                    <h2 class="page-title">Fantasy Golf was never supposed to be this good!</h2>
+                    <p class="text-sm text-secondary mb-2">Men's and Women's Pro Golf Available.</p>
+                    <p class="text-sm text-secondary mb-2">Flexible configurations designed for your league's style.</p>
+                    <p class="text-sm text-secondary mb-3">In season bracket tournament available.</p>
+                    <ul class="format-list">
+                        <li><a href="#">Majors Season</a></li>
+                        <li><a href="#">Full Season</a></li>
+                        <li><a href="#">Weekly Pick 'em</a></li>
+                        <li><a href="#">In Season Tournament Bracket</a></li>
                     </ul>
                 </div>
-            </div>
 
-            <div class="tab-content" id="content7"> <!-- The Fringe -->
-                <div class="container-7">
-                    <h2>Try new challenges with us!</h2>
-                    <div class="container-8">
-                        <p>Men`s, Women`s, and Coed Sports available.</p>
-                        <p>New league formats coming year round for as many sports as we can handle.</p>
-                        <p>Help us create new games!</p>
-                    </div>
-                    <ul>
-                        <div class="container-9"><li><a href="#">Kentucky Derby Salary</a></li></div>
-                        <div class="container-9"><li><a href="#">Big 3 Horse Race Season</a></li></div>
-                        <div class="container-9"><li><a href="#">Homerun Derby</a></li></div>
-                        <div class="container-9"><li><a href="#">College Baseball Tournament Bracket</a></li></div>
-                        <div class="container-9"><li><a href="#">College Softball Tournament Bracket</a></li></div>
-                        <div class="container-9"><li><a href="#">Submit new ideas!</a></li></div>
+                <div class="tab-content" id="content4">
+                    <h2 class="page-title">College Football makes fall feel like fall!</h2>
+                    <p class="text-sm text-secondary mb-2">Keep the fun going from opening weekend through the CFP Championship.</p>
+                    <p class="text-sm text-secondary mb-2">Spread, Moneyline, and Confidence Pick 'em's available</p>
+                    <p class="text-sm text-secondary mb-3">Adaptable settings to align with your league's vision.</p>
+                    <ul class="format-list">
+                        <li><a href="#">Weekly Pick 'em</a></li>
+                        <li><a href="#">Bowl Season Pick 'em Challenge</a></li>
+                    </ul>
+                </div>
+
+                <div class="tab-content" id="content5">
+                    <h2 class="page-title">Every two years the world comes together!</h2>
+                    <p class="text-sm text-secondary mb-2">Country vs Country for the gold, silver, and bronze!</p>
+                    <p class="text-sm text-secondary mb-3">Salary challenge and draft challenge!</p>
+                    <p class="text-sm text-secondary mb-3">Make adjustments to fit your league's specific requirements.</p>
+                    <ul class="format-list">
+                        <li><a href="#">Country Draft</a></li>
+                        <li><a href="#">Country Salary</a></li>
+                    </ul>
+                </div>
+
+                <div class="tab-content" id="content6">
+                    <h2 class="page-title">Add tension to any soccer match!</h2>
+                    <p class="text-sm text-secondary mb-2">World Cup, MLS, and EuroLeague available!</p>
+                    <p class="text-sm text-secondary mb-2">Country Draft and Salary challenges available.</p>
+                    <p class="text-sm text-secondary mb-3">Settings you can customize for your league's perfect fit.</p>
+                    <ul class="format-list">
+                        <li><a href="/soccer/world-cup-draft/worldcup-draft.html">World Cup Country Draft</a></li>
+                        <li><a href="#">World Cup Salary Pick 'em</a></li>
+                        <li><a href="#">MLS Tournament Bracket</a></li>
+                        <li><a href="#">EuroLeague Tournament Brackets</a></li>
+                    </ul>
+                </div>
+
+                <div class="tab-content" id="content7">
+                    <h2 class="page-title">Try new challenges with us!</h2>
+                    <p class="text-sm text-secondary mb-2">Men's, Women's, and Coed Sports available.</p>
+                    <p class="text-sm text-secondary mb-2">New league formats coming year round for as many sports as we can handle.</p>
+                    <p class="text-sm text-secondary mb-3">Help us create new games!</p>
+                    <ul class="format-list">
+                        <li><a href="#">Kentucky Derby Salary</a></li>
+                        <li><a href="#">Big 3 Horse Race Season</a></li>
+                        <li><a href="#">Homerun Derby</a></li>
+                        <li><a href="#">College Baseball Tournament Bracket</a></li>
+                        <li><a href="#">College Softball Tournament Bracket</a></li>
+                        <li><a href="#">Submit new ideas!</a></li>
                     </ul>
                 </div>
             </div>
         </section>
-    </div>
-
-    <footer class="footer">
-        2026 The Sports Portal. All rights reserved.
-    </footer>
 
     </main>
 
-    <script>renderDashboardLink();</script>
+    <footer class="site-footer">
+        2026 The Sports Portal. All rights reserved.
+    </footer>
+
+    <script>
+        document.querySelectorAll('#format-tabs .tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('#format-tabs .tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.getElementById(tab.dataset.target).classList.add('active');
+            });
+        });
+
+        renderDashboardLink();
+    </script>
 </body>
 </html>

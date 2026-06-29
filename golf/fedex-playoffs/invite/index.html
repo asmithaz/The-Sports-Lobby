@@ -5,34 +5,36 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>FedEx Cup Playoffs — Draft Time &amp; Invites</title>
     <link rel="icon" href="/favicon.ico" />
-    <link rel="stylesheet" href="styles.css" />
+
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
 
-    <nav class="navbar">
-        <div class="navbar-links">
-            <ul>
-                <li><a href="/index.html">Home</a></li>
-                <li><a href="/golf/index.html">Golf</a></li>
-                <li><a href="/login/index.html">Login</a></li>
-                <li><a href="/login/index.html">Signup</a></li>
-            </ul>
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">Sports Portal</a>
+        <div class="nav-links">
+            <a href="/index.html" class="nav-link">Home</a>
+            <a href="/golf/index.html" class="nav-link">Golf</a>
+            <a href="/login/index.html" class="nav-link">Login</a>
+            <a href="/login/index.html" class="nav-link">Signup</a>
         </div>
     </nav>
 
-    <main>
-        <h1>FedEx Cup Playoffs Fantasy Golf</h1>
-        <p class="subtitle">Step 2 of 2 — Draft Time &amp; Invites</p>
+    <main class="page-wrapper page-wrapper--center">
+        <h1 class="page-heading">FedEx Cup Playoffs Fantasy Golf</h1>
+        <p class="page-subhead">Step 2 of 2 — Draft Time &amp; Invites</p>
 
-        <form id="invite-form">
+        <form id="invite-form" class="stack-form">
 
             <!-- Draft Format -->
             <div class="form-card">
-                <div class="form-group">
-                    <label>Draft Format</label>
+                <div class="field">
+                    <label class="label">Draft Format</label>
                     <div class="radio-group">
                         <label class="radio-option">
                             <input type="radio" name="draft-format" value="snake" checked />
@@ -54,11 +56,11 @@
 
             <!-- Draft Date & Time -->
             <div class="form-card">
-                <div class="form-group">
-                    <label for="draft-date">Draft Date &amp; Time</label>
+                <div class="field">
+                    <label class="label" for="draft-date">Draft Date &amp; Time</label>
                     <div class="datetime-row">
-                        <input type="date" id="draft-date" name="draft-date" required />
-                        <select id="draft-time" name="draft-time" required></select>
+                        <input type="date" id="draft-date" name="draft-date" class="input" required />
+                        <select id="draft-time" name="draft-time" class="input" required></select>
                     </div>
                     <span class="hint">Drafts must be scheduled before the FedEx St. Jude Championship begins on August 8, 2026.</span>
                 </div>
@@ -66,8 +68,8 @@
 
             <!-- Invite Method -->
             <div class="form-card">
-                <div class="form-group">
-                    <label>Invite Friends</label>
+                <div class="field">
+                    <label class="label">Invite Friends</label>
                     <div class="radio-group">
                         <label class="radio-option">
                             <input type="radio" name="invite-method" value="email" checked onchange="showInviteMethod('email')" />
@@ -87,8 +89,8 @@
                 </div>
 
                 <!-- Email input -->
-                <div class="invite-section" id="email-section">
-                    <label class="section-label">Email Addresses</label>
+                <div class="tier-section" id="email-section">
+                    <label class="subsection-label">Email Addresses</label>
                     <div class="email-tag-container" id="email-tag-container" onclick="document.getElementById('email-input').focus()">
                         <input type="text" id="email-input" placeholder="Enter email and press Enter or comma" />
                     </div>
@@ -96,23 +98,23 @@
                 </div>
 
                 <!-- Link -->
-                <div class="invite-section hidden" id="link-section">
-                    <label class="section-label">Invite Link</label>
+                <div class="tier-section hidden" id="link-section">
+                    <label class="subsection-label">Invite Link</label>
                     <div class="link-row">
-                        <input type="text" id="invite-link" readonly />
-                        <button type="button" class="copy-btn" onclick="copyLink()">Copy</button>
+                        <input type="text" id="invite-link" class="input" readonly />
+                        <button type="button" class="btn btn--ghost" onclick="copyLink()">Copy</button>
                     </div>
                 </div>
             </div>
 
             <div class="form-actions">
-                <button type="submit">Launch League</button>
+                <button type="submit" class="btn btn--primary">Launch League</button>
             </div>
 
         </form>
     </main>
 
-    <footer class="footer">
+    <footer class="site-footer">
         2026 The Sports Portal. All rights reserved.
     </footer>
 
@@ -200,7 +202,7 @@
         function copyLink() {
             const link = document.getElementById('invite-link');
             navigator.clipboard.writeText(link.value).then(() => {
-                const btn = document.querySelector('.copy-btn');
+                const btn = document.querySelector('.copy-btn, [onclick="copyLink()"]');
                 btn.textContent = 'Copied!';
                 setTimeout(() => btn.textContent = 'Copy', 2000);
             });

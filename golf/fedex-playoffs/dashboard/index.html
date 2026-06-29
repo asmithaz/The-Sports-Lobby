@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>FedEx Cup Playoffs — Dashboard</title>
     <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
     <link rel="stylesheet" href="styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
@@ -12,53 +14,58 @@
 </head>
 <body>
 
-    <nav class="navbar">
-        <div class="navbar-links">
-            <ul>
-                <li><a href="/index.html">Home</a></li>
-                <li><a href="/golf/index.html">Golf</a></li>
-                <li><a href="/login/index.html">Login</a></li>
-            </ul>
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">Sports Portal</a>
+        <div class="nav-links">
+            <a href="/index.html" class="nav-link">Home</a>
+            <a href="/golf/index.html" class="nav-link">Golf</a>
+            <a href="/login/index.html" class="nav-link">Login</a>
         </div>
     </nav>
 
     <main>
         <h1>FedEx Cup Playoffs Fantasy Golf</h1>
         <p class="league-name" id="league-name">Loading…</p>
-        <div id="status-badge" class="status-badge"></div>
 
         <div class="info-strip" id="info-strip"></div>
 
         <div class="content-stack">
-            <div id="main-content"><p class="loading">Loading…</p></div>
+            <div class="top-row">
+                <div id="main-content" class="top-row-main"><p class="loading">Loading…</p></div>
 
-            <div id="breakdown-section"></div>
-
-            <div class="commissioner-panel scoring-card">
-                <h3>Scoring Rules</h3>
-                <div class="scoring-cols">
-                    <div>
-                        <h4>Per Event (best result)</h4>
-                        <table>
-                            <tr><td>Tournament Win</td><td>10 pts</td></tr>
-                            <tr><td>Top 3 Finish</td><td>5 pts</td></tr>
-                            <tr><td>Top 10 Finish</td><td>3 pts</td></tr>
-                            <tr><td>Top 30 Finish</td><td>1 pts</td></tr>
-                            <tr><td>Missed Cut / Outside Top 30</td><td>0 pts</td></tr>
-                        </table>
-                    </div>
-                    <div>
-                        <h4>Fedex Tournament Bonus</h4>
-                        <table>
-                            <tr><td>FedEx Cup Champion</td><td>10 pts</td></tr>
-                        </table>
+                <div class="scoring-panel">
+                    <h2>Scoring Rules</h2>
+                    <div class="commissioner-panel scoring-card">
+                        <div class="scoring-cols">
+                            <div>
+                                <h4>Per Event (best result)</h4>
+                                <table>
+                                    <tr><td>Tournament Win</td><td>10 pts</td></tr>
+                                    <tr><td>Top 3 Finish</td><td>5 pts</td></tr>
+                                    <tr><td>Top 10 Finish</td><td>3 pts</td></tr>
+                                    <tr><td>Top 30 Finish</td><td>1 pts</td></tr>
+                                    <tr><td>Missed Cut / Outside Top 30</td><td>0 pts</td></tr>
+                                </table>
+                            </div>
+                            <div class="scoring-col-secondary">
+                                <div>
+                                    <h4>Fedex Tournament Bonus</h4>
+                                    <table>
+                                        <tr><td>FedEx Cup Champion</td><td>10 pts</td></tr>
+                                    </table>
+                                </div>
+                                <div id="live-scoring-inline" class="live-scoring-block"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            <div id="breakdown-section"></div>
         </div>
     </main>
 
-    <footer class="footer">
+    <footer class="site-footer">
         2026 The Sports Portal. All rights reserved.
     </footer>
 
@@ -212,7 +219,7 @@
             const draftTimeCard = `
                 <div class="info-card">
                     <span class="info-label">Draft Time</span>
-                    <span class="info-value">${escapeHtml(formatDraftTime(draftTime))}</span>
+                    <span class="info-value">${status === 'completed' ? 'Draft Complete' : escapeHtml(formatDraftTime(draftTime))}</span>
                 </div>`;
 
             return `
@@ -402,30 +409,32 @@
                     </tr>`;
             }).join('');
 
-            const refreshBlock = isCommissioner ? `
-                <div class="commissioner-panel">
-                    <h3>Live Scoring</h3>
-                    <p class="comm-note">Results sync automatically from ESPN every 10 minutes during playoff events. Use this to pull the latest results on demand.</p>
-                    <button id="refresh-scores-btn" class="btn-primary" onclick="refreshScores('${escapeHtml(league.id)}')">Refresh Scores</button>
-                </div>` : '';
-
             return `
                 <div class="section">
                     <h2>Standings</h2>
-                    <p class="comm-note">Click a player to view their roster and per-event scoring.</p>
                     <table class="data-table standings-table">
                         <thead>
                             <tr>
                                 <th class="th-rank">#</th>
-                                <th>Name</th>
-                                <th class="th-right">Points</th>
+                                <th class="th-center">Name</th>
+                                <th class="th-center">Points</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
                     </table>
+                    <p class="comm-note standings-note">Click a player to view their roster and per-event scoring.</p>
                 </div>
-                ${refreshBlock}
             `;
+        }
+
+        // ── Render: live scoring block (commissioner-only refresh control) ─────
+        // Rendered inline inside the Scoring Rules card to use its spare width.
+        function renderLiveScoringPanel(isCommissioner, league) {
+            if (!isCommissioner) return '';
+            return `
+                <h4>Live Scoring</h4>
+                <p class="live-scoring-note">Results sync automatically from ESPN every 10 minutes during playoff events.</p>
+                <button id="refresh-scores-btn" class="btn-primary" onclick="refreshScores('${escapeHtml(league.id)}')">Refresh Scores</button>`;
         }
 
         // ── Render: roster breakdown table for a single member ────────────────
@@ -460,9 +469,9 @@
             const eventRows = EVENTS.map(ev => {
                 const cells = sortedPicks.map(p => {
                     const r = resultMap[p.golfers?.id]?.[ev.key];
-                    if (!r) return '<td>—</td>';
-                    if (r.status === 'cut' || r.status === 'withdrawn') return '<td class="cell-cut">CUT</td>';
-                    return `<td>${r.points ?? 0}</td>`;
+                    if (!r) return '<td class="pick-col">—</td>';
+                    if (r.status === 'cut' || r.status === 'withdrawn') return '<td class="pick-col cell-cut">CUT</td>';
+                    return `<td class="pick-col">${r.points ?? 0}</td>`;
                 }).join('');
                 return `<tr><th class="col-event">${escapeHtml(ev.label)} - ${ev.date}</th>${cells}</tr>`;
             }).join('');
@@ -473,9 +482,9 @@
             });
             const teamTotal = totals.reduce((sum, t) => sum + t, 0);
 
-            const headerLabels = labels.map(l => `<th>${escapeHtml(l)}</th>`).join('');
-            const pickNames = sortedPicks.map(p => `<td>${escapeHtml(p.golfers?.name ?? '—')}</td>`).join('');
-            const totalCells = totals.map(t => `<td>${t}</td>`).join('');
+            const headerLabels = labels.map(l => `<th class="pick-col">${escapeHtml(l)}</th>`).join('');
+            const pickNames = sortedPicks.map(p => `<td class="pick-col">${escapeHtml(p.golfers?.name ?? '—')}</td>`).join('');
+            const totalCells = totals.map(t => `<td class="pick-col">${t}</td>`).join('');
 
             return `
                 <div class="section">
@@ -541,6 +550,9 @@
             document.getElementById('main-content').innerHTML =
                 renderStandings(members, scoresRes.data, isCommissioner, leagueRes.data);
 
+            document.getElementById('live-scoring-inline').innerHTML =
+                renderLiveScoringPanel(isCommissioner, leagueRes.data);
+
             attachStandingsClickHandlers(leagueId);
 
             // Default the breakdown to the current user's roster.
@@ -589,15 +601,6 @@
             document.title = league.name + ' — FedEx Cup Playoffs';
 
             const status = fcpLeague?.draft_status ?? 'pending';
-            const statusMap = {
-                pending:   { label: 'Waiting for Players', cls: 'badge-waiting'  },
-                active:    { label: 'Draft In Progress',   cls: 'badge-active'   },
-                completed: { label: 'Draft Complete',      cls: 'badge-complete' }
-            };
-            const { label, cls } = statusMap[status] ?? statusMap.pending;
-            const badge = document.getElementById('status-badge');
-            badge.textContent = label;
-            badge.className = 'status-badge ' + cls;
 
             document.getElementById('info-strip').innerHTML =
                 renderInfoStrip(league, fcpLeague, members.length);

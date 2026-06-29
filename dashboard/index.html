@@ -5,65 +5,69 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Dashboard — Sports Portal</title>
     <link rel="icon" href="/favicon.ico" />
+
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
     <link rel="stylesheet" href="styles.css" />
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
 
-    <div class="layout">
+    <div class="dash-layout">
 
         <!-- ── Sidebar ── -->
-        <aside class="sidebar">
-            <a href="/index.html" class="sidebar-logo">Sports Portal</a>
+        <aside class="dash-sidebar">
+            <a href="/index.html" class="dash-logo">Sports Portal</a>
 
-            <div class="user-block">
-                <div class="user-avatar" id="user-avatar">?</div>
-                <div class="user-email" id="user-email">Loading...</div>
+            <div class="dash-user">
+                <div class="dash-user-avatar" id="user-avatar">?</div>
+                <div class="dash-user-email" id="user-email">Loading...</div>
             </div>
 
-            <div class="sidebar-section">
-                <p class="sidebar-label">Your Stats</p>
-                <div class="stat-row">
-                    <span class="stat-name">Leagues Entered</span>
-                    <span class="stat-value" id="stat-leagues">—</span>
+            <div class="dash-section">
+                <p class="dash-section-label">Your Stats</p>
+                <div class="dash-stat-row">
+                    <span class="dash-stat-name">Leagues Entered</span>
+                    <span class="dash-stat-value" id="stat-leagues">—</span>
                 </div>
-                <div class="stat-row">
-                    <span class="stat-name">🥇 1st Place</span>
-                    <span class="stat-value" id="stat-gold">—</span>
+                <div class="dash-stat-row">
+                    <span class="dash-stat-name">🥇 1st Place</span>
+                    <span class="dash-stat-value" id="stat-gold">—</span>
                 </div>
-                <div class="stat-row">
-                    <span class="stat-name">🥈 2nd Place</span>
-                    <span class="stat-value" id="stat-silver">—</span>
+                <div class="dash-stat-row">
+                    <span class="dash-stat-name">🥈 2nd Place</span>
+                    <span class="dash-stat-value" id="stat-silver">—</span>
                 </div>
-                <div class="stat-row">
-                    <span class="stat-name">🥉 3rd Place</span>
-                    <span class="stat-value" id="stat-bronze">—</span>
+                <div class="dash-stat-row">
+                    <span class="dash-stat-name">🥉 3rd Place</span>
+                    <span class="dash-stat-value" id="stat-bronze">—</span>
                 </div>
             </div>
 
-            <div class="sidebar-section">
-                <p class="sidebar-label">Browse Games</p>
-                <a href="/soccer/" class="sidebar-link">⚽ Soccer</a>
-                <a href="/nfl/" class="sidebar-link">🏈 Pro Football</a>
-                <a href="/cbb/" class="sidebar-link">🏀 College Basketball</a>
-                <a href="/cfb/" class="sidebar-link">🏟️ College Football</a>
-                <a href="/golf/" class="sidebar-link">⛳ Golf</a>
-                <a href="/olympics/" class="sidebar-link">🏅 Olympics</a>
+            <div class="dash-section">
+                <p class="dash-section-label">Browse Games</p>
+                <a href="/soccer/" class="dash-link">⚽ Soccer</a>
+                <a href="/nfl/" class="dash-link">🏈 Pro Football</a>
+                <a href="/cbb/" class="dash-link">🏀 College Basketball</a>
+                <a href="/cfb/" class="dash-link">🏟️ College Football</a>
+                <a href="/golf/" class="dash-link">⛳ Golf</a>
+                <a href="/olympics/" class="dash-link">🏅 Olympics</a>
             </div>
 
-            <button class="logout-btn" onclick="logout()">Log Out</button>
+            <button class="dash-logout" onclick="logout()">Log Out</button>
         </aside>
 
         <!-- ── Main ── -->
-        <main class="main">
-            <div class="main-header">
+        <main class="dash-main">
+            <div class="dash-header">
                 <h1>Your Leagues</h1>
-                <a href="/soccer/world-cup-bracket-challenge/" class="btn-new">+ New League</a>
+                <a href="/soccer/world-cup-bracket-challenge/" class="btn btn--primary">+ New League</a>
             </div>
 
-            <div class="leagues-grid" id="leagues-grid">
+            <div class="entity-grid" id="leagues-grid">
                 <p class="loading">Loading your leagues...</p>
             </div>
         </main>
@@ -161,21 +165,21 @@
             const type  = TYPE_LABELS[league.league_type] || league.league_type;
             const vis   = league.visibility === 'private' ? '🔒 Private' : '🌐 Public';
 
-            return `<div class="league-card">
-                <div class="league-card-top">
-                    <span class="game-icon">${icon}</span>
-                    ${isCommissioner ? '<span class="badge-commissioner">Commissioner</span>' : ''}
+            return `<div class="entity-card">
+                <div class="entity-card-top">
+                    <span class="entity-icon">${icon}</span>
+                    ${isCommissioner ? '<span class="entity-badge">Commissioner</span>' : ''}
                 </div>
-                <div class="league-card-body">
-                    <h2 class="league-name">${league.name}</h2>
-                    <p class="game-name">${game}</p>
-                    <div class="tag-row">
-                        ${type ? `<span class="tag">${type}</span>` : ''}
-                        <span class="tag tag-vis">${vis}</span>
+                <div class="entity-card-body">
+                    <h2 class="entity-title">${league.name}</h2>
+                    <p class="entity-subtitle">${game}</p>
+                    <div class="entity-tags">
+                        ${type ? `<span class="entity-tag">${type}</span>` : ''}
+                        <span class="entity-tag entity-tag--muted">${vis}</span>
                     </div>
                 </div>
-                <div class="league-card-footer">
-                    <button class="btn-enter" onclick="enterLeague('${league.id}','${league.game_type}','${league.league_type}','${encodeURIComponent(league.name)}','${league.invite_code}','${league.visibility}')">
+                <div class="entity-card-footer">
+                    <button class="btn btn--primary btn--block" onclick="enterLeague('${league.id}','${league.game_type}','${league.league_type}','${encodeURIComponent(league.name)}','${league.invite_code}','${league.visibility}')">
                         Enter League →
                     </button>
                 </div>
@@ -202,9 +206,9 @@
 
         function showEmptyState() {
             document.getElementById('leagues-grid').innerHTML = `
-                <div class="empty-state">
-                    <p class="empty-text">You haven't joined any leagues yet.</p>
-                    <a href="/soccer/world-cup-bracket-challenge/" class="btn-new">Create Your First League</a>
+                <div class="entity-empty">
+                    <p class="entity-empty-text">You haven't joined any leagues yet.</p>
+                    <a href="/soccer/world-cup-bracket-challenge/" class="btn btn--primary">Create Your First League</a>
                 </div>`;
         }
 

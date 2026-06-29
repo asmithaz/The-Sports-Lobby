@@ -5,43 +5,45 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>FedEx Cup Playoffs Fantasy Golf</title>
     <link rel="icon" href="/favicon.ico" />
-    <link rel="stylesheet" href="styles.css" />
+
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
 
-    <nav class="navbar">
-        <div class="navbar-links">
-            <ul>
-                <li><a href="/index.html">Home</a></li>
-                <li><a href="/golf/index.html">Golf</a></li>
-                <li><a href="/login/index.html">Login</a></li>
-                <li><a href="/login/index.html">Signup</a></li>
-            </ul>
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">Sports Portal</a>
+        <div class="nav-links">
+            <a href="/index.html" class="nav-link">Home</a>
+            <a href="/golf/index.html" class="nav-link">Golf</a>
+            <a href="/login/index.html" class="nav-link">Login</a>
+            <a href="/login/index.html" class="nav-link">Signup</a>
         </div>
     </nav>
 
-    <main>
-        <h1>FedEx Cup Playoffs Fantasy Golf</h1>
-        <p class="subtitle">Draft your golfers, score across all three playoff events</p>
+    <main class="page-wrapper page-wrapper--center">
+        <h1 class="page-heading">FedEx Cup Playoffs Fantasy Golf</h1>
+        <p class="page-subhead">Draft your golfers, score across all three playoff events</p>
 
-        <div class="cta-group">
-            <a href="/golf/fedex-playoffs/setup/" class="btn-primary">Create League</a>
+        <div class="mb-5">
+            <a href="/golf/fedex-playoffs/setup/" class="btn btn--primary">Create League</a>
         </div>
 
-        <div class="join-card">
-            <p class="join-label">Have an invite link or code?</p>
-            <div class="join-row">
-                <input type="text" id="invite-input" placeholder="Paste invite link or enter code" />
-                <button class="btn-secondary" onclick="joinLeague()">Join</button>
+        <div class="card form-card">
+            <p class="subsection-label">Have an invite link or code?</p>
+            <div class="flex gap-2">
+                <input type="text" id="invite-input" class="input" placeholder="Paste invite link or enter code" />
+                <button class="btn btn--primary" onclick="joinLeague()">Join</button>
             </div>
-            <p id="join-error" class="join-error hidden">Enter a valid invite link or code.</p>
+            <p id="join-error" class="hint error hidden">Enter a valid invite link or code.</p>
         </div>
     </main>
 
-    <footer class="footer">
+    <footer class="site-footer">
         2026 The Sports Portal. All rights reserved.
     </footer>
 

@@ -1,140 +1,124 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="description" content="Generic starter index.html for a web project" />
+    <meta name="description" content="Golf fantasy challenges" />
     <title>Sports Portal Golf</title>
 
-    <!-- Favicon -->
     <link rel="icon" href="favicon.ico" />
 
-    <!-- Stylesheet (create styles.css in same folder) -->
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
 
-    <nav class="navbar">     
-        <div class="navbar-links">
-            <ul>
-                <li><a href="/index.html">Home</a></li>
-                <li><a href="Login.html">Login</a></li>
-                <li><a href="/login/index.html">Signup</a></li>
-                <li><a href="about.html">About</a></li>
-            </ul>
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">Sports Portal</a>
+        <div class="nav-links">
+            <a href="/index.html" class="nav-link">Home</a>
+            <a href="Login.html" class="nav-link">Login</a>
+            <a href="/login/index.html" class="nav-link">Signup</a>
+            <a href="about.html" class="nav-link">About</a>
         </div>
     </nav>
-    <main>  
 
-            <p>Golf Challenges</p>
-            <div class="container-2">
-                <div class="container-4">
-                    <div class="container-8">
-                        FedEx Cup Playoffs
-                        <button onclick="startLeague('/golf/fedex-playoffs/')">Start your League!</button>
-                    </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Draft a roster of golfers from the FedEx Cup Playoffs field of 70 before the FedEx St. Jude Championship begins.</li>
-                            <li>Tiered draft option requires picks from set FedEx Cup ranking tiers (1-30, 31-50, 51-70), or choose Open Draft for no restrictions.</li>
-                            <li>Score points based on each golfer's best finish across the St. Jude Championship, BMW Championship, and TOUR Championship.</li>
-                            <li>Bonus points awarded if your roster includes the FedEx Cup Champion.</li>
-                            <li>Live scoring updates throughout each tournament.</li>
-                        </ul>
-                    </div>
+    <main class="page-wrapper">
+        <p class="hub-title">Golf Challenges</p>
+        <div class="hub-list">
+
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">FedEx Cup Playoffs</span>
+                    <button class="btn btn--primary" onclick="startLeague('/golf/fedex-playoffs/')">Start your League!</button>
                 </div>
-
-                <div class="container-4">
-                    <div class="container-8">
-                        Majors Season
-                        <button onclick="startLeague('/golf/majors/')">Start your League!</button>
-                    </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Men and Women's Major tournaments available.</li>
-                            <li>Select a team of golfers for each Major Tournament including the Masters, U.S. Open, PGA Championship, and The Open.</li>
-                            <li>Score Points based on golfer`s daily scores.</li>
-                            <li>The Player`s Championship can be optionally added.</li>
-                            <li>Customizable scoring options including bonus points, member groups, multiple entries, and more.</li>
-
-                        </ul>
-                    </div>
-                </div>
-
-                <div class="container-4">
-                    <div class="container-8">
-                        Full Season League
-                        <button onclick="startLeague('/golf/full-season/')">Start your League!</button>
-                    </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Each week league members select a golfer.</li>
-                            <li>Players score points based on their golfer`s daily scores.</li>
-                            <li>Players score points depending on golfer standings for each tournament.</li>
-                            <li>Adaptable season length to meet your league`s needs.</li>
-                            <li>Tournament winners are eliminated from selection the remainder of the season.</li>
-                            <li>Customizable league options like weekly ties, winner revivals, bonus points for majors, in season bracket challenges, and many more.</li>
-                        </ul>
-                    </div>
-                    </div>
-
-                    <div class="container-4">
-                        <div class="container-8">
-                            Weekly Survivor Pick 'em
-                            <button onclick="startLeague('/golf/survivor/')">Start your League!</button>
-                        </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Select one golfer to make the cut each week.</li>
-                            <li>Season length is customizable.</li>
-                            <li>If they make the cut, move on, if not you are eliminated.</li>
-                            <li>Each golfer can only be picked once per season.</li>
-                        </ul>
-                    </div>
-                    </div>  
-
-                    <div class="container-4">
-                        <div class="container-8">
-                            In Season Tournament Bracket Challenge
-                            <button onclick="startLeague('/golf/tournament-bracket/')">Start your League!</button>
-                        </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Men and Women's tournaments available.</li>
-                            <li>Players draft multiple golfers from a tournament to go head to head over the weekend.</li>
-                            <li>If your golfer wins the head to head matchup move on and draft again the next week.</li>
-                            <li>Typical tournament last 6 weeks and you can use preset options or choose the tournaments you`d like.</li>
-                        </ul>
-                    </div>
-                    </div>
-
-                    <div class="container-4">
-                        <div class="container-8">
-                            Money Accumulation Challenge
-                            <button onclick="startLeague('/golf/money-accumulation/')">Start your League!</button>
-                        </div>
-                    <div class="container-10">
-                        <ul>
-                            <li>Select one or more golfers each week.</li>
-                            <li>Accumulate golfer`s winnings for the week over the entire season.</li>
-                            <li>Variable season lengths available.</li>
-                            <li>Each player can only select each golfer once per season.</li>
-                        </ul>
-                    </div>
-                    </div>
-
-                </div>               
+                <ul class="hub-feature-list">
+                    <li>Draft a roster of golfers from the FedEx Cup Playoffs field of 70 before the FedEx St. Jude Championship begins.</li>
+                    <li>Tiered draft option requires picks from set FedEx Cup ranking tiers (1-30, 31-50, 51-70), or choose Open Draft for no restrictions.</li>
+                    <li>Score points based on each golfer's best finish across the St. Jude Championship, BMW Championship, and TOUR Championship.</li>
+                    <li>Bonus points awarded if your roster includes the FedEx Cup Champion.</li>
+                    <li>Live scoring updates throughout each tournament.</li>
+                </ul>
             </div>
 
-    </div>
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">Majors Season</span>
+                    <button class="btn btn--primary" onclick="startLeague('/golf/majors/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Men and Women's Major tournaments available.</li>
+                    <li>Select a team of golfers for each Major Tournament including the Masters, U.S. Open, PGA Championship, and The Open.</li>
+                    <li>Score Points based on golfer's daily scores.</li>
+                    <li>The Player's Championship can be optionally added.</li>
+                    <li>Customizable scoring options including bonus points, member groups, multiple entries, and more.</li>
+                </ul>
+            </div>
 
-    <footer class="footer">
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">Full Season League</span>
+                    <button class="btn btn--primary" onclick="startLeague('/golf/full-season/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Each week league members select a golfer.</li>
+                    <li>Players score points based on their golfer's daily scores.</li>
+                    <li>Players score points depending on golfer standings for each tournament.</li>
+                    <li>Adaptable season length to meet your league's needs.</li>
+                    <li>Tournament winners are eliminated from selection the remainder of the season.</li>
+                    <li>Customizable league options like weekly ties, winner revivals, bonus points for majors, in season bracket challenges, and many more.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">Weekly Survivor Pick 'em</span>
+                    <button class="btn btn--primary" onclick="startLeague('/golf/survivor/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Select one golfer to make the cut each week.</li>
+                    <li>Season length is customizable.</li>
+                    <li>If they make the cut, move on, if not you are eliminated.</li>
+                    <li>Each golfer can only be picked once per season.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">In Season Tournament Bracket Challenge</span>
+                    <button class="btn btn--primary" onclick="startLeague('/golf/tournament-bracket/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Men and Women's tournaments available.</li>
+                    <li>Players draft multiple golfers from a tournament to go head to head over the weekend.</li>
+                    <li>If your golfer wins the head to head matchup move on and draft again the next week.</li>
+                    <li>Typical tournament last 6 weeks and you can use preset options or choose the tournaments you'd like.</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="flex-between hub-card-header">
+                    <span class="hub-card-name">Money Accumulation Challenge</span>
+                    <button class="btn btn--primary" onclick="startLeague('/golf/money-accumulation/')">Start your League!</button>
+                </div>
+                <ul class="hub-feature-list">
+                    <li>Select one or more golfers each week.</li>
+                    <li>Accumulate golfer's winnings for the week over the entire season.</li>
+                    <li>Variable season lengths available.</li>
+                    <li>Each player can only select each golfer once per season.</li>
+                </ul>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="site-footer">
         2026 The Sports Portal. All rights reserved.
     </footer>
 
-    </main>
 </body>
-</html> 
+</html>

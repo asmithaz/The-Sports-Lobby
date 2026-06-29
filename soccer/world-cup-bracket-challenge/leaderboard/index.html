@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Leaderboard — World Cup Bracket Challenge</title>
     <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
     <link rel="stylesheet" href="styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
@@ -12,12 +14,11 @@
 </head>
 <body>
 
-    <nav class="navbar">
-        <div class="navbar-links">
-            <ul>
-                <li><a href="/soccer/world-cup-bracket-challenge/picks/">Group Picks</a></li>
-                <li><a href="/soccer/world-cup-bracket-challenge/bracket/">Bracket</a></li>
-            </ul>
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">Sports Portal</a>
+        <div class="nav-links">
+            <a href="/soccer/world-cup-bracket-challenge/picks/" class="nav-link">Group Picks</a>
+            <a href="/soccer/world-cup-bracket-challenge/bracket/" class="nav-link">Bracket</a>
         </div>
     </nav>
 
@@ -27,7 +28,7 @@
         <div id="leaderboard"><p class="loading">Loading leaderboard…</p></div>
     </main>
 
-    <footer class="footer">
+    <footer class="site-footer">
         2026 The Sports Portal. All rights reserved.
     </footer>
 

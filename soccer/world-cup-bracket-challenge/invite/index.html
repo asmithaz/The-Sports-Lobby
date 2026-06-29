@@ -1,38 +1,40 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>World Cup Bracket Challenge</title>
     <link rel="icon" href="favicon.ico" />
-    <link rel="stylesheet" href="styles.css" />
+
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
 
-    <nav class="navbar">
-        <div class="navbar-links">
-            <ul>
-                <li><a href="/index.html">Home</a></li>
-                <li><a href="/soccer/">Soccer</a></li>
-                <li><a href="/login/index.html">Login</a></li>
-                <li><a href="/login/index.html">Signup</a></li>
-            </ul>
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">Sports Portal</a>
+        <div class="nav-links">
+            <a href="/index.html" class="nav-link">Home</a>
+            <a href="/soccer/" class="nav-link">Soccer</a>
+            <a href="/login/index.html" class="nav-link">Login</a>
+            <a href="/login/index.html" class="nav-link">Signup</a>
         </div>
     </nav>
 
-    <main>
-        <h1>World Cup Bracket Challenge</h1>
-        <p class="subtitle">Invite Friends to Your League</p>
+    <main class="page-wrapper page-wrapper--center">
+        <h1 class="page-heading">World Cup Bracket Challenge</h1>
+        <p class="page-subhead">Invite Friends to Your League</p>
 
-        <form id="invite-form">
+        <form id="invite-form" class="stack-form">
 
             <!-- Invite Method -->
             <div class="form-card">
-                <div class="form-group">
-                    <label>Invite Method</label>
+                <div class="field">
+                    <label class="label">Invite Method</label>
                     <div class="radio-group">
                         <label class="radio-option">
                             <input type="radio" name="invite-method" value="email" checked onchange="showInviteMethod('email')" />
@@ -52,8 +54,8 @@
                 </div>
 
                 <!-- Email input -->
-                <div class="invite-section" id="email-section">
-                    <label class="section-label">Email Addresses</label>
+                <div class="tier-section" id="email-section">
+                    <label class="subsection-label">Email Addresses</label>
                     <div class="email-tag-container" id="email-tag-container" onclick="document.getElementById('email-input').focus()">
                         <input type="text" id="email-input" placeholder="Enter email and press Enter or comma" />
                     </div>
@@ -61,21 +63,21 @@
                 </div>
 
                 <!-- Link -->
-                <div class="invite-section hidden" id="link-section">
-                    <label class="section-label">Invite Link</label>
+                <div class="tier-section hidden" id="link-section">
+                    <label class="subsection-label">Invite Link</label>
                     <div class="link-row">
-                        <input type="text" id="invite-link" readonly value="https://sportsportal.com/join/wcbc-abc123" />
-                        <button type="button" class="copy-btn" onclick="copyLink()">Copy</button>
+                        <input type="text" id="invite-link" class="input" readonly value="https://sportsportal.com/join/wcbc-abc123" />
+                        <button type="button" class="btn btn--ghost" onclick="copyLink()">Copy</button>
                     </div>
                 </div>
             </div>
 
             <!-- League Password (private leagues only) -->
             <div class="form-card" id="password-card">
-                <div class="form-group">
-                    <label for="league-password">League Password <span class="optional">— optional</span></label>
+                <div class="field">
+                    <label class="label" for="league-password">League Password <span class="optional">— optional</span></label>
                     <div class="password-wrapper">
-                        <input type="password" id="league-password" name="league-password" placeholder="Set a password to restrict joining" maxlength="30" oninput="updatePasswordCounter(this)" />
+                        <input type="password" id="league-password" name="league-password" class="input" placeholder="Set a password to restrict joining" maxlength="30" oninput="updatePasswordCounter(this)" />
                         <button type="button" class="eye-btn" onclick="togglePassword(this)" aria-label="Toggle password visibility">
                             <!-- Eye (hidden) -->
                             <svg class="icon-eye" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -94,13 +96,13 @@
             </div>
 
             <div class="form-actions">
-                <button type="submit">Create League</button>
+                <button type="submit" class="btn btn--primary">Create League</button>
             </div>
 
         </form>
     </main>
 
-    <footer class="footer">
+    <footer class="site-footer">
         2026 The Sports Portal. All rights reserved.
     </footer>
 
@@ -134,7 +136,7 @@
         function copyLink() {
             const link = document.getElementById('invite-link');
             navigator.clipboard.writeText(link.value).then(() => {
-                const btn = document.querySelector('.copy-btn');
+                const btn = document.querySelector('.copy-btn, [onclick="copyLink()"]');
                 btn.textContent = 'Copied!';
                 setTimeout(() => btn.textContent = 'Copy', 2000);
             });
