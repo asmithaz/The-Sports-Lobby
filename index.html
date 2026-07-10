@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -21,10 +21,8 @@
     <nav class="nav">
         <a href="/index.html" class="nav-logo">Sports Portal</a>
         <div class="nav-links">
-            <a href="/index.html" class="nav-link active">Home</a>
             <a href="/login/index.html" class="nav-link">Login</a>
             <a href="/login/index.html" class="nav-link">Signup</a>
-            <a href="about.html" class="nav-link">About</a>
         </div>
     </nav>
 
@@ -104,95 +102,152 @@
 
             <div class="card tab-panel">
                 <div class="tab-content active" id="content1">
-                    <h2 class="page-title">NFL fantasy leagues have never been more fun!</h2>
-                    <p class="text-sm text-secondary mb-2">Choose from a variety of unique formats to keep your league exciting all season long.</p>
-                    <p class="text-sm text-secondary mb-2">Regular Season and Playoff formats available.</p>
-                    <p class="text-sm text-secondary mb-3">Customizable settings to fit your league's style.</p>
-                    <ul class="format-list">
-                        <li><a href="#">Teams Playoff Draft</a></li>
-                        <li><a href="#">Playoffs DFS</a></li>
-                        <li><a href="#">Playoff Bracket</a></li>
-                        <li><a href="#">Season Pick 'em</a></li>
-                        <li><a href="#">Set it Forget it</a></li>
-                        <li><a href="#">Leg League</a></li>
-                    </ul>
+                    <div class="tab-layout">
+                        <div class="tab-left">
+                            <h2 class="page-title">NFL fantasy leagues have never been more fun!</h2>
+                            <ul class="feature-highlights">
+                                <li>Choose from a variety of unique formats to keep your league exciting all season long.</li>
+                                <li>Regular Season and Playoff formats available.</li>
+                                <li>Customizable settings to fit your league's style.</li>
+                            </ul>
+                            <p class="format-list-label">Available formats</p>
+                            <ul class="format-list">
+                                <li><a href="#" data-game="nfl-playoff-draft">Teams Playoff Draft</a></li>
+                                <li><a href="#" data-game="nfl-playoffs-dfs">Playoffs DFS</a></li>
+                                <li><a href="#" data-game="nfl-playoff-bracket">Playoff Bracket</a></li>
+                                <li><a href="#" data-game="nfl-season-pickem">Season Pick 'em</a></li>
+                                <li><a href="#" data-game="nfl-set-forget">Set it Forget it</a></li>
+                                <li><a href="#" data-game="nfl-leg-league">Leg League</a></li>
+                            </ul>
+                        </div>
+                        <div class="tab-right" id="content1-summary"></div>
+                    </div>
                 </div>
 
                 <div class="tab-content" id="content2">
-                    <h2 class="page-title">College Basketball ramps up in February!</h2>
-                    <p class="text-sm text-secondary mb-2">Men's and Women's Bracket challenges available.</p>
-                    <p class="text-sm text-secondary mb-2">Conference Tournament Bracket challenges available to wet your whistle before March Madness.</p>
-                    <p class="text-sm text-secondary mb-3">Tailor settings to match your league's unique preferences.</p>
-                    <ul class="format-list">
-                        <li><a href="#">Conference Tournament Brackets</a></li>
-                        <li><a href="#">March Madness Bracket</a></li>
-                        <li><a href="#">March Madness Team Draft</a></li>
-                        <li><a href="#">NIT Tournament Bracket</a></li>
-                        <li><a href="#">March Madness Survivor</a></li>
-                    </ul>
+                    <div class="tab-layout">
+                        <div class="tab-left">
+                            <h2 class="page-title">College Basketball ramps up in February!</h2>
+                            <ul class="feature-highlights">
+                                <li>Men's and Women's Bracket challenges available.</li>
+                                <li>Conference Tournament Bracket challenges available to wet your whistle before March Madness.</li>
+                                <li>Tailor settings to match your league's unique preferences.</li>
+                            </ul>
+                            <p class="format-list-label">Available formats</p>
+                            <ul class="format-list">
+                                <li><a href="#" data-game="cbb-conf-brackets">Conference Tournament Brackets</a></li>
+                                <li><a href="#" data-game="cbb-march-madness">March Madness Bracket</a></li>
+                                <li><a href="#" data-game="cbb-team-draft">March Madness Team Draft</a></li>
+                                <li><a href="#" data-game="cbb-nit">NIT Tournament Bracket</a></li>
+                                <li><a href="#" data-game="cbb-survivor">March Madness Survivor</a></li>
+                            </ul>
+                        </div>
+                        <div class="tab-right" id="content2-summary"></div>
+                    </div>
                 </div>
 
                 <div class="tab-content" id="content3">
-                    <h2 class="page-title">Fantasy Golf was never supposed to be this good!</h2>
-                    <p class="text-sm text-secondary mb-2">Men's and Women's Pro Golf Available.</p>
-                    <p class="text-sm text-secondary mb-2">Flexible configurations designed for your league's style.</p>
-                    <p class="text-sm text-secondary mb-3">In season bracket tournament available.</p>
-                    <ul class="format-list">
-                        <li><a href="#">Majors Season</a></li>
-                        <li><a href="#">Full Season</a></li>
-                        <li><a href="#">Weekly Pick 'em</a></li>
-                        <li><a href="#">In Season Tournament Bracket</a></li>
-                    </ul>
+                    <div class="tab-layout">
+                        <div class="tab-left">
+                            <h2 class="page-title">Fantasy Golf was never supposed to be this good!</h2>
+                            <ul class="feature-highlights">
+                                <li>Men's and Women's Pro Golf Available.</li>
+                                <li>Flexible configurations designed for your league's style.</li>
+                                <li>In season bracket tournament available.</li>
+                            </ul>
+                            <p class="format-list-label">Available formats</p>
+                            <ul class="format-list">
+                                <li><a href="#" data-game="golf-majors">Majors Season</a></li>
+                                <li><a href="#" data-game="golf-full-season">Full Season</a></li>
+                                <li><a href="#" data-game="golf-fedex-cup-playoffs">FedEx Cup Playoffs</a></li>
+                                <li><a href="#" data-game="golf-weekly-pickem">Weekly Pick 'em</a></li>
+                                <li><a href="#" data-game="golf-bracket">In Season Tournament Bracket</a></li>
+                            </ul>
+                        </div>
+                        <div class="tab-right" id="content3-summary"></div>
+                    </div>
                 </div>
 
                 <div class="tab-content" id="content4">
-                    <h2 class="page-title">College Football makes fall feel like fall!</h2>
-                    <p class="text-sm text-secondary mb-2">Keep the fun going from opening weekend through the CFP Championship.</p>
-                    <p class="text-sm text-secondary mb-2">Spread, Moneyline, and Confidence Pick 'em's available</p>
-                    <p class="text-sm text-secondary mb-3">Adaptable settings to align with your league's vision.</p>
-                    <ul class="format-list">
-                        <li><a href="#">Weekly Pick 'em</a></li>
-                        <li><a href="#">Bowl Season Pick 'em Challenge</a></li>
-                    </ul>
+                    <div class="tab-layout">
+                        <div class="tab-left">
+                            <h2 class="page-title">College Football makes fall feel like fall!</h2>
+                            <ul class="feature-highlights">
+                                <li>Keep the fun going from opening weekend through the CFP Championship.</li>
+                                <li>Spread, Moneyline, and Confidence Pick 'em's available.</li>
+                                <li>Adaptable settings to align with your league's vision.</li>
+                            </ul>
+                            <p class="format-list-label">Available formats</p>
+                            <ul class="format-list">
+                                <li><a href="#" data-game="cfb-weekly-pickem">Weekly Pick 'em</a></li>
+                                <li><a href="#" data-game="cfb-bowl-pickem">Bowl Season Pick 'em Challenge</a></li>
+                            </ul>
+                        </div>
+                        <div class="tab-right" id="content4-summary"></div>
+                    </div>
                 </div>
 
                 <div class="tab-content" id="content5">
-                    <h2 class="page-title">Every two years the world comes together!</h2>
-                    <p class="text-sm text-secondary mb-2">Country vs Country for the gold, silver, and bronze!</p>
-                    <p class="text-sm text-secondary mb-3">Salary challenge and draft challenge!</p>
-                    <p class="text-sm text-secondary mb-3">Make adjustments to fit your league's specific requirements.</p>
-                    <ul class="format-list">
-                        <li><a href="#">Country Draft</a></li>
-                        <li><a href="#">Country Salary</a></li>
-                    </ul>
+                    <div class="tab-layout">
+                        <div class="tab-left">
+                            <h2 class="page-title">Every two years the world comes together!</h2>
+                            <ul class="feature-highlights">
+                                <li>Country vs Country for the gold, silver, and bronze!</li>
+                                <li>Salary challenge and draft challenge!</li>
+                                <li>Make adjustments to fit your league's specific requirements.</li>
+                            </ul>
+                            <p class="format-list-label">Available formats</p>
+                            <ul class="format-list">
+                                <li><a href="#" data-game="olympics-country-draft">Country Draft</a></li>
+                                <li><a href="#" data-game="olympics-country-salary">Country Salary</a></li>
+                            </ul>
+                        </div>
+                        <div class="tab-right" id="content5-summary"></div>
+                    </div>
                 </div>
 
                 <div class="tab-content" id="content6">
-                    <h2 class="page-title">Add tension to any soccer match!</h2>
-                    <p class="text-sm text-secondary mb-2">World Cup, MLS, and EuroLeague available!</p>
-                    <p class="text-sm text-secondary mb-2">Country Draft and Salary challenges available.</p>
-                    <p class="text-sm text-secondary mb-3">Settings you can customize for your league's perfect fit.</p>
-                    <ul class="format-list">
-                        <li><a href="/soccer/world-cup-draft/worldcup-draft.html">World Cup Country Draft</a></li>
-                        <li><a href="#">World Cup Salary Pick 'em</a></li>
-                        <li><a href="#">MLS Tournament Bracket</a></li>
-                        <li><a href="#">EuroLeague Tournament Brackets</a></li>
-                    </ul>
+                    <div class="tab-layout">
+                        <div class="tab-left">
+                            <h2 class="page-title">Add tension to any soccer match!</h2>
+                            <ul class="feature-highlights">
+                                <li>World Cup, MLS, and EuroLeague available!</li>
+                                <li>Country Draft and Salary challenges available.</li>
+                                <li>Settings you can customize for your league's perfect fit.</li>
+                            </ul>
+                            <p class="format-list-label">Available formats</p>
+                            <ul class="format-list">
+                                <li><a href="#" data-game="soccer-wc-draft">World Cup Country Draft</a></li>
+                                <li><a href="#" data-game="soccer-wc-salary">World Cup Salary Pick 'em</a></li>
+                                <li><a href="#" data-game="soccer-mls-bracket">MLS Tournament Bracket</a></li>
+                                <li><a href="#" data-game="soccer-euroleague">EuroLeague Tournament Brackets</a></li>
+                            </ul>
+                        </div>
+                        <div class="tab-right" id="content6-summary"></div>
+                    </div>
                 </div>
 
                 <div class="tab-content" id="content7">
-                    <h2 class="page-title">Try new challenges with us!</h2>
-                    <p class="text-sm text-secondary mb-2">Men's, Women's, and Coed Sports available.</p>
-                    <p class="text-sm text-secondary mb-2">New league formats coming year round for as many sports as we can handle.</p>
-                    <p class="text-sm text-secondary mb-3">Help us create new games!</p>
-                    <ul class="format-list">
-                        <li><a href="#">Kentucky Derby Salary</a></li>
-                        <li><a href="#">Big 3 Horse Race Season</a></li>
-                        <li><a href="#">Homerun Derby</a></li>
-                        <li><a href="#">College Baseball Tournament Bracket</a></li>
-                        <li><a href="#">College Softball Tournament Bracket</a></li>
-                        <li><a href="#">Submit new ideas!</a></li>
-                    </ul>
+                    <div class="tab-layout">
+                        <div class="tab-left">
+                            <h2 class="page-title">Try new challenges with us!</h2>
+                            <ul class="feature-highlights">
+                                <li>Men's, Women's, and Coed Sports available.</li>
+                                <li>New league formats coming year round for as many sports as we can handle.</li>
+                                <li>Help us create new games!</li>
+                            </ul>
+                            <p class="format-list-label">Available formats</p>
+                            <ul class="format-list">
+                                <li><a href="#" data-game="fringe-kentucky-derby">Kentucky Derby Salary</a></li>
+                                <li><a href="#" data-game="fringe-big3">Big 3 Horse Race Season</a></li>
+                                <li><a href="#" data-game="fringe-homerun-derby">Homerun Derby</a></li>
+                                <li><a href="#" data-game="fringe-baseball">College Baseball Tournament Bracket</a></li>
+                                <li><a href="#" data-game="fringe-softball">College Softball Tournament Bracket</a></li>
+                                <li><a href="#" data-game="fringe-submit">Submit new ideas!</a></li>
+                            </ul>
+                        </div>
+                        <div class="tab-right" id="content7-summary"></div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -204,6 +259,7 @@
     </footer>
 
     <script>
+        // Tab switching
         document.querySelectorAll('#format-tabs .tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 document.querySelectorAll('#format-tabs .tab').forEach(t => t.classList.remove('active'));
@@ -213,7 +269,180 @@
             });
         });
 
-        renderDashboardLink();
+        const gameData = {
+            'nfl-playoff-draft': {
+                title: "Teams Playoff Draft",
+                bullets: ["Draft NFL playoff teams at the start of the postseason.", "Score points for every win — points escalate each round.", "Last team standing wins the pot.", "Snake or auction draft formats available.", "Customizable scoring and entry fee options."],
+                url: "#"
+            },
+            'nfl-playoffs-dfs': {
+                title: "Playoffs DFS",
+                bullets: ["Daily fantasy format for the NFL playoffs.", "Build a lineup of individual players within a salary cap.", "Score based on touchdowns, yards, catches, and more.", "Play weekly or across the entire postseason.", "Compete in a group or against the whole pool."],
+                url: "#"
+            },
+            'nfl-playoff-bracket': {
+                title: "Playoff Bracket",
+                bullets: ["Pick winners for every NFL playoff game.", "Points escalate each round toward the Super Bowl.", "Most correct picks at the end wins.", "Multiple entry options available.", "Real-time standings updated after each game."],
+                url: "#"
+            },
+            'nfl-season-pickem': {
+                title: "Season Pick 'em",
+                bullets: ["Pick winners for each week's slate of NFL games.", "Play against the spread or straight up.", "Confidence rankings let you weight your picks.", "Full-season format or weekly one-off pools.", "Customizable tiebreaker and scoring options."],
+                url: "#"
+            },
+            'nfl-set-forget': {
+                title: "Set it Forget it",
+                bullets: ["Draft your lineup once at the start of the season.", "No weekly lineup changes — commit and ride it out.", "Cumulative season stats determine the winner.", "Snake or auction draft format.", "Great for casual leagues that want low maintenance."],
+                url: "#"
+            },
+            'nfl-leg-league': {
+                title: "Leg League",
+                bullets: ["Each player builds a 'leg' — a series of consecutive picks that must all hit.", "The player with the longest surviving streak wins.", "Adds tension to every game on the slate.", "Great as a side pool alongside a main league."],
+                url: "#"
+            },
+            'cbb-conf-brackets': {
+                title: "Conference Tournament Brackets",
+                bullets: ["Pick winners for your favorite conference tournaments.", "Great warm-up before March Madness.", "Points escalate each round.", "Multiple conference options available.", "One-off format — no season-long commitment."],
+                url: "#"
+            },
+            'cbb-march-madness': {
+                title: "March Madness Bracket",
+                bullets: ["Classic 68-team NCAA Tournament bracket challenge.", "Score points for every correct pick — more per round.", "Men's and Women's tournaments available.", "Multiple entry options.", "Real-time leaderboard updates throughout the tournament."],
+                url: "#"
+            },
+            'cbb-team-draft': {
+                title: "March Madness Team Draft",
+                bullets: ["Draft NCAA Tournament teams before the field is set.", "Score points for every win your teams earn.", "Points escalate deeper into the bracket.", "Snake or auction draft formats.", "More replayable than a standard bracket — every game matters."],
+                url: "#"
+            },
+            'cbb-nit': {
+                title: "NIT Tournament Bracket",
+                bullets: ["Bracket challenge for the NIT Tournament.", "Same scoring format as March Madness.", "Great option for fans of teams that didn't make the Big Dance.", "One-off format."],
+                url: "#"
+            },
+            'cbb-survivor': {
+                title: "March Madness Survivor",
+                bullets: ["Pick one team to win each round of the NCAA Tournament.", "Once a team is eliminated, so are you.", "You can only use each team once.", "Last picker standing takes the pot.", "Adds drama to every game throughout the bracket."],
+                url: "#"
+            },
+            'golf-majors': {
+                title: "Majors Season",
+                bullets: ["Draft golfers at the start of the major season.", "Score points across all four majors.", "Points based on finish position each event.", "Season-long cumulative scoring.", "Customizable roster size and draft format."],
+                url: "#"
+            },
+            'golf-full-season': {
+                title: "Full Season",
+                bullets: ["Draft golfers for the entire PGA or LIV Tour season.", "Score weekly across all tour events.", "Waiver wire and trades available mid-season.", "Cumulative points determine the season winner.", "Men's and Women's tours available."],
+                url: "#"
+            },
+            'golf-fedex-cup-playoffs': {
+                title: "FedEx Cup Playoffs",
+                bullets: ["Draft golfers for the FedEx Cup.", "Score points across all FedEx Cup events.", "Cumulative points determine the FedEx Cup winner.", "Customizable roster size and draft format."],
+                url: "#"
+            },
+            'golf-weekly-pickem': {
+                title: "Weekly Pick 'em",
+                bullets: ["Pick a field of golfers each week before the tournament.", "Score based on finish position.", "Play as a season-long pool or one-off each week.", "Salary cap option available.", "Leaderboard updates in real time."],
+                url: "#"
+            },
+            'golf-bracket': {
+                title: "In Season Tournament Bracket",
+                bullets: ["Bracket-style challenge for in-season tour events.", "Pick golfers to advance each round.", "Score points for each correct advancement.", "Available for events like the Players Championship and FedEx Cup.", "One-off format."],
+                url: "#"
+            },
+            'cfb-weekly-pickem': {
+                title: "Weekly Pick 'em",
+                bullets: ["Pick college football game winners every week.", "Play against the spread or straight up.", "Confidence rankings available — weight your picks.", "Season-long or week-by-week pools.", "Includes bowl season and CFP games."],
+                url: "#"
+            },
+            'cfb-bowl-pickem': {
+                title: "Bowl Season Pick 'em Challenge",
+                bullets: ["Pick winners for every bowl game including the CFP.", "Score points for each correct pick.", "Confidence rankings let you weight bigger games.", "One-off challenge — perfect for the holiday season.", "Real-time standings as bowl games play out."],
+                url: "#"
+            },
+            'olympics-country-draft': {
+                title: "Country Draft",
+                bullets: ["Draft countries competing in the Olympics.", "Score points for every medal your countries win.", "Gold, silver, and bronze score differently.", "Snake or auction draft formats available.", "Covers both Summer and Winter Olympics."],
+                url: "#"
+            },
+            'olympics-country-salary': {
+                title: "Country Salary",
+                bullets: ["Pick a roster of countries within a set salary cap.", "Score points for every medal won.", "Salary values reflect each country's expected medal count.", "Great for casual fans — no draft required.", "Covers both Summer and Winter Olympics."],
+                url: "#"
+            },
+            'soccer-wc-draft': {
+                title: "World Cup Country Draft",
+                bullets: ["Draft countries competing in the World Cup.", "Score points for every win — points escalate each round.", "Snake or auction draft formats available.", "Customizable scoring including bonus points.", "Supports group stage through the final."],
+                url: "/soccer/world-cup-draft/"
+            },
+            'soccer-wc-salary': {
+                title: "World Cup Salary Pick 'em",
+                bullets: ["Pick World Cup countries within a salary cap.", "No draft required — set your lineup before kickoff.", "Score based on match results and round advancement.", "Salary values reflect each country's strength.", "Great for casual fans or one-off pools."],
+                url: "#"
+            },
+            'soccer-mls-bracket': {
+                title: "MLS Tournament Bracket",
+                bullets: ["Pick winners for MLS Cup Playoff games.", "Points escalate each round toward MLS Cup.", "Men's and Women's leagues available.", "Multiple entry and confidence ranking options.", "Real-time standings throughout the playoffs."],
+                url: "#"
+            },
+            'soccer-euroleague': {
+                title: "EuroLeague Tournament Brackets",
+                bullets: ["Bracket challenges for major European league cup tournaments.", "Covers Copa del Rey, FA Cup, DFB-Pokal, and more.", "Pick winners each round from the group stage onward.", "Points escalate through knockout rounds.", "One-off or season-long formats available."],
+                url: "#"
+            },
+            'fringe-kentucky-derby': {
+                title: "Kentucky Derby Salary",
+                bullets: ["Pick horses for the Kentucky Derby within a salary cap.", "Score points based on finish position.", "Salary reflects each horse's odds and expected performance.", "One-day event — great as a side pool.", "Win, place, and show scoring options."],
+                url: "#"
+            },
+            'fringe-big3': {
+                title: "Big 3 Horse Race Season",
+                bullets: ["Draft horses competing across the Triple Crown.", "Score points for wins across the Derby, Preakness, and Belmont.", "Season-long format spanning spring racing.", "Cumulative scoring determines the winner."],
+                url: "#"
+            },
+            'fringe-homerun-derby': {
+                title: "Homerun Derby",
+                bullets: ["Pick sluggers competing in the MLB Home Run Derby.", "Score based on total home runs hit each round.", "Draft or salary cap formats available.", "One-night event — great for casual groups.", "Bracket format mirrors the actual contest."],
+                url: "#"
+            },
+            'fringe-baseball': {
+                title: "College Baseball Tournament Bracket",
+                bullets: ["Pick winners throughout the NCAA Baseball Tournament.", "Points escalate each round toward the College World Series.", "Regionals, Super Regionals, and CWS all included.", "Multiple entry options available."],
+                url: "#"
+            },
+            'fringe-softball': {
+                title: "College Softball Tournament Bracket",
+                bullets: ["Pick winners throughout the NCAA Softball Tournament.", "Same format as the baseball bracket challenge.", "Points escalate to the Women's College World Series.", "Multiple entry options available."],
+                url: "#"
+            },
+            'fringe-submit': {
+                title: "Submit New Ideas!",
+                bullets: ["Have a game format in mind that doesn't exist yet?", "We're always looking for new and creative challenges.", "Submit your idea and we may build it.", "New formats are added year round."],
+                url: "#"
+            }
+        };
+
+        document.querySelectorAll('.format-list a[data-game]').forEach(link => {
+            link.addEventListener('click', e => {
+                e.preventDefault();
+                const game = gameData[link.dataset.game];
+                if (!game) return;
+
+                const panel = link.closest('.tab-content');
+                panel.querySelectorAll('.format-list a').forEach(a => a.classList.remove('active'));
+                link.classList.add('active');
+
+                const summaryEl = panel.querySelector('.tab-right');
+                summaryEl.innerHTML = `
+                    <h3 class="summary-title">${game.title}</h3>
+                    <ul class="summary-bullets">
+                        ${game.bullets.map(b => `<li>${b}</li>`).join('')}
+                    </ul>
+                    <a href="${game.url}" class="btn btn--primary">Start a League!</a>
+                `;
+                summaryEl.classList.add('visible');
+            });
+        });
     </script>
 </body>
 </html>

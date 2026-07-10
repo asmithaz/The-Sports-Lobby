@@ -240,14 +240,16 @@ body {
 /* Card directly below a .tabs row — flattens the corner that touches it */
 .tab-panel {
   border-top-left-radius: 0;
+  display: grid;
 }
 
 .tab-content {
-  display: none;
+  grid-area: 1 / 1;
+  visibility: hidden;
 }
 
 .tab-content.active {
-  display: block;
+  visibility: visible;
 }
 
 
@@ -377,27 +379,6 @@ body {
 .btn--block {
   width: 100%;
   justify-content: center;
-}
-
-/* Fixed-position "back to dashboard" link, injected sitewide by js/auth.js */
-.dashboard-return-link {
-  position: fixed;
-  top: 10px;
-  right: 20px;
-  z-index: 1000;
-  padding: 5px var(--space-4);
-  background: var(--c-accent);
-  color: #0f1117;
-  font-weight: var(--weight-bold);
-  font-family: var(--font);
-  text-decoration: none;
-  border-radius: var(--radius-sm);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-  transition: background var(--transition);
-}
-
-.dashboard-return-link:hover {
-  background: #6ee7a0;
 }
 
 

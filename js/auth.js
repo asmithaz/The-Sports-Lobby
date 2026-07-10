@@ -8,16 +8,36 @@ async function logout() {
     window.location.href = '/index.html';
 }
 
-async function renderDashboardLink() {
+async function renderNav() {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    const navLinks = document.querySelector('.nav-links');
+    if (!navLinks) return;
 
-    const link = document.createElement('a');
-    link.href = '/dashboard/';
-    link.textContent = '← Dashboard';
-    link.className = 'dashboard-return-link';
-    document.body.appendChild(link);
+    if (session) {
+        navLinks.querySelectorAll('a').forEach(a => {
+            const href = a.getAttribute('href') || '';
+            const text = a.textContent.trim();
+            if (href.includes('/login/') || text === 'Login' || text === 'Signup' || text === 'Sign Up') {
+                a.remove();
+            }
+        });
+
+        const dashboard = document.createElement('a');
+        dashboard.href = '/dashboard/';
+        dashboard.className = 'nav-link';
+        dashboard.textContent = 'Dashboard';
+        navLinks.appendChild(dashboard);
+
+        const logoutLink = document.createElement('a');
+        logoutLink.href = '#';
+        logoutLink.className = 'nav-link';
+        logoutLink.textContent = 'Logout';
+        logoutLink.addEventListener('click', e => { e.preventDefault(); logout(); });
+        navLinks.appendChild(logoutLink);
+    }
 }
+
+document.addEventListener('DOMContentLoaded', renderNav);
 
 async function startLeague(setupUrl) {
     const loggedIn = await isLoggedIn();
