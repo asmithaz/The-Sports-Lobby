@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Populates the `golfers` table for FedEx Cup Playoffs Fantasy Golf.
 
@@ -85,7 +85,7 @@ $headers = @{
 }
 
 try {
-  Invoke-RestMethod -Uri "$SupabaseUrl/rest/v1/golfers" -Method Post -Headers $headers -Body $json -UserAgent "Sports-Portal-Populate-Golfers/1.0" -ErrorAction Stop | Out-Null
+  Invoke-RestMethod -Uri "$SupabaseUrl/rest/v1/golfers" -Method Post -Headers $headers -Body $json -UserAgent "The-Sports-Lobby-Populate-Golfers/1.0" -ErrorAction Stop | Out-Null
 } catch {
   $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
   Write-Error $reader.ReadToEnd()
