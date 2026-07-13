@@ -187,6 +187,29 @@ h1 {
 }
 
 .pick-timer.timer-low { background: rgba(248,113,113,0.25); color: var(--c-danger); }
+.pick-timer.timer-paused { background: rgba(255,255,255,0.08); color: var(--c-text-secondary); }
+
+.pick-banner.paused {
+    background: var(--c-surface-2);
+    border-color: var(--c-border-strong);
+    color: var(--c-text-secondary);
+}
+
+.btn-pause {
+    padding: 4px var(--space-4);
+    background: var(--c-surface);
+    color: var(--c-text-primary);
+    border: 0.5px solid var(--c-border-strong);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+    cursor: pointer;
+    font-family: var(--font);
+    transition: background var(--transition);
+}
+
+.btn-pause:hover { background: var(--c-surface-hover); }
+.btn-pause:disabled { opacity: 0.5; cursor: default; }
 
 /* ── Loading / lobby / early views ── */
 .loading-msg {
@@ -382,3 +405,51 @@ h1 {
     .draft-layout { flex-direction: column; }
     .avail-panel  { flex: none; width: 100%; }
 }
+
+/* ── Draft chat ── */
+.chat-panel { display: flex; flex-direction: column; }
+
+.chat-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 240px;
+    overflow-y: auto;
+    margin-bottom: var(--space-3);
+}
+
+.chat-msg {
+    display: flex;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+}
+
+.chat-msg-author {
+    font-weight: var(--weight-bold);
+    color: var(--c-accent);
+    white-space: nowrap;
+}
+
+.chat-msg-mine .chat-msg-author { color: var(--c-text-primary); }
+
+.chat-msg-body {
+    color: var(--c-text-secondary);
+    word-break: break-word;
+}
+
+.chat-form { display: flex; gap: var(--space-2); }
+
+.chat-form input {
+    flex: 1;
+    padding: var(--space-2) var(--space-3);
+    border: 0.5px solid var(--c-border-strong);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-base);
+    background: var(--c-surface);
+    color: var(--c-text-primary);
+    font-family: var(--font);
+    outline: none;
+}
+
+.chat-form input:focus { border-color: var(--c-accent-border); }

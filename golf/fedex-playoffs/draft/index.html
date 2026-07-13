@@ -87,6 +87,7 @@
         <div class="pick-banner" id="pick-banner">
           <span id="pick-banner-text"></span>
           <span class="pick-timer" id="pick-timer"></span>
+          <button class="btn-pause" id="pause-toggle-btn" hidden></button>
         </div>
 
         <div class="roster-status" id="roster-status"></div>
@@ -135,6 +136,16 @@
           <a class="btn-primary" href="/golf/fedex-playoffs/dashboard/">← Back to Dashboard</a>
         </div>
 
+      </div>
+
+      <!-- CHAT (shown once the lobby opens; hidden during loading/early) -->
+      <div class="panel chat-panel" id="chat-panel" hidden>
+        <h2>Draft Chat</h2>
+        <div class="chat-messages" id="chat-messages"></div>
+        <form class="chat-form" id="chat-form">
+          <input type="text" id="chat-input" maxlength="280" placeholder="Say something…" autocomplete="off" />
+          <button type="submit" class="btn-sm">Send</button>
+        </form>
       </div>
 
     </div>

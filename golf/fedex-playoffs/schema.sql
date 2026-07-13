@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS fcp_leagues (
   draft_time          timestamptz,
   pick_seconds        int  NOT NULL DEFAULT 90,
   pick_deadline       timestamptz,
+  paused_at              timestamptz, -- non-null while the commissioner has the clock stopped
+  pick_remaining_seconds int,         -- time left on pick_deadline when paused_at was set
   current_pick_number int  NOT NULL DEFAULT 1,
   roster_mode         text NOT NULL DEFAULT 'tiered' CHECK (roster_mode IN ('tiered', 'open')),
   roster_size         int  NOT NULL DEFAULT 4 CHECK (roster_size > 0),
@@ -51,6 +53,10 @@ CREATE TABLE IF NOT EXISTS fcp_leagues (
   tier3_count         int  NOT NULL DEFAULT 1 CHECK (tier3_count >= 0),
   created_at          timestamptz DEFAULT now()
 );
+
+-- Idempotent for installs that ran this schema before pause/resume existed.
+ALTER TABLE fcp_leagues ADD COLUMN IF NOT EXISTS paused_at timestamptz;
+ALTER TABLE fcp_leagues ADD COLUMN IF NOT EXISTS pick_remaining_seconds int;
 
 
 -- ------------------------------------------------------------
@@ -473,15 +479,20 @@ AS $$
 DECLARE
   v_status   text;
   v_pick_num int;
+  v_paused   timestamptz;
   v_expected uuid;
   v_tier     int;
   v_slot     int;
 BEGIN
-  SELECT draft_status, current_pick_number INTO v_status, v_pick_num
+  SELECT draft_status, current_pick_number, paused_at INTO v_status, v_pick_num, v_paused
   FROM fcp_leagues WHERE league_id = p_league_id FOR UPDATE;
 
   IF v_status IS DISTINCT FROM 'active' THEN
     RAISE EXCEPTION 'Draft is not active';
+  END IF;
+
+  IF v_paused IS NOT NULL THEN
+    RAISE EXCEPTION 'Draft is paused';
   END IF;
 
   v_expected := _fcp_expected_drafter(p_league_id, v_pick_num);
@@ -574,6 +585,87 @@ GRANT EXECUTE ON FUNCTION fcp_autopick_if_expired(uuid) TO authenticated;
 
 
 -- ------------------------------------------------------------
+-- 10.6b fcp_pause_draft / fcp_resume_draft
+-- Commissioner-only. Pausing blanks pick_deadline (so
+-- fcp_autopick_if_expired's `v_deadline IS NULL` check already no-ops
+-- while paused) and stashes the remaining seconds; resuming restores
+-- a fresh deadline from that stash so nobody loses pick time to the
+-- pause itself.
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fcp_pause_draft(p_league_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_status   text;
+  v_deadline timestamptz;
+  v_paused   timestamptz;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM leagues WHERE id = p_league_id AND commissioner_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Only the commissioner can pause the draft';
+  END IF;
+
+  SELECT draft_status, pick_deadline, paused_at INTO v_status, v_deadline, v_paused
+  FROM fcp_leagues WHERE league_id = p_league_id FOR UPDATE;
+
+  IF v_status IS DISTINCT FROM 'active' THEN
+    RAISE EXCEPTION 'Draft is not active';
+  END IF;
+
+  IF v_paused IS NOT NULL THEN
+    RETURN; -- already paused
+  END IF;
+
+  UPDATE fcp_leagues
+  SET paused_at              = now(),
+      pick_remaining_seconds = GREATEST(0, CEIL(EXTRACT(EPOCH FROM (v_deadline - now())))::int),
+      pick_deadline          = NULL
+  WHERE league_id = p_league_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION fcp_pause_draft(uuid) TO authenticated;
+
+
+CREATE OR REPLACE FUNCTION fcp_resume_draft(p_league_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_status    text;
+  v_paused    timestamptz;
+  v_remaining int;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM leagues WHERE id = p_league_id AND commissioner_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Only the commissioner can resume the draft';
+  END IF;
+
+  SELECT draft_status, paused_at, pick_remaining_seconds
+  INTO v_status, v_paused, v_remaining
+  FROM fcp_leagues WHERE league_id = p_league_id FOR UPDATE;
+
+  IF v_status IS DISTINCT FROM 'active' OR v_paused IS NULL THEN
+    RAISE EXCEPTION 'Draft is not paused';
+  END IF;
+
+  UPDATE fcp_leagues
+  SET pick_deadline          = now() + (COALESCE(v_remaining, 0) * interval '1 second'),
+      paused_at              = NULL,
+      pick_remaining_seconds = NULL
+  WHERE league_id = p_league_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION fcp_resume_draft(uuid) TO authenticated;
+
+
+-- ------------------------------------------------------------
 -- 10.7 fcp_recalculate_scores
 -- Recomputes fcp_scores for a league from fcp_picks + fcp_event_results.
 -- Called by the dashboard's "Refresh Scores" button (after the
@@ -649,5 +741,43 @@ END $$;
 
 DO $$ BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE fcp_scores;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+
+-- ============================================================
+-- SECTION 11 — DRAFT CHAT
+-- Lightweight chat scoped to a single league's draft room. Plain
+-- inserts (no RPC) since there's no game-state logic to enforce —
+-- RLS alone (own user_id + league membership) is enough.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS fcp_draft_messages (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  league_id  uuid NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  user_id    uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  body       text NOT NULL CHECK (char_length(trim(body)) BETWEEN 1 AND 280),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS fcp_draft_messages_league_created_idx
+  ON fcp_draft_messages (league_id, created_at);
+
+GRANT SELECT, INSERT ON fcp_draft_messages TO authenticated;
+
+ALTER TABLE fcp_draft_messages ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "League members can view chat messages" ON fcp_draft_messages;
+DROP POLICY IF EXISTS "League members can send chat messages" ON fcp_draft_messages;
+
+CREATE POLICY "League members can view chat messages"
+  ON fcp_draft_messages FOR SELECT USING (is_league_member(fcp_draft_messages.league_id));
+
+CREATE POLICY "League members can send chat messages"
+  ON fcp_draft_messages FOR INSERT WITH CHECK (
+    user_id = auth.uid() AND is_league_member(fcp_draft_messages.league_id)
+  );
+
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE fcp_draft_messages;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;

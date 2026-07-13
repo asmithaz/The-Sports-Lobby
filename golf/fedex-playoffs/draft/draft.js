@@ -42,6 +42,7 @@ function showView(name) {
   ['loading', 'early', 'lobby', 'auction', 'draft', 'complete'].forEach(v => {
     document.getElementById(`view-${v}`).hidden = v !== name;
   });
+  document.getElementById('chat-panel').hidden = (name === 'loading' || name === 'early');
 }
 
 function clearAllTimers() {
@@ -261,9 +262,18 @@ function renderDraftView() {
   const expectedUser = expectedDrafterId(pickNum);
   const who = profileMap[expectedUser] ?? 'Unknown';
   const isMyTurn = expectedUser === currentUserId;
+  const isPaused = !!fcpLeague.paused_at;
+  const isCommissioner = league.commissioner_id === currentUserId;
 
-  document.getElementById('pick-banner-text').textContent =
-    `Now Picking: ${who} — Round ${rnd}, Pick ${posInRound} of ${n}`;
+  document.getElementById('pick-banner-text').textContent = isPaused
+    ? `Draft Paused — Now Picking: ${who} — Round ${rnd}, Pick ${posInRound} of ${n}`
+    : `Now Picking: ${who} — Round ${rnd}, Pick ${posInRound} of ${n}`;
+  document.getElementById('pick-banner').classList.toggle('paused', isPaused);
+
+  const pauseBtn = document.getElementById('pause-toggle-btn');
+  pauseBtn.hidden = !isCommissioner;
+  pauseBtn.disabled = false;
+  pauseBtn.textContent = isPaused ? 'Resume Draft' : 'Pause Draft';
 
   renderRosterStatus();
 
@@ -273,8 +283,8 @@ function renderDraftView() {
 
   const tbody = document.getElementById('avail-body');
   tbody.innerHTML = avail.map(g => {
-    let canPick = isMyTurn;
-    let disabledReason = '';
+    let canPick = isMyTurn && !isPaused;
+    let disabledReason = isPaused ? 'Draft paused' : '';
 
     if (canPick && fcpLeague.roster_mode === 'tiered') {
       if ((myTierCounts[g.tier] ?? 0) >= tierCount(g.tier)) {
@@ -335,6 +345,15 @@ function startTimer() {
 
 function updateTimer() {
   const el = document.getElementById('pick-timer');
+  el.classList.remove('timer-low');
+
+  if (fcpLeague?.paused_at) {
+    el.textContent = 'Paused';
+    el.classList.add('timer-paused');
+    return;
+  }
+  el.classList.remove('timer-paused');
+
   if (!fcpLeague?.pick_deadline) { el.textContent = ''; return; }
 
   const remaining = Math.max(0, Math.floor((new Date(fcpLeague.pick_deadline).getTime() - Date.now()) / 1000));
@@ -347,11 +366,23 @@ function updateTimer() {
 function startAutopickWatcher() {
   clearInterval(autopickInterval);
   autopickInterval = setInterval(async () => {
-    if (fcpLeague?.draft_status !== 'active' || !fcpLeague.pick_deadline) return;
+    if (fcpLeague?.draft_status !== 'active' || fcpLeague?.paused_at || !fcpLeague.pick_deadline) return;
     if (Date.now() > new Date(fcpLeague.pick_deadline).getTime()) {
       await supabase.rpc('fcp_autopick_if_expired', { p_league_id: leagueId });
     }
   }, 3000);
+}
+
+async function togglePause() {
+  const btn = document.getElementById('pause-toggle-btn');
+  btn.disabled = true;
+  const rpc = fcpLeague.paused_at ? 'fcp_resume_draft' : 'fcp_pause_draft';
+  const { error } = await supabase.rpc(rpc, { p_league_id: leagueId });
+  if (error) {
+    alert(error.message);
+    btn.disabled = false;
+  }
+  // On success, the Realtime subscription on fcp_leagues refreshes state.
 }
 
 // ─── Draft board (shared by draft + complete views) ───────────────────
@@ -391,6 +422,52 @@ function renderBoard(tableId) {
   table.innerHTML = html;
 }
 
+// ─── Chat ───────────────────────────────────────────────────────────────
+function appendChatMessage(m) {
+  const container = document.getElementById('chat-messages');
+  const mine = m.user_id === currentUserId ? ' chat-msg-mine' : '';
+  const name = profileMap[m.user_id] ?? 'Unknown';
+
+  const div = document.createElement('div');
+  div.className = `chat-msg${mine}`;
+  div.innerHTML = `<span class="chat-msg-author">${escHtml(name)}</span><span class="chat-msg-body">${escHtml(m.body)}</span>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function loadChatMessages() {
+  const { data } = await supabase
+    .from('fcp_draft_messages')
+    .select('id, user_id, body, created_at')
+    .eq('league_id', leagueId)
+    .order('created_at', { ascending: true })
+    .limit(100);
+
+  document.getElementById('chat-messages').innerHTML = '';
+  (data ?? []).forEach(appendChatMessage);
+}
+
+async function sendChatMessage(e) {
+  e.preventDefault();
+  const input = document.getElementById('chat-input');
+  const body = input.value.trim();
+  if (!body) return;
+  input.value = '';
+
+  const { error } = await supabase
+    .from('fcp_draft_messages')
+    .insert({ league_id: leagueId, user_id: currentUserId, body });
+  if (error) alert(error.message);
+}
+
+function subscribeChatRealtime() {
+  supabase
+    .channel(`fcp-chat-${leagueId}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fcp_draft_messages', filter: `league_id=eq.${leagueId}` },
+      payload => appendChatMessage(payload.new))
+    .subscribe();
+}
+
 // ─── Realtime ───────────────────────────────────────────────────────────
 function subscribeRealtime() {
   const refresh = async () => { await loadAll(); await render(); };
@@ -413,10 +490,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!leagueId) { window.location.href = '/golf/index.html'; return; }
 
   document.getElementById('lobby-save-order').addEventListener('click', saveLobbyOrder);
+  document.getElementById('pause-toggle-btn').addEventListener('click', togglePause);
+  document.getElementById('chat-form').addEventListener('submit', sendChatMessage);
 
   await loadAll();
   await render();
   subscribeRealtime();
+  await loadChatMessages();
+  subscribeChatRealtime();
 
   // Fallback poll — catches the early→lobby transition and anything a
   // realtime event might have missed.
