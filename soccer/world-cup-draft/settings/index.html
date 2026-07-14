@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>League Settings — World Cup Country Draft</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">The Sports Lobby</a>
+        <div class="nav-links">
+            <a href="/soccer/" class="nav-link">Soccer</a>
+        </div>
+    </nav>
+
+    <main class="page-wrapper page-wrapper--center">
+        <h2 class="page-title mb-1" id="league-name">Loading…</h2>
+        <p class="page-subtitle mb-4">League Settings</p>
+
+        <div class="card" style="width:100%; max-width:420px;">
+            <h3 class="mb-3">Your Team Name</h3>
+            <form onsubmit="event.preventDefault(); saveTeamName();">
+                <div class="field">
+                    <label class="label" for="team-name">Team Name</label>
+                    <input class="input" type="text" id="team-name" name="team-name" maxlength="30" placeholder="e.g. Golazo Gang" />
+                    <p class="field-hint">Shown to the rest of your league on the dashboard and standings.</p>
+                </div>
+                <p id="settings-status" class="text-xs mb-3"></p>
+                <button type="submit" class="btn btn--primary btn--block" id="save-btn">Save</button>
+            </form>
+        </div>
+
+        <a href="/soccer/world-cup-draft/dashboard/" class="btn btn--ghost mt-4">← Back to Dashboard</a>
+    </main>
+
+    <footer class="site-footer">
+        2026 The Sports Lobby. All rights reserved.
+    </footer>
+
+    <script>
+        let currentUserId = null;
+        let leagueId = null;
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { window.location.href = '/login/index.html'; return; }
+            currentUserId = session.user.id;
+
+            leagueId = sessionStorage.getItem('league_id');
+            if (!leagueId) { window.location.href = '/soccer/index.html'; return; }
+
+            const [leagueRes, memberRes] = await Promise.all([
+                supabase.from('leagues').select('name').eq('id', leagueId).single(),
+                supabase.from('league_members').select('team_name').eq('league_id', leagueId).eq('user_id', currentUserId).single()
+            ]);
+
+            document.getElementById('league-name').textContent = leagueRes.data?.name ?? 'League';
+            document.getElementById('team-name').value = memberRes.data?.team_name || '';
+        }
+
+        async function saveTeamName() {
+            const input = document.getElementById('team-name');
+            const statusEl = document.getElementById('settings-status');
+            const btn = document.getElementById('save-btn');
+            const value = input.value.trim();
+
+            statusEl.textContent = '';
+            statusEl.className = 'text-xs mb-3';
+
+            if (!value) {
+                statusEl.textContent = 'Team name cannot be empty.';
+                statusEl.classList.add('text-danger');
+                return;
+            }
+
+            btn.disabled = true;
+            const { error } = await supabase.rpc('set_team_name', {
+                p_league_id: leagueId,
+                p_team_name: value
+            });
+            btn.disabled = false;
+
+            if (error) {
+                statusEl.textContent = error.message;
+                statusEl.classList.add('text-danger');
+                return;
+            }
+
+            statusEl.textContent = 'Saved.';
+            statusEl.classList.add('text-accent');
+        }
+
+        init();
+    </script>
+</body>
+</html>

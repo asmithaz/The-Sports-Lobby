@@ -1,59 +1,64 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>The Sports Lobby — Sign Up</title>
-    <link rel="icon" href="favicon.ico" />
+    <meta name="description" content="Create an account on The Sports Lobby" />
+    <title>Sign Up — The Sports Lobby</title>
+
+    <link rel="icon" href="/favicon.ico" />
+
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
     <link rel="stylesheet" href="styles.css" />
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
 </head>
 <body>
 
-    <nav class="navbar">
-        <div class="navbar-links">
-            <ul>
-                <li><a href="/index.html">Home</a></li>
-                <li><a href="/login/index.html">Login</a></li>
-            </ul>
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">The Sports Lobby</a>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link">Login</a>
+            <a href="signup.html" class="nav-link active">Signup</a>
         </div>
     </nav>
 
-    <main>
-        <div class="login-card" id="signup-card">
-            <h2>Create Account</h2>
-            <form>
-                <div class="form-group">
-                    <label for="email">Email</label>
-                    <input type="email" id="email" name="email" placeholder="Enter your email" required />
+    <main class="page-wrapper login-wrapper">
+        <div class="card login-card" id="signup-card">
+            <h2 class="page-title login-title">Create Account</h2>
+            <form onsubmit="event.preventDefault(); handleSignup();">
+                <div class="field">
+                    <label class="label" for="email">Email</label>
+                    <input class="input" type="email" id="email" name="email" placeholder="Enter your email" required />
                 </div>
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" placeholder="Create a password" required />
+                <div class="field">
+                    <label class="label" for="password">Password</label>
+                    <input class="input" type="password" id="password" name="password" placeholder="Create a password" required />
                 </div>
-                <div class="form-group">
-                    <label for="confirm-password">Confirm Password</label>
-                    <input type="password" id="confirm-password" name="confirm-password" placeholder="Confirm your password" required />
+                <div class="field">
+                    <label class="label" for="confirm-password">Confirm Password</label>
+                    <input class="input" type="password" id="confirm-password" name="confirm-password" placeholder="Confirm your password" required />
                 </div>
-                <p id="signup-error" class="error-msg"></p>
-                <button type="button" class="btn-primary" onclick="handleSignup()">Create Account</button>
+                <p id="signup-error" class="text-danger text-xs mb-3"></p>
+                <button type="submit" class="btn btn--primary login-btn-block" id="signup-btn">Create Account</button>
                 <div class="divider"></div>
-                <a href="index.html" class="btn-secondary">Already have an account? Log In</a>
+                <a href="index.html" class="btn btn--ghost login-btn-block">Already have an account? Log In</a>
             </form>
         </div>
 
-        <div class="login-card" id="confirm-card" style="display:none;">
-            <h2>Check Your Email</h2>
-            <p style="text-align:center; color:#3e4455; margin-bottom:24px;">
-                We sent a confirmation link to <strong id="confirm-email"></strong>.<br>
-                Click the link to activate your account.
+        <div class="card login-card" id="confirm-card" style="display:none;">
+            <h2 class="page-title login-title">Check Your Email</h2>
+            <p class="text-secondary text-sm mb-4">
+                We sent a confirmation link to <strong id="confirm-email"></strong>. Click the link to activate your account.
             </p>
-            <a href="index.html" class="btn-secondary">Back to Log In</a>
+            <a href="index.html" class="btn btn--ghost login-btn-block">Back to Log In</a>
         </div>
     </main>
 
-    <footer class="footer">
+    <footer class="site-footer">
         2026 The Sports Lobby. All rights reserved.
     </footer>
 
@@ -63,6 +68,7 @@
             const password = document.getElementById('password').value;
             const confirm = document.getElementById('confirm-password').value;
             const errorEl = document.getElementById('signup-error');
+            const btn = document.getElementById('signup-btn');
             errorEl.textContent = '';
 
             if (password !== confirm) {
@@ -75,7 +81,9 @@
                 return;
             }
 
+            btn.disabled = true;
             const { error } = await supabase.auth.signUp({ email, password });
+            btn.disabled = false;
 
             if (error) {
                 errorEl.textContent = error.message;

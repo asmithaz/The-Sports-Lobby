@@ -12,6 +12,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
+    <script src="/js/email-templates.js"></script>
 </head>
 <body class="join-body">
 
@@ -21,6 +22,22 @@
 </div>
 
 <script>
+function escapeHtml(str) {
+    const d = document.createElement('div');
+    d.appendChild(document.createTextNode(str ?? ''));
+    return d.innerHTML;
+}
+
+async function sendJoinConfirmation(toEmail, leagueName) {
+    const subject = `You've joined ${leagueName} on The Sports Lobby`;
+    const body = `<p>You're in! You've successfully joined <strong>${escapeHtml(leagueName)}</strong>.</p>`;
+    const html = wrapEmail("You're in!", body);
+    const { error } = await supabase.functions.invoke('send-email', {
+        body: { to: toEmail, subject, html }
+    });
+    if (error) throw error;
+}
+
 async function joinFlow() {
     const card = document.getElementById('card');
 
@@ -75,6 +92,10 @@ async function joinFlow() {
     sessionStorage.setItem('league_type',        data.league_type || '');
     sessionStorage.setItem('league_invite_code', data.invite_code);
     sessionStorage.setItem('league_visibility',  data.visibility);
+
+    // Fire-and-forget confirmation email — doesn't block the redirect below.
+    sendJoinConfirmation(session.user.email, data.name).catch(err =>
+        console.error('Failed to send join confirmation:', err));
 
     show(`
         <span class="join-icon">✅</span>

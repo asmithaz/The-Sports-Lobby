@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Manage your account on The Sports Lobby" />
+    <title>Account — The Sports Lobby</title>
+
+    <link rel="icon" href="/favicon.ico" />
+
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">The Sports Lobby</a>
+        <div class="nav-links"></div>
+    </nav>
+
+    <main class="page-wrapper page-wrapper--center">
+        <div class="card" style="width:100%; max-width:420px; margin-top:var(--space-6);">
+            <h2 class="page-title mb-4">Account</h2>
+            <form onsubmit="event.preventDefault(); saveDisplayName();">
+                <div class="field">
+                    <label class="label" for="display-name">Display Name</label>
+                    <input class="input" type="text" id="display-name" name="display-name" maxlength="50" placeholder="How you'll appear to other players" />
+                    <p class="field-hint">Shown across dashboards, draft rooms, and league standings.</p>
+                </div>
+                <p id="account-status" class="text-xs mb-3"></p>
+                <button type="submit" class="btn btn--primary btn--block" id="save-btn">Save</button>
+            </form>
+        </div>
+        <a href="/dashboard/" class="btn btn--ghost mt-4">← Back to Dashboard</a>
+    </main>
+
+    <footer class="site-footer">
+        2026 The Sports Lobby. All rights reserved.
+    </footer>
+
+    <script>
+        let currentUserId = null;
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                sessionStorage.setItem('sp_redirect_after_login', '/account/');
+                window.location.href = '/login/index.html';
+                return;
+            }
+            currentUserId = session.user.id;
+
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('display_name')
+                .eq('id', currentUserId)
+                .single();
+
+            if (!error && data) {
+                document.getElementById('display-name').value = data.display_name || '';
+            }
+        }
+
+        async function saveDisplayName() {
+            const input = document.getElementById('display-name');
+            const statusEl = document.getElementById('account-status');
+            const btn = document.getElementById('save-btn');
+            const value = input.value.trim();
+
+            statusEl.textContent = '';
+            statusEl.className = 'text-xs mb-3';
+
+            if (!value) {
+                statusEl.textContent = 'Display name cannot be empty.';
+                statusEl.classList.add('text-danger');
+                return;
+            }
+
+            btn.disabled = true;
+            const { error } = await supabase
+                .from('profiles')
+                .update({ display_name: value, updated_at: new Date().toISOString() })
+                .eq('id', currentUserId);
+            btn.disabled = false;
+
+            if (error) {
+                statusEl.textContent = error.message;
+                statusEl.classList.add('text-danger');
+                return;
+            }
+
+            statusEl.textContent = 'Saved.';
+            statusEl.classList.add('text-accent');
+        }
+
+        init();
+    </script>
+</body>
+</html>

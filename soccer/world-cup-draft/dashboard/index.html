@@ -24,7 +24,10 @@
 
     <main>
         <h1>World Cup Country Draft</h1>
-        <p class="league-name" id="league-name">Loading…</p>
+        <p class="league-name">
+            <span id="league-name">Loading…</span>
+            <a href="/soccer/world-cup-draft/settings/" class="btn btn--ghost" style="margin-left:var(--space-3);">⚙️ League Settings</a>
+        </p>
         <div id="status-badge" class="status-badge"></div>
 
         <div class="info-strip" id="info-strip"></div>
@@ -225,9 +228,10 @@
                 ? members.map(m => `
                     <tr>
                         <td class="col-name">${escapeHtml(m.display_name)}</td>
+                        <td class="col-name">${escapeHtml(m.team_name || '—')}</td>
                         <td class="col-date">${formatDate(m.joined_at)}</td>
                     </tr>`).join('')
-                : '<tr><td colspan="2" class="empty-cell">No members have joined yet.</td></tr>';
+                : '<tr><td colspan="3" class="empty-cell">No members have joined yet.</td></tr>';
 
             const settingsBlock = isCommissioner ? `
                 <div class="commissioner-panel">
@@ -277,6 +281,7 @@
                         <thead>
                             <tr>
                                 <th>Name</th>
+                                <th>Team</th>
                                 <th>Joined</th>
                             </tr>
                         </thead>
@@ -317,6 +322,7 @@
                 ? members.map(m => `
                     <tr>
                         <td class="col-name">${escapeHtml(m.display_name)}</td>
+                        <td class="col-name">${escapeHtml(m.team_name || '—')}</td>
                         <td class="col-date">${formatDate(m.joined_at)}</td>
                     </tr>`).join('')
                 : '';
@@ -338,7 +344,7 @@
                 <div class="section">
                     <h2>Members <span class="count">${members.length}</span></h2>
                     <table class="data-table">
-                        <thead><tr><th>Name</th><th>Joined</th></tr></thead>
+                        <thead><tr><th>Name</th><th>Team</th><th>Joined</th></tr></thead>
                         <tbody>${memberRows}</tbody>
                     </table>
                 </div>
@@ -376,6 +382,7 @@
                     <tr class="${rankCls}">
                         <td class="col-rank">${i + 1}</td>
                         <td class="col-name">${escapeHtml(m.display_name)}</td>
+                        <td class="col-name">${escapeHtml(m.team_name || '—')}</td>
                         <td class="col-countries">${flags}</td>
                         <td class="col-points">${pts}</td>
                     </tr>`;
@@ -389,6 +396,7 @@
                             <tr>
                                 <th class="th-rank">#</th>
                                 <th>Name</th>
+                                <th>Team</th>
                                 <th>Countries</th>
                                 <th class="th-right">Points</th>
                             </tr>
@@ -411,7 +419,7 @@
             const [leagueRes, wcdRes, membersRes, picksRes, scoresRes] = await Promise.all([
                 supabase.from('leagues').select('*').eq('id', leagueId).single(),
                 supabase.from('wcd_leagues').select('*').eq('league_id', leagueId).maybeSingle(),
-                supabase.from('league_members').select('user_id, joined_at').eq('league_id', leagueId),
+                supabase.from('league_members').select('user_id, joined_at, team_name').eq('league_id', leagueId),
                 supabase.from('wcd_picks')
                     .select('user_id, pick_number, wc_teams(name, flag_emoji, group_letter, eliminated)')
                     .eq('league_id', leagueId),

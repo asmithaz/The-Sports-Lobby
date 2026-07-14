@@ -24,7 +24,7 @@
 
             <div class="dash-user">
                 <div class="dash-user-avatar" id="user-avatar">?</div>
-                <div class="dash-user-email" id="user-email">Loading...</div>
+                <div class="dash-user-email" id="user-name">Loading...</div>
             </div>
 
             <div class="dash-section">
@@ -55,6 +55,10 @@
                 <a href="/cfb/" class="dash-link">🏟️ College Football</a>
                 <a href="/golf/" class="dash-link">⛳ Golf</a>
                 <a href="/olympics/" class="dash-link">🏅 Olympics</a>
+            </div>
+
+            <div class="dash-section">
+                <a href="/account/" class="dash-link">⚙️ Account Settings</a>
             </div>
 
             <button class="dash-logout" onclick="logout()">Log Out</button>
@@ -101,8 +105,15 @@
             }
 
             const email = session.user.email;
-            document.getElementById('user-email').textContent = email;
-            document.getElementById('user-avatar').textContent = email[0].toUpperCase();
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('display_name')
+                .eq('id', session.user.id)
+                .single();
+
+            const displayName = profile?.display_name || email;
+            document.getElementById('user-name').textContent = displayName;
+            document.getElementById('user-avatar').textContent = displayName[0].toUpperCase();
 
             await loadLeagues(session);
         }

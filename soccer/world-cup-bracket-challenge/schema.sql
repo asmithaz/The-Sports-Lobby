@@ -70,6 +70,14 @@ CREATE TABLE IF NOT EXISTS league_members (
   UNIQUE(league_id, user_id)
 );
 
+-- Per-league team name (distinct from profiles.display_name, which is
+-- global). Added here, ahead of get_league_leaderboard() in Section 13,
+-- so a top-to-bottom re-run of this file on a fresh environment doesn't
+-- reference a column that doesn't exist yet. The write-side RPC
+-- (set_team_name) lives in Section 15, at the end of the file, since it
+-- depends on is_league_member() from soccer/world-cup-draft/schema.sql.
+ALTER TABLE league_members ADD COLUMN IF NOT EXISTS team_name text;
+
 -- Auto-add commissioner as a member when a league is created
 CREATE OR REPLACE FUNCTION add_commissioner_as_member()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
@@ -608,10 +616,15 @@ CREATE POLICY "Users manage own profile"
 -- render both the pre-tournament and post-tournament leaderboard.
 -- Only callable by authenticated members of the league.
 -- ------------------------------------------------------------
-CREATE OR REPLACE FUNCTION get_league_leaderboard(p_league_id uuid)
+-- CREATE OR REPLACE cannot change a RETURNS TABLE signature (team_name
+-- added below), so the old signature must be dropped first.
+DROP FUNCTION IF EXISTS get_league_leaderboard(uuid);
+
+CREATE FUNCTION get_league_leaderboard(p_league_id uuid)
 RETURNS TABLE (
     user_id         uuid,
     display_name    text,
+    team_name       text,
     picks_submitted boolean,
     champion_name   text,
     champion_flag   text,
@@ -640,6 +653,8 @@ BEGIN
         lm.user_id,
 
         COALESCE(p.display_name, lm.user_id::text)::text AS display_name,
+
+        lm.team_name,
 
         -- Did this user submit any bracket picks?
         EXISTS(
@@ -781,3 +796,40 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION join_league_by_invite_code(text) TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 15. TEAM NAMES (write-side RPC)
+-- league_members.team_name itself is added in Section 2, above, so it's
+-- available to get_league_leaderboard() in Section 13. Writes go through
+-- set_team_name() rather than a direct UPDATE policy, consistent with how
+-- other per-member writes are gated elsewhere (e.g. fcp_picks,
+-- wc_group_picks). Reuses is_league_member(), already defined in
+-- soccer/world-cup-draft/schema.sql Section 15.
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION set_team_name(p_league_id uuid, p_team_name text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF NOT is_league_member(p_league_id) THEN
+        RAISE EXCEPTION 'Not a member of this league';
+    END IF;
+
+    IF p_team_name IS NULL OR length(trim(p_team_name)) = 0 THEN
+        RAISE EXCEPTION 'Team name cannot be empty';
+    END IF;
+
+    IF length(p_team_name) > 30 THEN
+        RAISE EXCEPTION 'Team name must be 30 characters or fewer';
+    END IF;
+
+    UPDATE league_members
+    SET    team_name = trim(p_team_name)
+    WHERE  league_id = p_league_id AND user_id = auth.uid();
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION set_team_name(uuid, text) TO authenticated;

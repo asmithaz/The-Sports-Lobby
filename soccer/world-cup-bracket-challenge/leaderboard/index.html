@@ -19,6 +19,7 @@
         <div class="nav-links">
             <a href="/soccer/world-cup-bracket-challenge/picks/" class="nav-link">Group Picks</a>
             <a href="/soccer/world-cup-bracket-challenge/bracket/" class="nav-link">Bracket</a>
+            <a href="/soccer/world-cup-bracket-challenge/settings/" class="nav-link">Settings</a>
         </div>
     </nav>
 
@@ -47,6 +48,7 @@
                 <tr>
                     <td class="col-rank">${i + 1}</td>
                     <td class="col-name">${escapeHtml(r.display_name)}</td>
+                    <td class="col-name">${escapeHtml(r.team_name || '—')}</td>
                     <td class="col-submitted ${r.picks_submitted ? 'yes' : 'no'}">
                         ${r.picks_submitted ? '✓' : '—'}
                     </td>
@@ -62,6 +64,7 @@
                         <tr>
                             <th style="text-align:center">#</th>
                             <th>Username</th>
+                            <th>Team</th>
                             <th style="text-align:center">Bracket Submitted</th>
                         </tr>
                     </thead>
@@ -78,6 +81,7 @@
                 <tr class="${i === 0 ? 'rank-gold' : i === 1 ? 'rank-silver' : i === 2 ? 'rank-bronze' : ''}">
                     <td class="col-rank">${i + 1}</td>
                     <td class="col-name">${escapeHtml(r.display_name)}</td>
+                    <td class="col-name">${escapeHtml(r.team_name || '—')}</td>
                     <td class="col-champion">
                         ${r.champion_flag ? `<span class="flag">${r.champion_flag}</span>` : ''}
                         ${escapeHtml(r.champion_name)}
@@ -94,6 +98,7 @@
                         <tr>
                             <th style="text-align:center">#</th>
                             <th>Username</th>
+                            <th>Team</th>
                             <th>Champion Pick</th>
                             <th style="text-align:right">Correct Picks</th>
                             <th style="text-align:right">Points</th>

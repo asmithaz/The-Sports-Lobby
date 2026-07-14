@@ -24,7 +24,10 @@
 
     <main>
         <h1>FedEx Cup Playoffs Fantasy Golf</h1>
-        <p class="league-name" id="league-name">Loading…</p>
+        <p class="league-name">
+            <span id="league-name">Loading…</span>
+            <a href="/golf/fedex-playoffs/settings/" class="btn btn--ghost" style="margin-left:var(--space-3);">⚙️ League Settings</a>
+        </p>
 
         <div class="info-strip" id="info-strip"></div>
 
@@ -266,9 +269,10 @@
                 ? members.map(m => `
                     <tr>
                         <td class="col-name">${escapeHtml(m.display_name)}</td>
+                        <td class="col-name">${escapeHtml(m.team_name || '—')}</td>
                         <td class="col-date">${formatDate(m.joined_at)}</td>
                     </tr>`).join('')
-                : '<tr><td colspan="2" class="empty-cell">No members have joined yet.</td></tr>';
+                : '<tr><td colspan="3" class="empty-cell">No members have joined yet.</td></tr>';
 
             const settingsBlock = isCommissioner ? `
                 <div class="commissioner-panel">
@@ -318,6 +322,7 @@
                         <thead>
                             <tr>
                                 <th>Name</th>
+                                <th>Team</th>
                                 <th>Joined</th>
                             </tr>
                         </thead>
@@ -358,6 +363,7 @@
                 ? members.map(m => `
                     <tr>
                         <td class="col-name">${escapeHtml(m.display_name)}</td>
+                        <td class="col-name">${escapeHtml(m.team_name || '—')}</td>
                         <td class="col-date">${formatDate(m.joined_at)}</td>
                     </tr>`).join('')
                 : '';
@@ -379,7 +385,7 @@
                 <div class="section">
                     <h2>Members <span class="count">${members.length}</span></h2>
                     <table class="data-table">
-                        <thead><tr><th>Name</th><th>Joined</th></tr></thead>
+                        <thead><tr><th>Name</th><th>Team</th><th>Joined</th></tr></thead>
                         <tbody>${memberRows}</tbody>
                     </table>
                 </div>
@@ -404,6 +410,7 @@
                     <tr class="${rankCls}${selectedCls} clickable-row" data-user-id="${escapeHtml(m.user_id)}" data-user-name="${escapeHtml(m.display_name)}">
                         <td class="col-rank">${i + 1}</td>
                         <td class="col-name">${escapeHtml(m.display_name)}</td>
+                        <td class="col-name">${escapeHtml(m.team_name || '—')}</td>
                         <td class="col-points">${pts}</td>
                     </tr>`;
             }).join('');
@@ -416,6 +423,7 @@
                             <tr>
                                 <th class="th-rank">#</th>
                                 <th class="th-center">Name</th>
+                                <th class="th-center">Team</th>
                                 <th class="th-center">Points</th>
                             </tr>
                         </thead>
@@ -531,7 +539,7 @@
 
         async function loadAndRenderStandings(leagueId) {
             const [membersRes, scoresRes, leagueRes] = await Promise.all([
-                supabase.from('league_members').select('user_id, joined_at').eq('league_id', leagueId),
+                supabase.from('league_members').select('user_id, joined_at, team_name').eq('league_id', leagueId),
                 supabase.from('fcp_scores').select('user_id, total_points').eq('league_id', leagueId),
                 supabase.from('leagues').select('id, commissioner_id').eq('id', leagueId).single()
             ]);
@@ -571,7 +579,7 @@
             const [leagueRes, fcpRes, membersRes] = await Promise.all([
                 supabase.from('leagues').select('*').eq('id', leagueId).single(),
                 supabase.from('fcp_leagues').select('*').eq('league_id', leagueId).maybeSingle(),
-                supabase.from('league_members').select('user_id, joined_at').eq('league_id', leagueId)
+                supabase.from('league_members').select('user_id, joined_at, team_name').eq('league_id', leagueId)
             ]);
 
             if (leagueRes.error) {

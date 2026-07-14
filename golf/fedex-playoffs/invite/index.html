@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/auth.js"></script>
+    <script src="/js/email-templates.js"></script>
 </head>
 <body>
 
@@ -193,9 +194,42 @@
             const container = document.getElementById('email-tag-container');
             const tag = document.createElement('span');
             tag.className = 'email-tag';
+            tag.dataset.email = email;
             tag.innerHTML = `${email} <button type="button" onclick="this.parentElement.remove()" aria-label="Remove">&times;</button>`;
             container.insertBefore(tag, emailInput);
             emailInput.value = '';
+        }
+
+        function getInviteEmails() {
+            if (emailInput.value.trim()) {
+                addEmailTag(emailInput.value.trim().replace(/,$/, ''));
+            }
+            return [...document.querySelectorAll('#email-tag-container .email-tag')].map(t => t.dataset.email);
+        }
+
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.appendChild(document.createTextNode(str ?? ''));
+            return d.innerHTML;
+        }
+
+        async function sendInviteEmails(emails, leagueName, inviteLink) {
+            const subject = `You're invited to join ${leagueName} on The Sports Lobby`;
+            const body = `
+                <p>You've been invited to join <strong>${escapeHtml(leagueName)}</strong>, a FedEx Cup Playoffs fantasy golf league on The Sports Lobby.</p>
+                ${emailButton(inviteLink, 'Join League')}
+                <p style="margin-top:16px;font-size:12px;">Or copy this link: ${escapeHtml(inviteLink)}</p>
+            `;
+            const html = wrapEmail("You're invited!", body);
+
+            const results = await Promise.allSettled(emails.map(to =>
+                supabase.functions.invoke('send-email', { body: { to, subject, html } })
+            ));
+            results.forEach((r, i) => {
+                if (r.status === 'rejected' || r.value?.error) {
+                    console.error('Failed to send invite to', emails[i], r.reason ?? r.value?.error);
+                }
+            });
         }
 
         function copyLink() {
@@ -252,6 +286,17 @@
                 btn.textContent = 'Launch League';
                 btn.disabled = false;
                 return;
+            }
+
+            const inviteMethod = document.querySelector('input[name="invite-method"]:checked').value;
+            if (inviteMethod === 'email') {
+                const emails = getInviteEmails();
+                if (emails.length) {
+                    btn.textContent = 'Sending invites…';
+                    const leagueName = sessionStorage.getItem('league_name') || 'a league';
+                    const inviteLink = document.getElementById('invite-link').value;
+                    await sendInviteEmails(emails, leagueName, inviteLink);
+                }
             }
 
             sessionStorage.setItem('draft_time', draftTimeISO);

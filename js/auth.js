@@ -28,6 +28,12 @@ async function renderNav() {
         dashboard.textContent = 'Dashboard';
         navLinks.appendChild(dashboard);
 
+        const account = document.createElement('a');
+        account.href = '/account/';
+        account.className = 'nav-link';
+        account.textContent = 'Account';
+        navLinks.appendChild(account);
+
         const logoutLink = document.createElement('a');
         logoutLink.href = '#';
         logoutLink.className = 'nav-link';
