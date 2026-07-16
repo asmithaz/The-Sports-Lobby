@@ -168,6 +168,12 @@ function renderLobby() {
   document.getElementById('lobby-commissioner-controls').hidden = !isCommissioner;
   document.getElementById('lobby-save-status').textContent = '';
 
+  const lobbySecondsInput = document.getElementById('lobby-pick-seconds');
+  if (isCommissioner && document.activeElement !== lobbySecondsInput) {
+    lobbySecondsInput.value = fcpLeague.pick_seconds;
+  }
+  document.getElementById('lobby-timer-status').textContent = '';
+
   const list = document.getElementById('lobby-order-list');
   list.innerHTML = lobbyOrderIds.map((uid, i) => `
     <li class="order-item">
@@ -207,6 +213,46 @@ async function saveLobbyOrder() {
   }
   statusEl.textContent = 'Saved!';
   await loadAll();
+}
+
+async function savePickSeconds(input, statusEl, onError) {
+  const seconds = parseInt(input.value, 10);
+  if (!Number.isFinite(seconds) || seconds < 10 || seconds > 600) {
+    const msg = 'Enter a value between 10 and 600 seconds.';
+    if (statusEl) statusEl.textContent = msg; else onError?.(msg);
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = 'Saving…';
+  const { error } = await supabase.rpc('fcp_set_pick_seconds', {
+    p_league_id: leagueId,
+    p_pick_seconds: seconds
+  });
+
+  if (error) {
+    if (statusEl) statusEl.textContent = 'Failed: ' + error.message; else onError?.(error.message);
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = 'Saved!';
+  await loadAll();
+}
+
+function saveLobbyPickSeconds() {
+  return savePickSeconds(
+    document.getElementById('lobby-pick-seconds'),
+    document.getElementById('lobby-timer-status')
+  );
+}
+
+function saveDraftPickSeconds() {
+  const btn = document.getElementById('draft-save-timer');
+  btn.disabled = true;
+  return savePickSeconds(
+    document.getElementById('draft-pick-seconds'),
+    null,
+    msg => alert(msg)
+  ).finally(() => { btn.disabled = false; });
 }
 
 function startLobbyCountdown() {
@@ -274,6 +320,13 @@ function renderDraftView() {
   pauseBtn.hidden = !isCommissioner;
   pauseBtn.disabled = false;
   pauseBtn.textContent = isPaused ? 'Resume Draft' : 'Pause Draft';
+
+  const timerAdjust = document.getElementById('timer-adjust-controls');
+  timerAdjust.hidden = !isCommissioner;
+  const draftSecondsInput = document.getElementById('draft-pick-seconds');
+  if (isCommissioner && document.activeElement !== draftSecondsInput) {
+    draftSecondsInput.value = fcpLeague.pick_seconds;
+  }
 
   renderRosterStatus();
 
@@ -490,6 +543,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!leagueId) { window.location.href = '/golf/index.html'; return; }
 
   document.getElementById('lobby-save-order').addEventListener('click', saveLobbyOrder);
+  document.getElementById('lobby-save-timer').addEventListener('click', saveLobbyPickSeconds);
+  document.getElementById('draft-save-timer').addEventListener('click', saveDraftPickSeconds);
   document.getElementById('pause-toggle-btn').addEventListener('click', togglePause);
   document.getElementById('chat-form').addEventListener('submit', sendChatMessage);
 

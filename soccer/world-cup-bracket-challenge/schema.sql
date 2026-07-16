@@ -753,7 +753,23 @@ GRANT EXECUTE ON FUNCTION get_league_leaderboard(uuid) TO authenticated;
 -- Used by /join/?code=<prefix>-<code> (shared across all games).
 -- SECURITY DEFINER so it can look up private leagues (which RLS
 -- hides from non-members) and insert the caller as a member.
+--
+-- Rate limited via invite_code_attempts: since this function is
+-- callable directly through the Supabase REST API (not just the UI),
+-- an authenticated user could otherwise script requests to brute-force
+-- another league's invite code. Every call — success or failure —
+-- logs an attempt; more than 10 in a rolling 5-minute window blocks
+-- further attempts for that user.
 -- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS invite_code_attempts (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    attempted_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_invite_code_attempts_user_time
+    ON invite_code_attempts(user_id, attempted_at);
+
 DROP FUNCTION IF EXISTS join_league_by_invite_code(text);
 
 CREATE OR REPLACE FUNCTION join_league_by_invite_code(p_invite_code text)
@@ -762,13 +778,24 @@ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-    v_league  leagues;
-    v_user_id uuid;
+    v_league          leagues;
+    v_user_id         uuid;
+    v_recent_attempts int;
 BEGIN
     v_user_id := auth.uid();
     IF v_user_id IS NULL THEN
         RAISE EXCEPTION 'Must be logged in to join a league';
     END IF;
+
+    SELECT count(*) INTO v_recent_attempts
+    FROM   invite_code_attempts
+    WHERE  user_id = v_user_id AND attempted_at > now() - interval '5 minutes';
+
+    IF v_recent_attempts >= 10 THEN
+        RAISE EXCEPTION 'Too many invite code attempts. Please wait a few minutes and try again.';
+    END IF;
+
+    INSERT INTO invite_code_attempts (user_id) VALUES (v_user_id);
 
     -- Case-insensitive match (invite codes are stored uppercase, links lowercase)
     SELECT * INTO v_league
@@ -796,6 +823,11 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION join_league_by_invite_code(text) TO authenticated;
+
+ALTER TABLE invite_code_attempts ENABLE ROW LEVEL SECURITY;
+-- No SELECT/INSERT policies for anon/authenticated: this table is only
+-- ever written to via the SECURITY DEFINER function above, which runs
+-- as the table owner and bypasses RLS.
 
 
 -- ------------------------------------------------------------

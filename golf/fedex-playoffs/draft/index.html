@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/js/supabase.js"></script>
+  <script src="/js/error-logging.js"></script>
   <script src="/js/auth.js"></script>
 </head>
 <body>
@@ -59,13 +60,21 @@
           <h3>Draft Order</h3>
           <ol class="order-list" id="lobby-order-list"></ol>
 
-          <div id="lobby-commissioner-controls" class="lobby-controls" hidden>
-            <p class="comm-note">
-              Reorder drafters with the arrows, then save. If you don't change
-              anything, the random order above will be used.
-            </p>
-            <button class="btn-primary" id="lobby-save-order">Save Order</button>
-            <span class="save-status" id="lobby-save-status"></span>
+          <div id="lobby-commissioner-controls" hidden>
+            <div class="lobby-controls">
+              <p class="comm-note">
+                Reorder drafters with the arrows, then save. If you don't change
+                anything, the random order above will be used.
+              </p>
+              <button class="btn-primary" id="lobby-save-order">Save Order</button>
+              <span class="save-status" id="lobby-save-status"></span>
+            </div>
+            <div class="lobby-controls timer-row">
+              <label for="lobby-pick-seconds" class="comm-note timer-label">Time per pick (seconds):</label>
+              <input type="number" id="lobby-pick-seconds" class="timer-input" min="10" max="600" step="5" />
+              <button class="btn-sm" id="lobby-save-timer">Save</button>
+              <span class="save-status" id="lobby-timer-status"></span>
+            </div>
           </div>
         </div>
       </div>
@@ -88,6 +97,10 @@
           <span id="pick-banner-text"></span>
           <span class="pick-timer" id="pick-timer"></span>
           <button class="btn-pause" id="pause-toggle-btn" hidden></button>
+          <span class="timer-adjust" id="timer-adjust-controls" hidden>
+            <input type="number" id="draft-pick-seconds" class="timer-input" min="10" max="600" step="5" />
+            <button class="btn-pause" id="draft-save-timer">Set Clock</button>
+          </span>
         </div>
 
         <div class="roster-status" id="roster-status"></div>
@@ -151,7 +164,13 @@
     </div>
   </main>
 
-  <footer class="site-footer">2026 The Sports Lobby. All rights reserved.</footer>
+  <footer class="site-footer">
+      <span>2026 The Sports Lobby. All rights reserved.</span>
+      <span class="footer-sep">&middot;</span>
+      <a href="/legal/terms.html" class="footer-link">Terms</a>
+      <span class="footer-sep">&middot;</span>
+      <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+  </footer>
 
   <script src="draft.js"></script>
 </body>

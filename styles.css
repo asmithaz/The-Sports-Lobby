@@ -129,3 +129,35 @@
     margin-bottom: var(--space-2);
     line-height: var(--leading-normal);
 }
+
+@media (max-width: 700px) {
+    .hero-logo {
+        max-width: 260px;
+    }
+
+    #format-tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+    }
+
+    #format-tabs .tab {
+        white-space: nowrap;
+    }
+
+    .tab-layout {
+        flex-direction: column;
+    }
+
+    .tab-left {
+        flex: 1 1 auto;
+    }
+
+    .tab-right {
+        border-left: none;
+        padding-left: 0;
+        border-top: 1px solid var(--c-border);
+        padding-top: var(--space-4);
+        margin-top: var(--space-4);
+    }
+}

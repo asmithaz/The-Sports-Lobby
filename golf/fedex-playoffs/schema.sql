@@ -666,6 +666,62 @@ GRANT EXECUTE ON FUNCTION fcp_resume_draft(uuid) TO authenticated;
 
 
 -- ------------------------------------------------------------
+-- 10.6c fcp_set_pick_seconds
+-- Commissioner-only. Lets the commissioner change the per-pick clock
+-- before or during the draft (mirrors the pause/resume time-banking
+-- above). If a pick is currently in progress, its deadline shifts by
+-- the same delta as the new setting so the change applies immediately
+-- rather than only to future picks; if the draft is paused, the banked
+-- pick_remaining_seconds is rescaled instead so fcp_resume_draft picks
+-- it up correctly.
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fcp_set_pick_seconds(p_league_id uuid, p_pick_seconds int)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_old_seconds int;
+  v_status      text;
+  v_paused      boolean;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM leagues WHERE id = p_league_id AND commissioner_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Only the commissioner can change the pick clock';
+  END IF;
+
+  IF p_pick_seconds IS NULL OR p_pick_seconds < 10 OR p_pick_seconds > 600 THEN
+    RAISE EXCEPTION 'Pick clock must be between 10 and 600 seconds';
+  END IF;
+
+  SELECT pick_seconds, draft_status, (paused_at IS NOT NULL)
+  INTO v_old_seconds, v_status, v_paused
+  FROM fcp_leagues WHERE league_id = p_league_id FOR UPDATE;
+
+  IF v_status = 'active' AND NOT v_paused THEN
+    UPDATE fcp_leagues
+    SET pick_seconds  = p_pick_seconds,
+        pick_deadline = GREATEST(
+          now() + interval '5 seconds',
+          pick_deadline + ((p_pick_seconds - v_old_seconds) * interval '1 second')
+        )
+    WHERE league_id = p_league_id;
+  ELSIF v_status = 'active' AND v_paused THEN
+    UPDATE fcp_leagues
+    SET pick_seconds           = p_pick_seconds,
+        pick_remaining_seconds = GREATEST(5, COALESCE(pick_remaining_seconds, 0) + (p_pick_seconds - v_old_seconds))
+    WHERE league_id = p_league_id;
+  ELSE
+    UPDATE fcp_leagues SET pick_seconds = p_pick_seconds WHERE league_id = p_league_id;
+  END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION fcp_set_pick_seconds(uuid, int) TO authenticated;
+
+
+-- ------------------------------------------------------------
 -- 10.7 fcp_recalculate_scores
 -- Recomputes fcp_scores for a league from fcp_picks + fcp_event_results.
 -- Called by the dashboard's "Refresh Scores" button (after the

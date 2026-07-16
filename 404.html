@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Page not found — The Sports Lobby" />
+    <title>Page Not Found — The Sports Lobby</title>
+
+    <link rel="icon" href="/favicon.ico" />
+
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+
+    <style>
+        .error-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: var(--space-8) var(--space-5);
+        }
+
+        .error-code {
+            font-family: var(--font-mono);
+            font-size: 72px;
+            font-weight: var(--weight-bold);
+            color: var(--c-accent);
+            line-height: 1;
+            margin-bottom: var(--space-4);
+        }
+
+        .error-text {
+            color: var(--c-text-secondary);
+            font-size: var(--text-md);
+            margin-bottom: var(--space-6);
+            max-width: 420px;
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">The Sports Lobby</a>
+        <div class="nav-links">
+            <a href="/login/index.html" class="nav-link">Login</a>
+            <a href="/login/signup.html" class="nav-link">Signup</a>
+        </div>
+    </nav>
+
+    <main class="error-wrapper">
+        <div class="error-code">404</div>
+        <h1 class="page-title mb-2">Page Not Found</h1>
+        <p class="error-text">The page you're looking for doesn't exist or may have been moved.</p>
+        <a href="/index.html" class="btn btn--primary">Back to Home</a>
+    </main>
+
+    <footer class="site-footer">
+        <span>2026 The Sports Lobby. All rights reserved.</span>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/terms.html" class="footer-link">Terms</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+    </footer>
+
+</body>
+</html>

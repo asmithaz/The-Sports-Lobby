@@ -273,11 +273,36 @@ h1 {
     cursor: default;
 }
 
-.lobby-controls { display: flex; align-items: center; gap: var(--space-3); }
+.lobby-controls { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+
+.timer-row { margin-top: var(--space-3); }
+
+.timer-label { margin: 0; }
 
 .save-status {
     font-size: var(--text-sm);
     color: var(--c-text-secondary);
+}
+
+.timer-input {
+    width: 70px;
+    padding: 3px var(--space-2);
+    background: var(--c-surface);
+    color: var(--c-text-primary);
+    border: 0.5px solid var(--c-border-strong);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-family: var(--font);
+    text-align: center;
+    outline: none;
+}
+
+.timer-input:focus { border-color: var(--c-accent-border); }
+
+.timer-adjust {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
 }
 
 /* ── Draft two-column layout ── */

@@ -430,11 +430,14 @@ body {
 .table-wrap {
   border: 0.5px solid var(--c-border);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .data-table {
   width: 100%;
+  min-width: 480px;
   border-collapse: collapse;
   font-size: var(--text-sm);
 }
@@ -694,10 +697,25 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+  gap: var(--space-2);
   color: var(--c-text-muted);
   font-size: var(--text-sm);
   padding: var(--space-8) 0;
   margin-top: auto;
+}
+
+.footer-sep {
+  color: var(--c-border-strong);
+}
+
+.footer-link {
+  color: var(--c-text-muted);
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+.footer-link:hover {
+  color: var(--c-text-secondary);
 }
 
 
@@ -1284,4 +1302,65 @@ body {
   color: var(--c-text-secondary);
   font-size: var(--text-md);
   margin-bottom: var(--space-5);
+}
+
+
+/* ============================================================
+   MOBILE — shared component adjustments
+   ============================================================ */
+
+@media (max-width: 700px) {
+  .nav {
+    gap: var(--space-3);
+    padding: 0 var(--space-3);
+  }
+
+  .nav-links {
+    gap: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav-link {
+    padding: var(--space-1) var(--space-2);
+    white-space: nowrap;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .status-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .meta-row {
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .meta-item {
+    text-align: left;
+  }
+
+  .datetime-row,
+  .link-row,
+  .tier-row {
+    flex-wrap: wrap;
+  }
+
+  .dash-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .rules-grid,
+  .card-grid {
+    grid-template-columns: 1fr;
+  }
 }
