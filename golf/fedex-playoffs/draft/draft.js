@@ -7,6 +7,7 @@
 
 let currentUserId = null;
 let leagueId      = null;
+let currentSeason = null; // leagues.current_season — resolved once in loadAll()
 
 let league     = null;  // leagues row
 let fcpLeague  = null;  // fcp_leagues row (roster_mode, roster_size, tier1_count..3_count, draft state)
@@ -85,15 +86,17 @@ function tierCountsForUser(userId) {
 
 // ─── Data loading ───────────────────────────────────────────────────────
 async function loadAll() {
-  const [leagueRes, fcpRes, orderRes, golfersRes, picksRes] = await Promise.all([
-    supabase.from('leagues').select('*').eq('id', leagueId).single(),
-    supabase.from('fcp_leagues').select('*').eq('league_id', leagueId).maybeSingle(),
-    supabase.from('fcp_draft_order').select('user_id, position').eq('league_id', leagueId).order('position'),
+  const leagueRes = await supabase.from('leagues').select('*').eq('id', leagueId).single();
+  league = leagueRes.data;
+  currentSeason = league?.current_season;
+
+  const [fcpRes, orderRes, golfersRes, picksRes] = await Promise.all([
+    supabase.from('fcp_leagues').select('*').eq('league_id', leagueId).eq('season', currentSeason).maybeSingle(),
+    supabase.from('fcp_draft_order').select('user_id, position').eq('league_id', leagueId).eq('season', currentSeason).order('position'),
     supabase.from('golfers').select('id, name, fedex_rank, tier').order('fedex_rank'),
-    supabase.from('fcp_picks').select('user_id, golfer_id, pick_number, tier_slot').eq('league_id', leagueId).order('pick_number')
+    supabase.from('fcp_picks').select('user_id, golfer_id, pick_number, tier_slot').eq('league_id', leagueId).eq('season', currentSeason).order('pick_number')
   ]);
 
-  league     = leagueRes.data;
   fcpLeague  = fcpRes.data;
   draftOrder = orderRes.data ?? [];
   golfers    = golfersRes.data ?? [];
@@ -493,6 +496,7 @@ async function loadChatMessages() {
     .from('fcp_draft_messages')
     .select('id, user_id, body, created_at')
     .eq('league_id', leagueId)
+    .eq('season', currentSeason)
     .order('created_at', { ascending: true })
     .limit(100);
 
@@ -509,7 +513,7 @@ async function sendChatMessage(e) {
 
   const { error } = await supabase
     .from('fcp_draft_messages')
-    .insert({ league_id: leagueId, user_id: currentUserId, body });
+    .insert({ league_id: leagueId, season: currentSeason, user_id: currentUserId, body });
   if (error) alert(error.message);
 }
 
@@ -517,7 +521,10 @@ function subscribeChatRealtime() {
   supabase
     .channel(`fcp-chat-${leagueId}`)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fcp_draft_messages', filter: `league_id=eq.${leagueId}` },
-      payload => appendChatMessage(payload.new))
+      // Realtime filters only support one column condition, so guard the
+      // season client-side — otherwise a stale tab from a prior season
+      // could leak a mismatched message into the current chat view.
+      payload => { if (payload.new.season === currentSeason) appendChatMessage(payload.new); })
     .subscribe();
 }
 

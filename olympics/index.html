@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -14,6 +14,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
@@ -33,7 +34,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Country Draft Challenge</span>
-                    <button class="btn btn--primary" onclick="startLeague('/olympics/country-draft/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=Country%20Draft%20Challenge&sport=Olympics&back=/olympics/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Draft countries in an auction or snake draft.</li>
@@ -46,7 +47,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Medal Pick 'em</span>
-                    <button class="btn btn--primary" onclick="startLeague('/olympics/medal-pickem/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=Medal%20Pick%20'em&sport=Olympics&back=/olympics/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Select Winning Countries for every event, pre set event lists, or custom event lists.</li>
@@ -65,6 +66,10 @@
         <a href="/legal/terms.html" class="footer-link">Terms</a>
         <span class="footer-sep">&middot;</span>
         <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
     </footer>
 
 </body>

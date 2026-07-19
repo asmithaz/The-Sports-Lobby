@@ -58,6 +58,22 @@ CREATE TABLE IF NOT EXISTS fcp_leagues (
 ALTER TABLE fcp_leagues ADD COLUMN IF NOT EXISTS paused_at timestamptz;
 ALTER TABLE fcp_leagues ADD COLUMN IF NOT EXISTS pick_remaining_seconds int;
 
+-- Idempotent for installs that ran this schema before the fcp-draft-cron
+-- Edge Function existed. Set once the "30 minutes before draft_time" email
+-- has gone out, so the cron doesn't re-send it on every run.
+ALTER TABLE fcp_leagues ADD COLUMN IF NOT EXISTS draft_reminder_sent_at timestamptz;
+
+-- Idempotent for installs that ran this schema before seasons existed.
+-- `season` is a calendar year (2026, 2027, …) — a league gets a new
+-- fcp_leagues row each time fcp_start_new_season() runs, so it can be
+-- reactivated into a fresh draft while prior seasons stay queryable as
+-- permanent history. PK widens accordingly.
+ALTER TABLE fcp_leagues ADD COLUMN IF NOT EXISTS season int NOT NULL
+  DEFAULT extract(year from now())::int;
+ALTER TABLE fcp_leagues DROP CONSTRAINT IF EXISTS fcp_leagues_pkey;
+ALTER TABLE fcp_leagues DROP CONSTRAINT IF EXISTS fcp_leagues_league_id_season_pkey;
+ALTER TABLE fcp_leagues ADD CONSTRAINT fcp_leagues_league_id_season_pkey PRIMARY KEY (league_id, season);
+
 
 -- ------------------------------------------------------------
 -- 3. DRAFT ORDER
@@ -71,6 +87,18 @@ CREATE TABLE IF NOT EXISTS fcp_draft_order (
   UNIQUE(league_id, user_id),
   UNIQUE(league_id, position)
 );
+
+-- Idempotent for installs that ran this schema before seasons existed.
+ALTER TABLE fcp_draft_order ADD COLUMN IF NOT EXISTS season int NOT NULL
+  DEFAULT extract(year from now())::int;
+ALTER TABLE fcp_draft_order DROP CONSTRAINT IF EXISTS fcp_draft_order_league_id_user_id_key;
+ALTER TABLE fcp_draft_order DROP CONSTRAINT IF EXISTS fcp_draft_order_league_id_season_user_id_key;
+ALTER TABLE fcp_draft_order ADD CONSTRAINT fcp_draft_order_league_id_season_user_id_key
+  UNIQUE (league_id, season, user_id);
+ALTER TABLE fcp_draft_order DROP CONSTRAINT IF EXISTS fcp_draft_order_league_id_position_key;
+ALTER TABLE fcp_draft_order DROP CONSTRAINT IF EXISTS fcp_draft_order_league_id_season_position_key;
+ALTER TABLE fcp_draft_order ADD CONSTRAINT fcp_draft_order_league_id_season_position_key
+  UNIQUE (league_id, season, position);
 
 
 -- ------------------------------------------------------------
@@ -95,6 +123,18 @@ CREATE TABLE IF NOT EXISTS fcp_picks (
   UNIQUE(league_id, pick_number)
 );
 
+-- Idempotent for installs that ran this schema before seasons existed.
+ALTER TABLE fcp_picks ADD COLUMN IF NOT EXISTS season int NOT NULL
+  DEFAULT extract(year from now())::int;
+ALTER TABLE fcp_picks DROP CONSTRAINT IF EXISTS fcp_picks_league_id_golfer_id_key;
+ALTER TABLE fcp_picks DROP CONSTRAINT IF EXISTS fcp_picks_league_id_season_golfer_id_key;
+ALTER TABLE fcp_picks ADD CONSTRAINT fcp_picks_league_id_season_golfer_id_key
+  UNIQUE (league_id, season, golfer_id);
+ALTER TABLE fcp_picks DROP CONSTRAINT IF EXISTS fcp_picks_league_id_pick_number_key;
+ALTER TABLE fcp_picks DROP CONSTRAINT IF EXISTS fcp_picks_league_id_season_pick_number_key;
+ALTER TABLE fcp_picks ADD CONSTRAINT fcp_picks_league_id_season_pick_number_key
+  UNIQUE (league_id, season, pick_number);
+
 
 -- ------------------------------------------------------------
 -- 5. EVENT RESULTS
@@ -116,6 +156,17 @@ CREATE TABLE IF NOT EXISTS fcp_event_results (
   PRIMARY KEY (golfer_id, event)
 );
 
+-- Idempotent for installs that ran this schema before seasons existed.
+-- Season-scoping this table is what stops next year's ESPN sync from
+-- silently overwriting this year's finished results in place — see
+-- supabase/functions/fcp-sync-scores/index.ts.
+ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS season int NOT NULL
+  DEFAULT extract(year from now())::int;
+ALTER TABLE fcp_event_results DROP CONSTRAINT IF EXISTS fcp_event_results_pkey;
+ALTER TABLE fcp_event_results DROP CONSTRAINT IF EXISTS fcp_event_results_golfer_id_event_season_pkey;
+ALTER TABLE fcp_event_results ADD CONSTRAINT fcp_event_results_golfer_id_event_season_pkey
+  PRIMARY KEY (golfer_id, event, season);
+
 
 -- ------------------------------------------------------------
 -- 6. SCORES
@@ -130,6 +181,17 @@ CREATE TABLE IF NOT EXISTS fcp_scores (
   last_updated timestamptz DEFAULT now(),
   PRIMARY KEY(league_id, user_id)
 );
+
+-- Idempotent for installs that ran this schema before seasons existed.
+-- Widening the PK to include season is what preserves a prior season's
+-- final standings instead of the next season's recalculation overwriting
+-- them in place.
+ALTER TABLE fcp_scores ADD COLUMN IF NOT EXISTS season int NOT NULL
+  DEFAULT extract(year from now())::int;
+ALTER TABLE fcp_scores DROP CONSTRAINT IF EXISTS fcp_scores_pkey;
+ALTER TABLE fcp_scores DROP CONSTRAINT IF EXISTS fcp_scores_league_id_season_user_id_pkey;
+ALTER TABLE fcp_scores ADD CONSTRAINT fcp_scores_league_id_season_user_id_pkey
+  PRIMARY KEY (league_id, season, user_id);
 
 
 -- ------------------------------------------------------------
@@ -251,8 +313,12 @@ RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+  v_season int;
 BEGIN
-  IF EXISTS (SELECT 1 FROM fcp_draft_order WHERE league_id = p_league_id) THEN
+  SELECT current_season INTO v_season FROM leagues WHERE id = p_league_id;
+
+  IF EXISTS (SELECT 1 FROM fcp_draft_order WHERE league_id = p_league_id AND season = v_season) THEN
     RETURN;
   END IF;
 
@@ -262,8 +328,8 @@ BEGIN
     RAISE EXCEPTION 'Not a member of this league';
   END IF;
 
-  INSERT INTO fcp_draft_order (league_id, user_id, position)
-  SELECT p_league_id, user_id, row_number() OVER (ORDER BY random())
+  INSERT INTO fcp_draft_order (league_id, season, user_id, position)
+  SELECT p_league_id, v_season, user_id, row_number() OVER (ORDER BY random())
   FROM league_members
   WHERE league_id = p_league_id;
 END;
@@ -281,6 +347,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
+  v_season       int;
   v_status       text;
   v_draft_time   timestamptz;
   v_member_count int;
@@ -292,8 +359,10 @@ BEGIN
     RAISE EXCEPTION 'Only the commissioner can set the draft order';
   END IF;
 
+  SELECT current_season INTO v_season FROM leagues WHERE id = p_league_id;
+
   SELECT draft_status, draft_time INTO v_status, v_draft_time
-  FROM fcp_leagues WHERE league_id = p_league_id;
+  FROM fcp_leagues WHERE league_id = p_league_id AND season = v_season;
 
   IF v_status IS DISTINCT FROM 'pending' OR v_draft_time IS NULL OR now() >= v_draft_time THEN
     RAISE EXCEPTION 'Draft order can only be changed before the draft starts';
@@ -307,12 +376,13 @@ BEGIN
   PERFORM fcp_ensure_draft_order(p_league_id);
 
   -- Shift existing positions out of the way first so the per-row updates
-  -- below never collide with the UNIQUE(league_id, position) constraint.
-  UPDATE fcp_draft_order SET position = position + v_member_count WHERE league_id = p_league_id;
+  -- below never collide with the UNIQUE(league_id, season, position) constraint.
+  UPDATE fcp_draft_order SET position = position + v_member_count
+  WHERE league_id = p_league_id AND season = v_season;
 
   FOR i IN 1..v_member_count LOOP
     UPDATE fcp_draft_order SET position = i
-    WHERE league_id = p_league_id AND user_id = p_user_ids[i];
+    WHERE league_id = p_league_id AND season = v_season AND user_id = p_user_ids[i];
   END LOOP;
 END;
 $$;
@@ -324,7 +394,11 @@ GRANT EXECUTE ON FUNCTION fcp_set_draft_order(uuid, uuid[]) TO authenticated;
 -- 10.2 Snake order helper
 -- Returns the user_id expected to make the given global pick number.
 -- ------------------------------------------------------------
-CREATE OR REPLACE FUNCTION _fcp_expected_drafter(p_league_id uuid, p_pick_number int)
+-- Idempotent for installs that ran this schema before seasons existed
+-- (this function's signature gained p_season).
+DROP FUNCTION IF EXISTS _fcp_expected_drafter(uuid, int);
+
+CREATE OR REPLACE FUNCTION _fcp_expected_drafter(p_league_id uuid, p_pick_number int, p_season int)
 RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -343,7 +417,7 @@ BEGIN
 
   RETURN (
     SELECT user_id FROM fcp_draft_order
-    WHERE league_id = p_league_id AND position = v_slot + 1
+    WHERE league_id = p_league_id AND season = p_season AND position = v_slot + 1
   );
 END;
 $$;
@@ -351,7 +425,11 @@ $$;
 
 -- Advance current_pick_number / pick_deadline after a pick is recorded,
 -- or mark the draft completed if that was the last pick.
-CREATE OR REPLACE FUNCTION _fcp_advance_after_pick(p_league_id uuid, p_pick_number int)
+-- Idempotent for installs that ran this schema before seasons existed
+-- (this function's signature gained p_season).
+DROP FUNCTION IF EXISTS _fcp_advance_after_pick(uuid, int);
+
+CREATE OR REPLACE FUNCTION _fcp_advance_after_pick(p_league_id uuid, p_pick_number int, p_season int)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -363,15 +441,15 @@ DECLARE
 BEGIN
   SELECT count(*) INTO v_n FROM league_members WHERE league_id = p_league_id;
   SELECT roster_size, pick_seconds INTO v_roster, v_pick_secs
-  FROM fcp_leagues WHERE league_id = p_league_id;
+  FROM fcp_leagues WHERE league_id = p_league_id AND season = p_season;
 
   IF p_pick_number >= v_roster * v_n THEN
-    UPDATE fcp_leagues SET draft_status = 'completed' WHERE league_id = p_league_id;
+    UPDATE fcp_leagues SET draft_status = 'completed' WHERE league_id = p_league_id AND season = p_season;
   ELSE
     UPDATE fcp_leagues
     SET current_pick_number = p_pick_number + 1,
         pick_deadline       = now() + (v_pick_secs * interval '1 second')
-    WHERE league_id = p_league_id;
+    WHERE league_id = p_league_id AND season = p_season;
   END IF;
 END;
 $$;
@@ -383,7 +461,11 @@ $$;
 -- raising an exception if that tier (or the overall roster, in
 -- 'open' mode) is already full for this user.
 -- ------------------------------------------------------------
-CREATE OR REPLACE FUNCTION _fcp_next_tier_slot(p_league_id uuid, p_user_id uuid, p_golfer_tier int)
+-- Idempotent for installs that ran this schema before seasons existed
+-- (this function's signature gained p_season).
+DROP FUNCTION IF EXISTS _fcp_next_tier_slot(uuid, uuid, int);
+
+CREATE OR REPLACE FUNCTION _fcp_next_tier_slot(p_league_id uuid, p_user_id uuid, p_golfer_tier int, p_season int)
 RETURNS int
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -396,10 +478,11 @@ DECLARE
 BEGIN
   SELECT roster_mode, tier1_count, tier2_count, tier3_count
   INTO v_roster_mode, v_t1, v_t2, v_t3
-  FROM fcp_leagues WHERE league_id = p_league_id;
+  FROM fcp_leagues WHERE league_id = p_league_id AND season = p_season;
 
   IF v_roster_mode = 'open' THEN
-    SELECT count(*) INTO v_total FROM fcp_picks WHERE league_id = p_league_id AND user_id = p_user_id;
+    SELECT count(*) INTO v_total FROM fcp_picks
+    WHERE league_id = p_league_id AND season = p_season AND user_id = p_user_id;
     IF v_total >= (v_t1 + v_t2 + v_t3) THEN
       RAISE EXCEPTION 'Roster is already full';
     END IF;
@@ -412,7 +495,7 @@ BEGIN
     count(*) FILTER (WHERE g.tier = 3)
   INTO v_count_t1, v_count_t2, v_count_t3
   FROM fcp_picks p JOIN golfers g ON g.id = p.golfer_id
-  WHERE p.league_id = p_league_id AND p.user_id = p_user_id;
+  WHERE p.league_id = p_league_id AND p.season = p_season AND p.user_id = p_user_id;
 
   IF p_golfer_tier = 1 THEN
     IF v_count_t1 >= v_t1 THEN RAISE EXCEPTION 'Tier 1 (rank 1-30) roster slots are full'; END IF;
@@ -439,15 +522,16 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
+  v_season          int;
   v_is_commissioner boolean;
   v_draft_time      timestamptz;
   v_pick_seconds    int;
 BEGIN
-  SELECT (commissioner_id = auth.uid()) INTO v_is_commissioner
+  SELECT current_season, (commissioner_id = auth.uid()) INTO v_season, v_is_commissioner
   FROM leagues WHERE id = p_league_id;
 
   SELECT draft_time, pick_seconds INTO v_draft_time, v_pick_seconds
-  FROM fcp_leagues WHERE league_id = p_league_id FOR UPDATE;
+  FROM fcp_leagues WHERE league_id = p_league_id AND season = v_season FOR UPDATE;
 
   IF NOT (v_is_commissioner OR (v_draft_time IS NOT NULL AND now() >= v_draft_time)) THEN
     RAISE EXCEPTION 'Draft cannot be started yet';
@@ -459,11 +543,12 @@ BEGIN
   SET draft_status        = 'active',
       current_pick_number = 1,
       pick_deadline       = now() + (v_pick_seconds * interval '1 second')
-  WHERE league_id = p_league_id AND draft_status = 'pending';
+  WHERE league_id = p_league_id AND season = v_season AND draft_status = 'pending';
 END;
 $$;
 
 GRANT EXECUTE ON FUNCTION fcp_start_draft(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION fcp_start_draft(uuid) TO service_role;
 
 
 -- ------------------------------------------------------------
@@ -477,6 +562,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
+  v_season   int;
   v_status   text;
   v_pick_num int;
   v_paused   timestamptz;
@@ -484,8 +570,10 @@ DECLARE
   v_tier     int;
   v_slot     int;
 BEGIN
+  SELECT current_season INTO v_season FROM leagues WHERE id = p_league_id;
+
   SELECT draft_status, current_pick_number, paused_at INTO v_status, v_pick_num, v_paused
-  FROM fcp_leagues WHERE league_id = p_league_id FOR UPDATE;
+  FROM fcp_leagues WHERE league_id = p_league_id AND season = v_season FOR UPDATE;
 
   IF v_status IS DISTINCT FROM 'active' THEN
     RAISE EXCEPTION 'Draft is not active';
@@ -495,7 +583,7 @@ BEGIN
     RAISE EXCEPTION 'Draft is paused';
   END IF;
 
-  v_expected := _fcp_expected_drafter(p_league_id, v_pick_num);
+  v_expected := _fcp_expected_drafter(p_league_id, v_pick_num, v_season);
   IF v_expected IS DISTINCT FROM auth.uid() THEN
     RAISE EXCEPTION 'It is not your turn';
   END IF;
@@ -505,16 +593,18 @@ BEGIN
     RAISE EXCEPTION 'Unknown golfer';
   END IF;
 
-  IF EXISTS (SELECT 1 FROM fcp_picks WHERE league_id = p_league_id AND golfer_id = p_golfer_id) THEN
+  IF EXISTS (
+    SELECT 1 FROM fcp_picks WHERE league_id = p_league_id AND season = v_season AND golfer_id = p_golfer_id
+  ) THEN
     RAISE EXCEPTION 'That golfer has already been picked';
   END IF;
 
-  v_slot := _fcp_next_tier_slot(p_league_id, auth.uid(), v_tier);
+  v_slot := _fcp_next_tier_slot(p_league_id, auth.uid(), v_tier, v_season);
 
-  INSERT INTO fcp_picks (league_id, user_id, golfer_id, pick_number, tier_slot)
-  VALUES (p_league_id, auth.uid(), p_golfer_id, v_pick_num, v_slot);
+  INSERT INTO fcp_picks (league_id, season, user_id, golfer_id, pick_number, tier_slot)
+  VALUES (p_league_id, v_season, auth.uid(), p_golfer_id, v_pick_num, v_slot);
 
-  PERFORM _fcp_advance_after_pick(p_league_id, v_pick_num);
+  PERFORM _fcp_advance_after_pick(p_league_id, v_pick_num, v_season);
 END;
 $$;
 
@@ -534,6 +624,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
+  v_season   int;
   v_status   text;
   v_deadline timestamptz;
   v_pick_num int;
@@ -543,15 +634,17 @@ DECLARE
   v_tier int;
   v_slot int;
 BEGIN
+  SELECT current_season INTO v_season FROM leagues WHERE id = p_league_id;
+
   SELECT draft_status, pick_deadline, current_pick_number, roster_mode
   INTO v_status, v_deadline, v_pick_num, v_roster_mode
-  FROM fcp_leagues WHERE league_id = p_league_id FOR UPDATE;
+  FROM fcp_leagues WHERE league_id = p_league_id AND season = v_season FOR UPDATE;
 
   IF v_status IS DISTINCT FROM 'active' OR v_deadline IS NULL OR now() < v_deadline THEN
     RETURN;
   END IF;
 
-  v_expected := _fcp_expected_drafter(p_league_id, v_pick_num);
+  v_expected := _fcp_expected_drafter(p_league_id, v_pick_num, v_season);
   IF v_expected IS NULL THEN RETURN; END IF;
 
   -- Walk remaining golfers by FedEx rank, taking the first one that
@@ -560,21 +653,21 @@ BEGIN
     SELECT g.id, g.tier
     FROM golfers g
     WHERE NOT EXISTS (
-      SELECT 1 FROM fcp_picks p WHERE p.league_id = p_league_id AND p.golfer_id = g.id
+      SELECT 1 FROM fcp_picks p WHERE p.league_id = p_league_id AND p.season = v_season AND p.golfer_id = g.id
     )
     ORDER BY g.fedex_rank
   LOOP
     BEGIN
-      v_slot := _fcp_next_tier_slot(p_league_id, v_expected, v_tier);
+      v_slot := _fcp_next_tier_slot(p_league_id, v_expected, v_tier, v_season);
     EXCEPTION WHEN OTHERS THEN
       v_slot := NULL;
     END;
 
     IF v_slot IS NOT NULL THEN
-      INSERT INTO fcp_picks (league_id, user_id, golfer_id, pick_number, tier_slot)
-      VALUES (p_league_id, v_expected, v_golfer_id, v_pick_num, v_slot);
+      INSERT INTO fcp_picks (league_id, season, user_id, golfer_id, pick_number, tier_slot)
+      VALUES (p_league_id, v_season, v_expected, v_golfer_id, v_pick_num, v_slot);
 
-      PERFORM _fcp_advance_after_pick(p_league_id, v_pick_num);
+      PERFORM _fcp_advance_after_pick(p_league_id, v_pick_num, v_season);
       RETURN;
     END IF;
   END LOOP;
@@ -598,6 +691,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
+  v_season   int;
   v_status   text;
   v_deadline timestamptz;
   v_paused   timestamptz;
@@ -608,8 +702,10 @@ BEGIN
     RAISE EXCEPTION 'Only the commissioner can pause the draft';
   END IF;
 
+  SELECT current_season INTO v_season FROM leagues WHERE id = p_league_id;
+
   SELECT draft_status, pick_deadline, paused_at INTO v_status, v_deadline, v_paused
-  FROM fcp_leagues WHERE league_id = p_league_id FOR UPDATE;
+  FROM fcp_leagues WHERE league_id = p_league_id AND season = v_season FOR UPDATE;
 
   IF v_status IS DISTINCT FROM 'active' THEN
     RAISE EXCEPTION 'Draft is not active';
@@ -623,7 +719,7 @@ BEGIN
   SET paused_at              = now(),
       pick_remaining_seconds = GREATEST(0, CEIL(EXTRACT(EPOCH FROM (v_deadline - now())))::int),
       pick_deadline          = NULL
-  WHERE league_id = p_league_id;
+  WHERE league_id = p_league_id AND season = v_season;
 END;
 $$;
 
@@ -636,6 +732,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
+  v_season    int;
   v_status    text;
   v_paused    timestamptz;
   v_remaining int;
@@ -646,9 +743,11 @@ BEGIN
     RAISE EXCEPTION 'Only the commissioner can resume the draft';
   END IF;
 
+  SELECT current_season INTO v_season FROM leagues WHERE id = p_league_id;
+
   SELECT draft_status, paused_at, pick_remaining_seconds
   INTO v_status, v_paused, v_remaining
-  FROM fcp_leagues WHERE league_id = p_league_id FOR UPDATE;
+  FROM fcp_leagues WHERE league_id = p_league_id AND season = v_season FOR UPDATE;
 
   IF v_status IS DISTINCT FROM 'active' OR v_paused IS NULL THEN
     RAISE EXCEPTION 'Draft is not paused';
@@ -658,7 +757,7 @@ BEGIN
   SET pick_deadline          = now() + (COALESCE(v_remaining, 0) * interval '1 second'),
       paused_at              = NULL,
       pick_remaining_seconds = NULL
-  WHERE league_id = p_league_id;
+  WHERE league_id = p_league_id AND season = v_season;
 END;
 $$;
 
@@ -681,6 +780,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
+  v_season      int;
   v_old_seconds int;
   v_status      text;
   v_paused      boolean;
@@ -695,9 +795,11 @@ BEGIN
     RAISE EXCEPTION 'Pick clock must be between 10 and 600 seconds';
   END IF;
 
+  SELECT current_season INTO v_season FROM leagues WHERE id = p_league_id;
+
   SELECT pick_seconds, draft_status, (paused_at IS NOT NULL)
   INTO v_old_seconds, v_status, v_paused
-  FROM fcp_leagues WHERE league_id = p_league_id FOR UPDATE;
+  FROM fcp_leagues WHERE league_id = p_league_id AND season = v_season FOR UPDATE;
 
   IF v_status = 'active' AND NOT v_paused THEN
     UPDATE fcp_leagues
@@ -706,14 +808,14 @@ BEGIN
           now() + interval '5 seconds',
           pick_deadline + ((p_pick_seconds - v_old_seconds) * interval '1 second')
         )
-    WHERE league_id = p_league_id;
+    WHERE league_id = p_league_id AND season = v_season;
   ELSIF v_status = 'active' AND v_paused THEN
     UPDATE fcp_leagues
     SET pick_seconds           = p_pick_seconds,
         pick_remaining_seconds = GREATEST(5, COALESCE(pick_remaining_seconds, 0) + (p_pick_seconds - v_old_seconds))
-    WHERE league_id = p_league_id;
+    WHERE league_id = p_league_id AND season = v_season;
   ELSE
-    UPDATE fcp_leagues SET pick_seconds = p_pick_seconds WHERE league_id = p_league_id;
+    UPDATE fcp_leagues SET pick_seconds = p_pick_seconds WHERE league_id = p_league_id AND season = v_season;
   END IF;
 END;
 $$;
@@ -733,18 +835,22 @@ RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+  v_season int;
 BEGIN
   IF NOT is_league_member(p_league_id) THEN
     RAISE EXCEPTION 'Not a member of this league';
   END IF;
 
-  INSERT INTO fcp_scores (league_id, user_id, total_points, last_updated)
-  SELECT p_league_id, p.user_id, COALESCE(SUM(r.points), 0), now()
+  SELECT current_season INTO v_season FROM leagues WHERE id = p_league_id;
+
+  INSERT INTO fcp_scores (league_id, season, user_id, total_points, last_updated)
+  SELECT p_league_id, v_season, p.user_id, COALESCE(SUM(r.points), 0), now()
   FROM fcp_picks p
-  LEFT JOIN fcp_event_results r ON r.golfer_id = p.golfer_id
-  WHERE p.league_id = p_league_id
+  LEFT JOIN fcp_event_results r ON r.golfer_id = p.golfer_id AND r.season = p.season
+  WHERE p.league_id = p_league_id AND p.season = v_season
   GROUP BY p.user_id
-  ON CONFLICT (league_id, user_id)
+  ON CONFLICT (league_id, season, user_id)
   DO UPDATE SET total_points = EXCLUDED.total_points, last_updated = now();
 END;
 $$;
@@ -764,17 +870,106 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
-  INSERT INTO fcp_scores (league_id, user_id, total_points, last_updated)
-  SELECT p.league_id, p.user_id, COALESCE(SUM(r.points), 0), now()
+  -- Joining on l.current_season = p.season is what keeps this
+  -- season-correct across every league in one pass: a prior season's
+  -- fcp_picks/fcp_scores rows simply stop matching this join once a
+  -- league's current_season moves forward, so they're never touched
+  -- again and remain permanent history.
+  INSERT INTO fcp_scores (league_id, season, user_id, total_points, last_updated)
+  SELECT p.league_id, p.season, p.user_id, COALESCE(SUM(r.points), 0), now()
   FROM fcp_picks p
-  LEFT JOIN fcp_event_results r ON r.golfer_id = p.golfer_id
-  GROUP BY p.league_id, p.user_id
-  ON CONFLICT (league_id, user_id)
+  JOIN leagues l ON l.id = p.league_id AND l.current_season = p.season
+  LEFT JOIN fcp_event_results r ON r.golfer_id = p.golfer_id AND r.season = p.season
+  GROUP BY p.league_id, p.season, p.user_id
+  ON CONFLICT (league_id, season, user_id)
   DO UPDATE SET total_points = EXCLUDED.total_points, last_updated = now();
+
+  -- Season is over once every golfer's tour_championship result is final
+  -- (ESPN "FINAL" status is normalized to 'made_cut' by fcp-sync-scores,
+  -- see supabase/functions/fcp-sync-scores/index.ts) — auto-complete the
+  -- league so it moves to the dashboard's "Completed Leagues" tab. Scoped
+  -- to each league's own current_season so a league can never
+  -- auto-complete off a stale prior season's synced results.
+  UPDATE leagues AS lg SET status = 'completed'
+  WHERE lg.status = 'active' AND lg.game_type = 'fedex-playoffs'
+    AND EXISTS (
+      SELECT 1 FROM fcp_event_results
+      WHERE event = 'tour_championship' AND season = lg.current_season
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM fcp_event_results
+      WHERE event = 'tour_championship' AND season = lg.current_season AND status = 'active'
+    );
 END;
 $$;
 
 GRANT EXECUTE ON FUNCTION fcp_recalculate_all_scores() TO service_role;
+
+
+-- ------------------------------------------------------------
+-- 10.9 fcp_start_new_season
+-- Commissioner-only. Called when reactivating a completed league:
+-- inserts a fresh fcp_leagues row for the next season (copying
+-- forward roster/draft-format settings so the commissioner doesn't
+-- reconfigure them every year) and points leagues.current_season at
+-- it. Deliberately never touches the prior season's fcp_draft_order /
+-- fcp_picks / fcp_scores / fcp_draft_messages rows — once
+-- current_season moves forward those rows are simply never queried
+-- again, so they become permanent, browsable history with no separate
+-- archival step.
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fcp_start_new_season(p_league_id uuid)
+RETURNS int
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_league_status text;
+  v_prior_season  int;
+  v_new_season    int;
+  v_prior         fcp_leagues%ROWTYPE;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM leagues WHERE id = p_league_id AND commissioner_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Only the commissioner can start a new season';
+  END IF;
+
+  -- Lock the leagues row for the transaction so a double-click can't
+  -- pass the status check twice and insert two new-season rows.
+  SELECT status INTO v_league_status FROM leagues WHERE id = p_league_id FOR UPDATE;
+
+  IF v_league_status IS DISTINCT FROM 'completed' THEN
+    RAISE EXCEPTION 'League must be completed before starting a new season';
+  END IF;
+
+  SELECT max(season) INTO v_prior_season FROM fcp_leagues WHERE league_id = p_league_id;
+  IF v_prior_season IS NULL THEN
+    RAISE EXCEPTION 'No prior season found for this league';
+  END IF;
+
+  v_new_season := GREATEST(extract(year from now())::int, v_prior_season + 1);
+
+  SELECT * INTO v_prior FROM fcp_leagues
+  WHERE league_id = p_league_id AND season = v_prior_season;
+
+  INSERT INTO fcp_leagues (
+    league_id, season, draft_format, draft_status, draft_time, pick_seconds,
+    pick_deadline, paused_at, pick_remaining_seconds, current_pick_number,
+    roster_mode, roster_size, tier1_count, tier2_count, tier3_count
+  ) VALUES (
+    p_league_id, v_new_season, v_prior.draft_format, 'pending', NULL, v_prior.pick_seconds,
+    NULL, NULL, NULL, 1,
+    v_prior.roster_mode, v_prior.roster_size, v_prior.tier1_count, v_prior.tier2_count, v_prior.tier3_count
+  );
+
+  UPDATE leagues SET current_season = v_new_season, status = 'active' WHERE id = p_league_id;
+
+  RETURN v_new_season;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION fcp_start_new_season(uuid) TO authenticated;
 
 
 -- ------------------------------------------------------------
@@ -814,6 +1009,12 @@ CREATE TABLE IF NOT EXISTS fcp_draft_messages (
   body       text NOT NULL CHECK (char_length(trim(body)) BETWEEN 1 AND 280),
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Idempotent for installs that ran this schema before seasons existed.
+-- No unique constraint needed (append-only log) — just keeps a new
+-- season's draft chat from mixing with a prior season's in the UI.
+ALTER TABLE fcp_draft_messages ADD COLUMN IF NOT EXISTS season int NOT NULL
+  DEFAULT extract(year from now())::int;
 
 CREATE INDEX IF NOT EXISTS fcp_draft_messages_league_created_idx
   ON fcp_draft_messages (league_id, created_at);

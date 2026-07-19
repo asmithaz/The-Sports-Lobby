@@ -528,6 +528,15 @@ CREATE OR REPLACE FUNCTION _recalculate_all_league_scores()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
     PERFORM calculate_league_scores(id) FROM leagues;
+
+    -- Tournament is over once the final match has a result — auto-complete
+    -- both World Cup game modules (they share this leagues/wc_matches data)
+    -- so affected leagues move to the dashboard's "Completed Leagues" tab.
+    UPDATE leagues SET status = 'completed'
+    WHERE status = 'active'
+      AND game_type IN ('world-cup-bracket-challenge', 'world-cup-draft')
+      AND EXISTS (SELECT 1 FROM wc_matches WHERE round = 'final' AND status = 'completed');
+
     RETURN NEW;
 END;
 $$;

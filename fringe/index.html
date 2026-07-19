@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -14,6 +14,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
@@ -33,7 +34,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Triple Crown Season</span>
-                    <button class="btn btn--primary" onclick="startLeague('/fringe/triple-crown/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=Triple%20Crown%20Season&sport=The%20Fringe&back=/fringe/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Select a stable of horses for each of the Big 3 Horse Races — Kentucky Derby, The Preakness, and Belmont Stakes.</li>
@@ -45,7 +46,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Kentucky Derby Salary Draft</span>
-                    <button class="btn btn--primary" onclick="startLeague('/fringe/kentucky-derby/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=Kentucky%20Derby%20Salary%20Draft&sport=The%20Fringe&back=/fringe/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Select a stable of horses for the Kentucky Derby.</li>
@@ -57,7 +58,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Homerun Derby</span>
-                    <button class="btn btn--primary" onclick="startLeague('/fringe/homerun-derby/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=Homerun%20Derby&sport=The%20Fringe&back=/fringe/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Select a team of players based on a set salary for the homerun derby.</li>
@@ -69,7 +70,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">College Baseball Tournament Bracket</span>
-                    <button class="btn btn--primary" onclick="startLeague('/fringe/college-baseball/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=College%20Baseball%20Tournament%20Bracket&sport=The%20Fringe&back=/fringe/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Player's select winner for every game in the bracket.</li>
@@ -82,7 +83,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">College Softball Tournament Bracket</span>
-                    <button class="btn btn--primary" onclick="startLeague('/fringe/college-softball/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=College%20Softball%20Tournament%20Bracket&sport=The%20Fringe&back=/fringe/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Player's select winner for every game in the bracket.</li>
@@ -95,7 +96,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Submit a New Idea!</span>
-                    <button class="btn btn--primary" onclick="startLeague('/fringe/submit-idea/')">Submit!</button>
+                    <a href="#" class="btn btn--primary" data-feedback-trigger>Submit!</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Got a fun game you and your friends track on spreadsheets?</li>
@@ -113,6 +114,10 @@
         <a href="/legal/terms.html" class="footer-link">Terms</a>
         <span class="footer-sep">&middot;</span>
         <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
     </footer>
 
 </body>

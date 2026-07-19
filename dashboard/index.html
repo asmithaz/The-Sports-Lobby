@@ -60,6 +60,7 @@
 
             <div class="dash-section">
                 <a href="/account/" class="dash-link">⚙️ Account Settings</a>
+                <a href="https://venmo.com/u/smithaz" class="dash-link" target="_blank" rel="noopener">💚 Support</a>
             </div>
 
             <button class="dash-logout" onclick="logout()">Log Out</button>
@@ -70,6 +71,16 @@
             <div class="dash-header">
                 <h1>Your Leagues</h1>
                 <a href="/soccer/world-cup-bracket-challenge/" class="btn btn--primary">+ New League</a>
+            </div>
+
+            <div class="league-filters">
+                <div class="pill-toggle" id="status-toggle">
+                    <button class="pill pill--green" data-status="active">Active Leagues</button>
+                    <button class="pill pill--muted" data-status="completed">Completed Leagues</button>
+                </div>
+                <div class="pill-toggle" id="sport-toggle">
+                    <button class="pill pill--green" data-sport="all">All Sports</button>
+                </div>
             </div>
 
             <div class="entity-grid" id="leagues-grid">
@@ -98,6 +109,22 @@
             'fedex-playoffs':               '⛳'
         };
 
+        const SPORT_OF_GAME = {
+            'world-cup-bracket-challenge': 'soccer',
+            'world-cup-draft':              'soccer',
+            'fedex-playoffs':               'golf'
+        };
+
+        const SPORT_LABELS = {
+            'soccer': '⚽ Soccer',
+            'golf':   '⛳ Golf'
+        };
+
+        let allLeagues = [];
+        let currentUserId = null;
+        let currentStatusFilter = 'active';
+        let currentSportFilter = 'all';
+
         async function init() {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
@@ -116,7 +143,55 @@
             document.getElementById('user-name').textContent = displayName;
             document.getElementById('user-avatar').textContent = displayName[0].toUpperCase();
 
+            document.getElementById('status-toggle').addEventListener('click', onStatusToggleClick);
+            document.getElementById('sport-toggle').addEventListener('click', onSportToggleClick);
+
             await loadLeagues(session);
+        }
+
+        function onStatusToggleClick(e) {
+            const btn = e.target.closest('button[data-status]');
+            if (!btn) return;
+            currentStatusFilter = btn.dataset.status;
+            for (const b of e.currentTarget.querySelectorAll('button')) {
+                b.classList.toggle('pill--green', b === btn);
+                b.classList.toggle('pill--muted', b !== btn);
+            }
+            applyFilters();
+        }
+
+        function onSportToggleClick(e) {
+            const btn = e.target.closest('button[data-sport]');
+            if (!btn) return;
+            currentSportFilter = btn.dataset.sport;
+            for (const b of e.currentTarget.querySelectorAll('button')) {
+                b.classList.toggle('pill--green', b === btn);
+                b.classList.toggle('pill--muted', b !== btn);
+            }
+            applyFilters();
+        }
+
+        function buildSportChips() {
+            const sports = [...new Set(allLeagues.map(l => SPORT_OF_GAME[l.game_type]).filter(Boolean))];
+            const toggle = document.getElementById('sport-toggle');
+            if (sports.length <= 1) {
+                toggle.style.display = 'none';
+                return;
+            }
+            toggle.innerHTML = `<button class="pill pill--green" data-sport="all">All Sports</button>` +
+                sports.map(s => `<button class="pill pill--muted" data-sport="${s}">${SPORT_LABELS[s] || s}</button>`).join('');
+        }
+
+        function applyFilters() {
+            const filtered = allLeagues.filter(l =>
+                l.status === currentStatusFilter &&
+                (currentSportFilter === 'all' || SPORT_OF_GAME[l.game_type] === currentSportFilter)
+            );
+            if (!filtered.length) {
+                showEmptyState(allLeagues.length > 0);
+            } else {
+                renderLeagues(filtered, currentUserId);
+            }
         }
 
         async function loadLeagues(session) {
@@ -162,7 +237,10 @@
             document.getElementById('stat-silver').textContent = '0';
             document.getElementById('stat-bronze').textContent = '0';
 
-            renderLeagues(leagues, session.user.id);
+            currentUserId = session.user.id;
+            allLeagues = leagues;
+            buildSportChips();
+            applyFilters();
         }
 
         function renderLeagues(leagues, userId) {
@@ -194,8 +272,39 @@
                     <button class="btn btn--primary btn--block" onclick="enterLeague('${league.id}','${league.game_type}','${league.league_type}','${encodeURIComponent(league.name)}','${league.invite_code}','${league.visibility}')">
                         Enter League →
                     </button>
+                    ${isCommissioner ? (league.status === 'completed'
+                        ? `<button class="btn btn--ghost btn--block" onclick="reactivateLeague('${league.id}')">Reactivate League</button>`
+                        : `<button class="btn btn--ghost btn--block" onclick="completeLeague('${league.id}')">Mark as Completed</button>`
+                    ) : ''}
                 </div>
             </div>`;
+        }
+
+        async function completeLeague(leagueId) {
+            if (!confirm('Mark this league as completed? It will move to the Completed Leagues tab.')) return;
+            const { error } = await supabase.rpc('complete_league', { p_league_id: leagueId });
+            if (error) { alert(error.message); return; }
+            const league = allLeagues.find(l => l.id === leagueId);
+            if (league) league.status = 'completed';
+            applyFilters();
+        }
+
+        async function reactivateLeague(leagueId) {
+            const league = allLeagues.find(l => l.id === leagueId);
+
+            if (league?.game_type === 'fedex-playoffs') {
+                if (!confirm(`Start a new FedEx Cup Playoffs season? Last season's draft results and standings will be saved to Season History, and everyone will redraft new rosters.`)) return;
+                const { error } = await supabase.rpc('fcp_start_new_season', { p_league_id: leagueId });
+                if (error) { alert(error.message); return; }
+                league.status = 'active';
+                applyFilters();
+                return;
+            }
+
+            const { error } = await supabase.rpc('reactivate_league', { p_league_id: leagueId });
+            if (error) { alert(error.message); return; }
+            if (league) league.status = 'active';
+            applyFilters();
         }
 
         function enterLeague(leagueId, gameType, leagueType, leagueName, inviteCode, visibility) {
@@ -216,12 +325,15 @@
             }
         }
 
-        function showEmptyState() {
-            document.getElementById('leagues-grid').innerHTML = `
-                <div class="entity-empty">
+        function showEmptyState(hasOtherLeagues) {
+            document.getElementById('leagues-grid').innerHTML = hasOtherLeagues
+                ? `<div class="entity-empty">
+                    <p class="entity-empty-text">No leagues match this filter.</p>
+                   </div>`
+                : `<div class="entity-empty">
                     <p class="entity-empty-text">You haven't joined any leagues yet.</p>
                     <a href="/soccer/world-cup-bracket-challenge/" class="btn btn--primary">Create Your First League</a>
-                </div>`;
+                   </div>`;
         }
 
         init();

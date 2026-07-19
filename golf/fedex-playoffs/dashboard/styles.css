@@ -13,28 +13,38 @@ main {
 .content-stack {
     display: flex;
     flex-direction: column;
-    align-items: center;
     width: 100%;
-    max-width: 1100px;
-}
-
-.top-row {
-    display: flex;
-    gap: var(--space-5);
-    align-items: flex-start;
-    flex-wrap: wrap;
-    width: 100%;
-    max-width: 780px;
-}
-
-.top-row-main {
-    flex: 1 1 300px;
-    min-width: 0;
+    max-width: 960px;
 }
 
 h1 {
     color: var(--c-text-primary);
     margin-bottom: 2px;
+}
+
+/* Standings + live leaderboard side by side. When the leaderboard is
+   empty (pending/active-draft states, or no results synced yet) it
+   collapses via :empty and standings-row-main naturally fills the row. */
+.standings-row {
+    display: flex;
+    gap: var(--space-5);
+    align-items: flex-start;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.standings-row-main {
+    flex: 2 1 480px;
+    min-width: 0;
+}
+
+.live-leaderboard {
+    flex: 1 1 320px;
+    min-width: 0;
+}
+
+.live-leaderboard:empty {
+    display: none;
 }
 
 .league-name {
@@ -52,7 +62,7 @@ h1 {
     justify-content: space-between;
     margin-bottom: var(--space-6);
     width: 100%;
-    max-width: 780px;
+    max-width: 960px;
 }
 
 .info-card {
@@ -113,7 +123,7 @@ h1 {
 /* ── Sections ── */
 .section {
     width: 100%;
-    max-width: 780px;
+    max-width: 960px;
     margin-bottom: var(--space-6);
 }
 
@@ -139,6 +149,14 @@ h1 {
 }
 
 /* ── Data table ── */
+/* Several columns below use white-space:nowrap, so on a narrow viewport
+   the table can need more width than its container — scroll horizontally
+   instead of silently clipping. */
+.table-scroll {
+    width: 100%;
+    overflow-x: auto;
+}
+
 .data-table {
     width: 100%;
     border-collapse: collapse;
@@ -170,6 +188,7 @@ h1 {
 }
 
 .th-rank { width: 40px; }
+.th-points { width: 140px; }
 
 .data-table tbody tr {
     border-top: 0.5px solid var(--c-border);
@@ -193,8 +212,13 @@ h1 {
 .rank-silver:hover { background-color: rgba(255,255,255,0.07) !important; }
 .rank-bronze:hover { background-color: rgba(248,113,113,0.12) !important; }
 
-/* ── Table columns ── */
-.col-rank {
+/* ── Table columns ──
+   Note: .data-table td { text-align: right } in /css/components.css
+   (a same-named but unrelated shared component) beats single-class
+   selectors like .col-rank on specificity alone regardless of load
+   order — so alignment overrides here need the extra .data-table
+   prefix to actually win. */
+.data-table .col-rank {
     width: 40px;
     text-align: center;
     font-weight: var(--weight-bold);
@@ -206,7 +230,7 @@ h1 {
 
 .standings-table .col-name { text-align: center; }
 
-.col-points {
+.data-table .col-points {
     text-align: center;
     font-weight: var(--weight-bold);
     font-size: var(--text-base);
@@ -215,6 +239,9 @@ h1 {
     font-variant-numeric: tabular-nums;
     min-width: 100px;
 }
+
+/* Generic center-aligned cell — same .data-table prefix trick as above. */
+.data-table td.td-center { text-align: center; }
 
 .col-countries {
     display: flex;
@@ -258,7 +285,7 @@ h1 {
 /* ── Draft active banner ── */
 .draft-active-banner {
     width: 100%;
-    max-width: 780px;
+    max-width: 960px;
     background: rgba(96,165,250,0.08);
     border: 0.5px solid rgba(96,165,250,0.3);
     border-radius: var(--radius-md);
@@ -353,7 +380,7 @@ h1 {
 /* ── Commissioner panel ── */
 .commissioner-panel {
     width: 100%;
-    max-width: 780px;
+    max-width: 960px;
     background: var(--c-surface);
     border: 0.5px solid var(--c-border);
     border-radius: var(--radius-md);
@@ -407,8 +434,8 @@ h1 {
 
 /* ── Scoring rules ── */
 .scoring-panel {
-    flex: 1 1 300px;
-    min-width: 0;
+    width: 100%;
+    max-width: 960px;
 }
 
 .scoring-panel h2 {

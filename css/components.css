@@ -421,6 +421,30 @@ body {
   border: 0.5px solid rgba(248,113,113,0.25);
 }
 
+/* Clickable pill used as a filter/toggle control (dashboard league filters) */
+.league-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.pill-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pill-toggle .pill {
+  appearance: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.pill-toggle .pill:hover {
+  filter: brightness(1.15);
+}
+
 
 /* ============================================================
    DATA TABLE

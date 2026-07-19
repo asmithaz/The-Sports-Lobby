@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>FedEx Cup Playoffs — Season History</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/golf/fedex-playoffs/dashboard/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">The Sports Lobby</a>
+        <div class="nav-links">
+            <a href="/golf/index.html" class="nav-link">Golf</a>
+            <a href="/login/index.html" class="nav-link">Login</a>
+        </div>
+    </nav>
+
+    <main>
+        <h1>FedEx Cup Playoffs — Season History</h1>
+        <p class="league-name">
+            <span id="league-name">Loading…</span>
+            <a href="/golf/fedex-playoffs/dashboard/" class="btn btn--ghost" style="margin-left:var(--space-3);">← Back to League</a>
+        </p>
+
+        <div class="content-stack">
+            <div id="season-picker" class="league-filters" style="display:none;">
+                <div class="pill-toggle" id="season-toggle"></div>
+            </div>
+
+            <div id="history-content"><p class="loading">Loading…</p></div>
+        </div>
+    </main>
+
+    <footer class="site-footer">
+        <span>2026 The Sports Lobby. All rights reserved.</span>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/terms.html" class="footer-link">Terms</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
+    </footer>
+
+    <script>
+        let leagueId = null;
+        let seasons = [];
+        let selectedSeason = null;
+
+        // Same three-event scoring layout as the live dashboard.
+        const EVENTS = [
+            { key: 'st_jude',          label: 'FedEx St. Jude Championship' },
+            { key: 'bmw',               label: 'BMW Championship' },
+            { key: 'tour_championship', label: 'TOUR Championship' }
+        ];
+        const TIER_RANGES = { 1: '1-30', 2: '31-50', 3: '51-70' };
+
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.appendChild(document.createTextNode(str ?? ''));
+            return d.innerHTML;
+        }
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { window.location.href = '/login/index.html'; return; }
+
+            leagueId = sessionStorage.getItem('league_id');
+            if (!leagueId) { window.location.href = '/golf/index.html'; return; }
+
+            const { data: leagueRow, error } = await supabase
+                .from('leagues').select('name, current_season').eq('id', leagueId).single();
+
+            if (error) {
+                document.getElementById('history-content').innerHTML =
+                    `<p class="error">Failed to load league: ${error.message}</p>`;
+                return;
+            }
+
+            document.getElementById('league-name').textContent = leagueRow.name;
+            document.title = leagueRow.name + ' — Season History';
+
+            const { data: fcpRows } = await supabase
+                .from('fcp_leagues')
+                .select('season')
+                .eq('league_id', leagueId)
+                .lt('season', leagueRow.current_season)
+                .order('season', { ascending: false });
+
+            seasons = (fcpRows ?? []).map(r => r.season);
+
+            if (!seasons.length) {
+                document.getElementById('history-content').innerHTML =
+                    '<p class="comm-note">No past seasons yet.</p>';
+                return;
+            }
+
+            document.getElementById('season-picker').style.display = '';
+            renderSeasonPicker();
+            await loadSeason(seasons[0]);
+        }
+
+        function renderSeasonPicker() {
+            const toggle = document.getElementById('season-toggle');
+            toggle.innerHTML = seasons.map((s, i) =>
+                `<button class="pill ${i === 0 ? 'pill--green' : 'pill--muted'}" data-season="${s}">${s}</button>`
+            ).join('');
+            toggle.addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-season]');
+                if (!btn) return;
+                const season = parseInt(btn.dataset.season, 10);
+                for (const b of toggle.querySelectorAll('button')) {
+                    b.classList.toggle('pill--green', b === btn);
+                    b.classList.toggle('pill--muted', b !== btn);
+                }
+                loadSeason(season);
+            });
+        }
+
+        async function loadSeason(season) {
+            selectedSeason = season;
+            document.getElementById('history-content').innerHTML = '<p class="loading">Loading…</p>';
+
+            const [fcpRes, scoresRes] = await Promise.all([
+                supabase.from('fcp_leagues').select('*').eq('league_id', leagueId).eq('season', season).maybeSingle(),
+                supabase.from('fcp_scores').select('user_id, total_points').eq('league_id', leagueId).eq('season', season)
+            ]);
+
+            const fcpLeague = fcpRes.data;
+            const scores = scoresRes.data ?? [];
+
+            // Roster for a past season comes directly from who has scores/picks
+            // that season, not league_members — a member who has since left
+            // would otherwise silently vanish from a past season's standings.
+            const ids = [...new Set(scores.map(s => s.user_id))];
+            let profileMap = {};
+            if (ids.length) {
+                const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', ids);
+                (profiles ?? []).forEach(p => { profileMap[p.id] = p.display_name; });
+            }
+
+            const sorted = [...scores].sort((a, b) => b.total_points - a.total_points);
+            const standingsRows = sorted.map((s, i) => {
+                const rankCls = i === 0 ? 'rank-gold' : i === 1 ? 'rank-silver' : i === 2 ? 'rank-bronze' : '';
+                return `
+                    <tr class="${rankCls} clickable-row" data-user-id="${escapeHtml(s.user_id)}" data-user-name="${escapeHtml(profileMap[s.user_id] ?? 'Unknown')}">
+                        <td class="col-rank">${i + 1}</td>
+                        <td class="col-name">${escapeHtml(profileMap[s.user_id] ?? 'Unknown')}</td>
+                        <td class="col-points">${s.total_points}</td>
+                    </tr>`;
+            }).join('');
+
+            document.getElementById('history-content').innerHTML = `
+                <div class="section">
+                    <h2>${season} Final Standings</h2>
+                    <div class="table-scroll">
+                        <table class="data-table standings-table">
+                            <thead><tr><th class="th-rank">#</th><th class="th-center">Name</th><th class="th-center th-points">Points</th></tr></thead>
+                            <tbody>${standingsRows || '<tr><td colspan="3" class="empty-cell">No scores recorded for this season.</td></tr>'}</tbody>
+                        </table>
+                    </div>
+                    <p class="comm-note standings-note">Click a player to view their ${season} roster and per-event scoring.</p>
+                </div>
+                <div id="history-breakdown"></div>
+            `;
+
+            document.querySelectorAll('.standings-table .clickable-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    document.querySelectorAll('.standings-table .clickable-row').forEach(r => r.classList.remove('selected-row'));
+                    row.classList.add('selected-row');
+                    loadBreakdown(row.dataset.userId, row.dataset.userName, fcpLeague);
+                });
+            });
+
+            const top = sorted[0];
+            if (top) {
+                document.querySelector(`.standings-table .clickable-row[data-user-id="${top.user_id}"]`)?.classList.add('selected-row');
+                await loadBreakdown(top.user_id, profileMap[top.user_id] ?? 'Unknown', fcpLeague);
+            }
+        }
+
+        async function loadBreakdown(userId, userName, fcpLeague) {
+            const [picksRes, resultsRes] = await Promise.all([
+                supabase.from('fcp_picks')
+                    .select('tier_slot, golfers(id, name)')
+                    .eq('league_id', leagueId).eq('season', selectedSeason).eq('user_id', userId),
+                supabase.from('fcp_event_results')
+                    .select('golfer_id, event, points, status')
+                    .eq('season', selectedSeason)
+            ]);
+
+            const picks = picksRes.data ?? [];
+            const results = resultsRes.data ?? [];
+            const sortedPicks = [...picks].sort((a, b) => a.tier_slot - b.tier_slot);
+
+            // Tier labels come from tier_slot position against *that season's*
+            // fcp_leagues tier counts, not live golfers.tier — a golfer's
+            // ranking this year has no bearing on which tier a past pick
+            // actually counted as when it was drafted.
+            const t1 = fcpLeague?.tier1_count ?? 0;
+            const t2 = fcpLeague?.tier2_count ?? 0;
+            const labels = sortedPicks.map(p => {
+                if (fcpLeague?.roster_mode === 'open') return `Pick ${p.tier_slot}`;
+                if (p.tier_slot <= t1) return TIER_RANGES[1];
+                if (p.tier_slot <= t1 + t2) return TIER_RANGES[2];
+                return TIER_RANGES[3];
+            });
+
+            const resultMap = {};
+            results.forEach(r => {
+                if (!resultMap[r.golfer_id]) resultMap[r.golfer_id] = {};
+                resultMap[r.golfer_id][r.event] = r;
+            });
+
+            const eventRows = EVENTS.map(ev => {
+                const cells = sortedPicks.map(p => {
+                    const r = resultMap[p.golfers?.id]?.[ev.key];
+                    if (!r) return '<td class="pick-col">—</td>';
+                    if (r.status === 'cut' || r.status === 'withdrawn') return '<td class="pick-col cell-cut">CUT</td>';
+                    return `<td class="pick-col">${r.points ?? 0}</td>`;
+                }).join('');
+                return `<tr><th class="col-event">${escapeHtml(ev.label)}</th>${cells}</tr>`;
+            }).join('');
+
+            const totals = sortedPicks.map(p => {
+                const golferResults = resultMap[p.golfers?.id] ?? {};
+                return Object.values(golferResults).reduce((sum, r) => sum + (r.points ?? 0), 0);
+            });
+            const teamTotal = totals.reduce((sum, t) => sum + t, 0);
+
+            const headerLabels = labels.map(l => `<th class="pick-col">${escapeHtml(l)}</th>`).join('');
+            const pickNames = sortedPicks.map(p => `<td class="pick-col">${escapeHtml(p.golfers?.name ?? '—')}</td>`).join('');
+            const totalCells = totals.map(t => `<td class="pick-col">${t}</td>`).join('');
+
+            document.getElementById('history-breakdown').innerHTML = `
+                <div class="section">
+                    <h2>${escapeHtml(userName)}'s ${selectedSeason} Roster</h2>
+                    <div class="table-scroll">
+                        <table class="data-table breakdown-table">
+                            <thead><tr><th>Group</th>${headerLabels}</tr></thead>
+                            <tbody>
+                                <tr><th class="col-event">Pick</th>${pickNames}</tr>
+                                ${eventRows}
+                                <tr class="row-total"><th class="col-event">Total per Player</th>${totalCells}</tr>
+                                <tr class="row-team-total"><th class="col-event">Team Total</th><td colspan="${sortedPicks.length}">${teamTotal}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        init();
+    </script>
+
+</body>
+</html>

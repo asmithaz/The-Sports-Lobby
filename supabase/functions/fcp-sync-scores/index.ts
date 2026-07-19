@@ -106,6 +106,10 @@ Deno.serve(async (req) => {
 
     const rows: any[] = [];
     const tourChampionWinner = event === "tour_championship";
+    // ESPN's scoreboard always reflects whatever tournament is live right
+    // now, so "season" is simply the current calendar year — matches
+    // fcp_event_results.season in golf/fedex-playoffs/schema.sql.
+    const season = new Date().getFullYear();
 
     for (const competitor of competitors) {
       const espnId = String(competitor?.athlete?.id ?? competitor?.id ?? "");
@@ -127,6 +131,7 @@ Deno.serve(async (req) => {
       rows.push({
         golfer_id: golferId,
         event,
+        season,
         finish_position: position,
         status,
         points,
@@ -137,7 +142,7 @@ Deno.serve(async (req) => {
     if (rows.length > 0) {
       const { error: upsertErr } = await supabase
         .from("fcp_event_results")
-        .upsert(rows, { onConflict: "golfer_id,event" });
+        .upsert(rows, { onConflict: "golfer_id,event,season" });
       if (upsertErr) throw upsertErr;
     }
 

@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -14,6 +14,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
@@ -33,7 +34,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Conference Tournament Brackets</span>
-                    <button class="btn btn--primary" onclick="startLeague('/cbb/conference-brackets/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=Conference%20Tournament%20Brackets&sport=CBB&back=/cbb/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Men's and Women's tournaments for every conference tournament available.</li>
@@ -49,7 +50,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">March Madness Bracket</span>
-                    <button class="btn btn--primary" onclick="startLeague('/cbb/march-madness-bracket/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=March%20Madness%20Bracket&sport=CBB&back=/cbb/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Men's and Women's tournaments available.</li>
@@ -63,7 +64,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">March Madness Team Draft</span>
-                    <button class="btn btn--primary" onclick="startLeague('/cbb/march-madness-draft/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=March%20Madness%20Team%20Draft&sport=CBB&back=/cbb/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Men's and Women's tournaments available.</li>
@@ -76,7 +77,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">NIT Tournament Bracket</span>
-                    <button class="btn btn--primary" onclick="startLeague('/cbb/nit-bracket/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=NIT%20Tournament%20Bracket&sport=CBB&back=/cbb/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Men's and Women's tournaments available.</li>
@@ -90,7 +91,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Gauntlet Tournament</span>
-                    <button class="btn btn--primary" onclick="startLeague('/cbb/gauntlet/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=Gauntlet%20Tournament&sport=CBB&back=/cbb/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Men's and Women's tournaments available.</li>
@@ -108,6 +109,10 @@
         <a href="/legal/terms.html" class="footer-link">Terms</a>
         <span class="footer-sep">&middot;</span>
         <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
     </footer>
 
 </body>

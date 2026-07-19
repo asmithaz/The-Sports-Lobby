@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -11,6 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
@@ -28,43 +29,45 @@
         <p class="league-name">
             <span id="league-name">Loading…</span>
             <a href="/golf/fedex-playoffs/settings/" class="btn btn--ghost" style="margin-left:var(--space-3);">⚙️ League Settings</a>
+            <a href="/golf/fedex-playoffs/history/" class="btn btn--ghost" style="margin-left:var(--space-2);">📜 Season History</a>
         </p>
 
         <div class="info-strip" id="info-strip"></div>
 
         <div class="content-stack">
-            <div class="top-row">
-                <div id="main-content" class="top-row-main"><p class="loading">Loading…</p></div>
+            <div class="standings-row">
+                <div id="main-content" class="standings-row-main"><p class="loading">Loading…</p></div>
+                <div id="live-leaderboard" class="live-leaderboard"></div>
+            </div>
 
-                <div class="scoring-panel">
-                    <h2>Scoring Rules</h2>
-                    <div class="commissioner-panel scoring-card">
-                        <div class="scoring-cols">
+            <div id="breakdown-section"></div>
+
+            <div class="scoring-panel">
+                <h2>Scoring Rules</h2>
+                <div class="commissioner-panel scoring-card">
+                    <div class="scoring-cols">
+                        <div>
+                            <h4>Per Event (best result)</h4>
+                            <table>
+                                <tr><td>Tournament Win</td><td>10 pts</td></tr>
+                                <tr><td>Top 3 Finish</td><td>5 pts</td></tr>
+                                <tr><td>Top 10 Finish</td><td>3 pts</td></tr>
+                                <tr><td>Top 30 Finish</td><td>1 pts</td></tr>
+                                <tr><td>Missed Cut / Outside Top 30</td><td>0 pts</td></tr>
+                            </table>
+                        </div>
+                        <div class="scoring-col-secondary">
                             <div>
-                                <h4>Per Event (best result)</h4>
+                                <h4>Fedex Tournament Bonus</h4>
                                 <table>
-                                    <tr><td>Tournament Win</td><td>10 pts</td></tr>
-                                    <tr><td>Top 3 Finish</td><td>5 pts</td></tr>
-                                    <tr><td>Top 10 Finish</td><td>3 pts</td></tr>
-                                    <tr><td>Top 30 Finish</td><td>1 pts</td></tr>
-                                    <tr><td>Missed Cut / Outside Top 30</td><td>0 pts</td></tr>
+                                    <tr><td>FedEx Cup Champion</td><td>10 pts</td></tr>
                                 </table>
                             </div>
-                            <div class="scoring-col-secondary">
-                                <div>
-                                    <h4>Fedex Tournament Bonus</h4>
-                                    <table>
-                                        <tr><td>FedEx Cup Champion</td><td>10 pts</td></tr>
-                                    </table>
-                                </div>
-                                <div id="live-scoring-inline" class="live-scoring-block"></div>
-                            </div>
+                            <div id="live-scoring-inline" class="live-scoring-block"></div>
                         </div>
                     </div>
                 </div>
             </div>
-
-            <div id="breakdown-section"></div>
         </div>
     </main>
 
@@ -74,10 +77,15 @@
         <a href="/legal/terms.html" class="footer-link">Terms</a>
         <span class="footer-sep">&middot;</span>
         <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
     </footer>
 
     <script>
         let currentUserId = null;
+        let currentSeason = null;
 
         // The three FedEx Cup Playoffs events, in order.
         const EVENTS = [
@@ -86,7 +94,14 @@
             { key: 'tour_championship', label: 'TOUR Championship',           date: 'Aug 22' }
         ];
 
-        const DRAFT_LOCK_UTC = new Date('2026-08-08T12:00:00Z');
+        // Approximate "draft lock" cutoff (roughly St. Jude week) for a given
+        // season — exact per-season PGA Tour dates aren't stored anywhere in
+        // the schema, so this carries forward the same Aug 8 approximation
+        // used before seasons existed, just relative to the season year
+        // instead of hardcoded to one year.
+        function draftLockFor(season) {
+            return new Date(Date.UTC(season, 7, 8, 12, 0, 0));
+        }
         const pad = n => String(n).padStart(2, '0');
         const toLocalDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
         const toLocalTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -175,7 +190,8 @@
             const { error } = await supabase
                 .from('fcp_leagues')
                 .update({ draft_status: 'completed' })
-                .eq('league_id', leagueId);
+                .eq('league_id', leagueId)
+                .eq('season', currentSeason);
 
             if (error) {
                 alert('Error: ' + error.message);
@@ -252,7 +268,8 @@
             const canStart = members.length >= 2;
             const max = league.max_players ?? 0;
             const draftTime = fcpLeague?.draft_time ?? null;
-            const canReschedule = new Date() < DRAFT_LOCK_UTC;
+            const draftLockUtc = draftLockFor(fcpLeague?.season ?? currentSeason);
+            const canReschedule = new Date() < draftLockUtc;
 
             let rescheduleMinDate = '', rescheduleMinTime = '';
             let rescheduleMaxDate = '', rescheduleMaxTime = '';
@@ -261,8 +278,8 @@
                 const now = new Date();
                 rescheduleMinDate = toLocalDate(now);
                 rescheduleMinTime = toLocalTime(now);
-                rescheduleMaxDate = toLocalDate(DRAFT_LOCK_UTC);
-                rescheduleMaxTime = toLocalTime(DRAFT_LOCK_UTC);
+                rescheduleMaxDate = toLocalDate(draftLockUtc);
+                rescheduleMaxTime = toLocalTime(draftLockUtc);
                 if (draftTime) {
                     const dt = new Date(draftTime);
                     rescheduleValueDate = toLocalDate(dt);
@@ -323,16 +340,18 @@
             return `
                 <div class="section">
                     <h2>Members <span class="count">${members.length}</span></h2>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Team</th>
-                                <th>Joined</th>
-                            </tr>
-                        </thead>
-                        <tbody>${memberRows}</tbody>
-                    </table>
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Team</th>
+                                    <th>Joined</th>
+                                </tr>
+                            </thead>
+                            <tbody>${memberRows}</tbody>
+                        </table>
+                    </div>
                 </div>
                 ${settingsBlock}
                 ${commissionerBlock}
@@ -357,7 +376,8 @@
             const { error } = await supabase
                 .from('fcp_leagues')
                 .update({ draft_time: iso })
-                .eq('league_id', leagueId);
+                .eq('league_id', leagueId)
+                .eq('season', currentSeason);
             if (error) { alert('Failed to reschedule: ' + error.message); return; }
             window.location.reload();
         }
@@ -389,10 +409,12 @@
                 </div>
                 <div class="section">
                     <h2>Members <span class="count">${members.length}</span></h2>
-                    <table class="data-table">
-                        <thead><tr><th>Name</th><th>Team</th><th>Joined</th></tr></thead>
-                        <tbody>${memberRows}</tbody>
-                    </table>
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead><tr><th>Name</th><th>Team</th><th>Joined</th></tr></thead>
+                            <tbody>${memberRows}</tbody>
+                        </table>
+                    </div>
                 </div>
                 ${commissionerBlock}
             `;
@@ -423,17 +445,19 @@
             return `
                 <div class="section">
                     <h2>Standings</h2>
-                    <table class="data-table standings-table">
-                        <thead>
-                            <tr>
-                                <th class="th-rank">#</th>
-                                <th class="th-center">Name</th>
-                                <th class="th-center">Team</th>
-                                <th class="th-center">Points</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rows}</tbody>
-                    </table>
+                    <div class="table-scroll">
+                        <table class="data-table standings-table">
+                            <thead>
+                                <tr>
+                                    <th class="th-rank">#</th>
+                                    <th class="th-center">Name</th>
+                                    <th class="th-center">Team</th>
+                                    <th class="th-center th-points">Points</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
                     <p class="comm-note standings-note">Click a player to view their roster and per-event scoring.</p>
                 </div>
             `;
@@ -501,17 +525,19 @@
             return `
                 <div class="section">
                     <h2>${escapeHtml(memberName)}'s Roster</h2>
-                    <table class="data-table breakdown-table">
-                        <thead>
-                            <tr><th>Group</th>${headerLabels}</tr>
-                        </thead>
-                        <tbody>
-                            <tr><th class="col-event">Pick</th>${pickNames}</tr>
-                            ${eventRows}
-                            <tr class="row-total"><th class="col-event">Total per Player</th>${totalCells}</tr>
-                            <tr class="row-team-total"><th class="col-event">Team Total</th><td colspan="${sortedPicks.length}">${teamTotal}</td></tr>
-                        </tbody>
-                    </table>
+                    <div class="table-scroll">
+                        <table class="data-table breakdown-table">
+                            <thead>
+                                <tr><th>Group</th>${headerLabels}</tr>
+                            </thead>
+                            <tbody>
+                                <tr><th class="col-event">Pick</th>${pickNames}</tr>
+                                ${eventRows}
+                                <tr class="row-total"><th class="col-event">Total per Player</th>${totalCells}</tr>
+                                <tr class="row-team-total"><th class="col-event">Team Total</th><td colspan="${sortedPicks.length}">${teamTotal}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             `;
         }
@@ -521,12 +547,15 @@
                 supabase.from('fcp_picks')
                     .select('tier_slot, golfers(id, name, tier)')
                     .eq('league_id', leagueId)
+                    .eq('season', currentSeason)
                     .eq('user_id', userId),
                 supabase.from('fcp_event_results')
                     .select('golfer_id, event, points, status')
+                    .eq('season', currentSeason)
             ]);
 
-            const { data: fcpLeague } = await supabase.from('fcp_leagues').select('*').eq('league_id', leagueId).maybeSingle();
+            const { data: fcpLeague } = await supabase.from('fcp_leagues').select('*')
+                .eq('league_id', leagueId).eq('season', currentSeason).maybeSingle();
 
             document.getElementById('breakdown-section').innerHTML =
                 renderBreakdown(userName, picksRes.data ?? [], resultsRes.data ?? [], fcpLeague);
@@ -545,7 +574,7 @@
         async function loadAndRenderStandings(leagueId) {
             const [membersRes, scoresRes, leagueRes] = await Promise.all([
                 supabase.from('league_members').select('user_id, joined_at, team_name').eq('league_id', leagueId),
-                supabase.from('fcp_scores').select('user_id, total_points').eq('league_id', leagueId),
+                supabase.from('fcp_scores').select('user_id, total_points').eq('league_id', leagueId).eq('season', currentSeason),
                 supabase.from('leagues').select('id, commissioner_id').eq('id', leagueId).single()
             ]);
 
@@ -570,6 +599,72 @@
             // Default the breakdown to the current user's roster.
             const me = members.find(m => m.user_id === currentUserId) ?? members[0];
             if (me) loadAndRenderBreakdown(leagueId, me.user_id, me.display_name);
+
+            loadLiveLeaderboard(leagueId);
+        }
+
+        // ── Render: live leaderboard (position/points/status from the most
+        // recently synced event — no to-par score or "thru", since
+        // fcp_event_results only stores finish_position/status/points) ──────
+        async function loadLiveLeaderboard(leagueId) {
+            const el = document.getElementById('live-leaderboard');
+            el.innerHTML = '';
+
+            const { data: allResults } = await supabase
+                .from('fcp_event_results')
+                .select('golfer_id, event, finish_position, status, points, golfers(name)')
+                .eq('season', currentSeason);
+
+            if (!allResults || !allResults.length) return;
+
+            // Show the most recent event (last in EVENTS order) with any synced results.
+            let event = null;
+            for (let i = EVENTS.length - 1; i >= 0; i--) {
+                if (allResults.some(r => r.event === EVENTS[i].key)) { event = EVENTS[i]; break; }
+            }
+            if (!event) return;
+
+            const results = allResults
+                .filter(r => r.event === event.key)
+                .sort((a, b) => (a.finish_position ?? 999) - (b.finish_position ?? 999));
+
+            const { data: picks } = await supabase.from('fcp_picks')
+                .select('golfer_id').eq('league_id', leagueId).eq('season', currentSeason);
+            const pickCounts = {};
+            (picks ?? []).forEach(p => { pickCounts[p.golfer_id] = (pickCounts[p.golfer_id] ?? 0) + 1; });
+
+            const STATUS_LABELS = { cut: 'CUT', withdrawn: 'WD', made_cut: 'F', active: 'Active' };
+
+            const rows = results.map(r => {
+                const picked = pickCounts[r.golfer_id] ?? 0;
+                return `<tr>
+                    <td class="col-rank">${r.finish_position ?? '—'}</td>
+                    <td class="col-name">${escapeHtml(r.golfers?.name ?? 'Unknown')}</td>
+                    <td class="col-points">${r.points}</td>
+                    <td class="td-center">${STATUS_LABELS[r.status] ?? r.status}</td>
+                    <td class="td-center">${picked ? `${picked}×` : '—'}</td>
+                </tr>`;
+            }).join('');
+
+            el.innerHTML = `
+                <div class="section">
+                    <h2>Live: ${escapeHtml(event.label)}</h2>
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th class="th-rank">Pos</th>
+                                    <th>Player</th>
+                                    <th class="th-points th-center">Pts</th>
+                                    <th class="th-center">Status</th>
+                                    <th class="th-center">Picked</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
         }
 
         // ── Main ──────────────────────────────────────────────────────────────
@@ -581,11 +676,7 @@
             const leagueId = sessionStorage.getItem('league_id');
             if (!leagueId) { window.location.href = '/golf/index.html'; return; }
 
-            const [leagueRes, fcpRes, membersRes] = await Promise.all([
-                supabase.from('leagues').select('*').eq('id', leagueId).single(),
-                supabase.from('fcp_leagues').select('*').eq('league_id', leagueId).maybeSingle(),
-                supabase.from('league_members').select('user_id, joined_at, team_name').eq('league_id', leagueId)
-            ]);
+            const leagueRes = await supabase.from('leagues').select('*').eq('id', leagueId).single();
 
             if (leagueRes.error) {
                 document.getElementById('main-content').innerHTML = `<p class="error">Failed to load league: ${leagueRes.error.message}</p>`;
@@ -593,6 +684,13 @@
             }
 
             const league = leagueRes.data;
+            currentSeason = league.current_season;
+
+            const [fcpRes, membersRes] = await Promise.all([
+                supabase.from('fcp_leagues').select('*').eq('league_id', leagueId).eq('season', currentSeason).maybeSingle(),
+                supabase.from('league_members').select('user_id, joined_at, team_name').eq('league_id', leagueId)
+            ]);
+
             const fcpLeague = fcpRes.data ?? null;
             const memberRows = membersRes.data ?? [];
 

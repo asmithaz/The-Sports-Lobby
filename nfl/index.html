@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -14,6 +14,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
     <script src="/js/auth.js"></script>
 </head>
 <body>
@@ -33,7 +34,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Set it, Forget it League</span>
-                    <button class="btn btn--primary" onclick="startLeague('/nfl/set-it-forget-it/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=Set%20it%2C%20Forget%20it%20League&sport=NFL&back=/nfl/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Teams are selected in a snake or auction draft.</li>
@@ -47,7 +48,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">NFL Playoffs Bracket</span>
-                    <button class="btn btn--primary" onclick="startLeague('/nfl/playoffs-bracket/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=NFL%20Playoffs%20Bracket&sport=NFL&back=/nfl/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Player's select winner for every game in the bracket.</li>
@@ -60,7 +61,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">NFL Survivor</span>
-                    <button class="btn btn--primary" onclick="startLeague('/nfl/survivor/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=NFL%20Survivor&sport=NFL&back=/nfl/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Pick one team to win their matchup from a preset pool of games.</li>
@@ -73,7 +74,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">NFL Pick 'em</span>
-                    <button class="btn btn--primary" onclick="startLeague('/nfl/pickem/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=NFL%20Pick%20'em&sport=NFL&back=/nfl/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Pick every game winner each week.</li>
@@ -85,7 +86,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Gauntlet Playoff Tournament</span>
-                    <button class="btn btn--primary" onclick="startLeague('/nfl/gauntlet/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=Gauntlet%20Playoff%20Tournament&sport=NFL&back=/nfl/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Each player is randomly assigned one team or more (up to 14 entries).</li>
@@ -96,7 +97,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Playoff Draft</span>
-                    <button class="btn btn--primary" onclick="startLeague('/nfl/playoff-draft/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=Playoff%20Draft&sport=NFL&back=/nfl/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Teams are selected in a snake or auction draft.</li>
@@ -108,7 +109,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Playoff Weekly Strategy Game</span>
-                    <button class="btn btn--primary" onclick="startLeague('/nfl/playoff-strategy/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=Playoff%20Weekly%20Strategy%20Game&sport=NFL&back=/nfl/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>Player's draft a team based on teams available in the playoffs.</li>
@@ -122,7 +123,7 @@
             <div class="card">
                 <div class="flex-between hub-card-header">
                     <span class="hub-card-name">Kicker League</span>
-                    <button class="btn btn--primary" onclick="startLeague('/nfl/kicker-league/')">Start your League!</button>
+                    <a class="btn btn--ghost" href="/coming-soon/index.html?game=Kicker%20League&sport=NFL&back=/nfl/">Coming Soon</a>
                 </div>
                 <ul class="hub-feature-list">
                     <li>All Kicker Teams go head to head each week.</li>
@@ -140,6 +141,10 @@
         <a href="/legal/terms.html" class="footer-link">Terms</a>
         <span class="footer-sep">&middot;</span>
         <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
     </footer>
 
 </body>

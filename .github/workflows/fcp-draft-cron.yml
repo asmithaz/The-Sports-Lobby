@@ -1,0 +1,25 @@
+name: FedEx Cup Playoffs Draft Cron
+
+# Runs every 5 minutes year-round (drafts get scheduled well before the
+# playoff window itself, so this isn't gated to PLAYOFFS_START/END like
+# fcp-sync-scores.yml). The function itself is a no-op read+early-return
+# when no league has a pending draft, so idle cost is negligible.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call fcp-draft-cron Edge Function
+        run: |
+          curl -sS -X POST "${SUPABASE_URL}/functions/v1/fcp-draft-cron" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --fail-with-body
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
