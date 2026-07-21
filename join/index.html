@@ -68,7 +68,7 @@ async function joinFlow() {
     // Check auth — if not logged in, stash the full current URL and redirect to login
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
-        sessionStorage.setItem('sp_redirect_after_login', location.href);
+        localStorage.setItem('sp_redirect_after_login', location.href);
         window.location.href = '/login/';
         return;
     }

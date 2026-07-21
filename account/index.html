@@ -58,7 +58,7 @@
         async function init() {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
-                sessionStorage.setItem('sp_redirect_after_login', '/account/');
+                localStorage.setItem('sp_redirect_after_login', '/account/');
                 window.location.href = '/login/index.html';
                 return;
             }

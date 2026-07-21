@@ -50,7 +50,7 @@ async function startLeague(setupUrl) {
     if (loggedIn) {
         window.location.href = setupUrl;
     } else {
-        sessionStorage.setItem('sp_redirect_after_login', setupUrl);
+        localStorage.setItem('sp_redirect_after_login', setupUrl);
         window.location.href = '/login/index.html';
     }
 }

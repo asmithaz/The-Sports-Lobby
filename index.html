@@ -348,7 +348,7 @@
             'golf-fedex-cup-playoffs': {
                 title: "FedEx Cup Playoffs",
                 bullets: ["Draft golfers for the FedEx Cup.", "Score points across all FedEx Cup events.", "Cumulative points determine the FedEx Cup winner.", "Customizable roster size and draft format."],
-                url: "#"
+                url: "/golf/fedex-playoffs/"
             },
             'golf-weekly-pickem': {
                 title: "Weekly Pick 'em",
@@ -432,6 +432,14 @@
             }
         };
 
+        // Maps each tab panel to the `sport` label used across the site's
+        // per-sport hub pages (nfl/index.html, golf/index.html, etc.), so
+        // /coming-soon/ links match their conventions.
+        const sportByContentId = {
+            content1: 'NFL', content2: 'CBB', content3: 'Golf', content4: 'CFB',
+            content5: 'Olympics', content6: 'Soccer', content7: 'The Fringe',
+        };
+
         document.querySelectorAll('.format-list a[data-game]').forEach(link => {
             link.addEventListener('click', e => {
                 e.preventDefault();
@@ -442,15 +450,36 @@
                 panel.querySelectorAll('.format-list a').forEach(a => a.classList.remove('active'));
                 link.classList.add('active');
 
+                let ctaHtml;
+                if (link.dataset.game === 'fringe-submit') {
+                    ctaHtml = `<a href="#" class="btn btn--primary" id="tab-cta">Submit!</a>`;
+                } else if (game.url === '#') {
+                    const sport = sportByContentId[panel.id] || '';
+                    const comingSoonUrl = `/coming-soon/index.html?game=${encodeURIComponent(game.title)}&sport=${encodeURIComponent(sport)}&back=/index.html`;
+                    ctaHtml = `<a href="${comingSoonUrl}" class="btn btn--ghost">Coming Soon</a>`;
+                } else {
+                    ctaHtml = `<button class="btn btn--primary" id="tab-cta">Start a League!</button>`;
+                }
+
                 const summaryEl = panel.querySelector('.tab-right');
                 summaryEl.innerHTML = `
                     <h3 class="summary-title">${game.title}</h3>
                     <ul class="summary-bullets">
                         ${game.bullets.map(b => `<li>${b}</li>`).join('')}
                     </ul>
-                    <a href="${game.url}" class="btn btn--primary">Start a League!</a>
+                    ${ctaHtml}
                 `;
                 summaryEl.classList.add('visible');
+
+                const cta = summaryEl.querySelector('#tab-cta');
+                if (cta && link.dataset.game === 'fringe-submit') {
+                    cta.addEventListener('click', evt => {
+                        evt.preventDefault();
+                        document.querySelector('[data-feedback-trigger]').click();
+                    });
+                } else if (cta) {
+                    cta.addEventListener('click', () => startLeague(game.url));
+                }
             });
         });
     </script>

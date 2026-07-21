@@ -27,6 +27,13 @@
     justify-content: center;
 }
 
+.oauth-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+}
+
 .divider {
     display: flex;
     align-items: center;
