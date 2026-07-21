@@ -233,6 +233,12 @@ GRANT SELECT, INSERT, UPDATE        ON golfers           TO service_role;
 GRANT SELECT, INSERT, UPDATE        ON fcp_event_results TO service_role;
 GRANT SELECT, INSERT, UPDATE        ON fcp_scores        TO service_role;
 
+-- ...and for the fcp-draft-cron Edge Function (auto-starts pending drafts,
+-- sends 30-minute-out reminder emails). league_members/leagues grants live
+-- in soccer/world-cup-bracket-challenge/schema.sql where those shared
+-- tables are defined.
+GRANT SELECT, UPDATE                ON fcp_leagues       TO service_role;
+
 
 -- ------------------------------------------------------------
 -- 9. ROW LEVEL SECURITY
@@ -322,7 +328,11 @@ BEGIN
     RETURN;
   END IF;
 
-  IF NOT EXISTS (
+  -- auth.uid() is NULL when called from the fcp-draft-cron Edge Function
+  -- (service_role, no user session) via fcp_start_draft's time-based
+  -- auto-start path — that caller already has no user to check membership
+  -- against, so only enforce this for real user sessions.
+  IF auth.uid() IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM league_members WHERE league_id = p_league_id AND user_id = auth.uid()
   ) THEN
     RAISE EXCEPTION 'Not a member of this league';

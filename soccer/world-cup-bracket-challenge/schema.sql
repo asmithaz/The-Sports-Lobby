@@ -274,6 +274,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON wc_scores        TO authenticated;
 GRANT SELECT ON wc_teams   TO anon, authenticated;
 GRANT SELECT ON wc_matches TO anon, authenticated;
 
+-- service_role bypasses RLS but still needs table grants for the
+-- FedEx Cup Playoffs fcp-draft-cron Edge Function, which reads league_members
+-- and joins leagues(name) to build draft reminder emails.
+GRANT SELECT ON leagues        TO service_role;
+GRANT SELECT ON league_members TO service_role;
+
 -- ------------------------------------------------------------
 -- 9. ROW LEVEL SECURITY
 -- ------------------------------------------------------------
