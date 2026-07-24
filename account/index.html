@@ -27,6 +27,31 @@
     <main class="page-wrapper page-wrapper--center">
         <div class="card" style="width:100%; max-width:420px; margin-top:var(--space-6);">
             <h2 class="page-title mb-4">Account</h2>
+
+            <div class="field" style="display:flex; flex-direction:column; align-items:center; gap:var(--space-3); text-align:center;">
+                <div id="avatar-preview" onclick="openRepositioner()" title="Click to reposition or upload a new photo" style="width:72px; height:72px; border-radius:50%; background:var(--c-accent-dim); border:1px solid var(--c-accent-border); color:var(--c-accent); display:flex; align-items:center; justify-content:center; font-weight:var(--weight-bold); font-size:var(--text-xl); flex-shrink:0; overflow:hidden; cursor:pointer;">?</div>
+                <div>
+                    <input type="file" id="avatar-input" accept="image/png,image/jpeg,image/webp" style="display:none;" onchange="onAvatarSelected(event)" />
+                    <button type="button" class="btn btn--ghost" id="avatar-btn" onclick="document.getElementById('avatar-input').click();">Upload Photo</button>
+                    <p id="avatar-status" class="text-xs mt-1"></p>
+                </div>
+            </div>
+
+            <div id="crop-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; z-index:1000;">
+                <div class="card" style="width:auto; max-width:90vw;">
+                    <h3 class="mb-3">Position Your Photo</h3>
+                    <div id="crop-viewport" style="width:240px; height:240px; border-radius:50%; overflow:hidden; position:relative; background:var(--c-surface-2); cursor:grab; touch-action:none;">
+                        <img id="crop-img" draggable="false" style="position:absolute; left:0; top:0; user-select:none; pointer-events:none;" />
+                    </div>
+                    <input type="range" id="crop-zoom" class="mt-3" style="width:240px; display:block;" />
+                    <p class="field-hint mb-3">Drag to reposition, use the slider to zoom.</p>
+                    <div style="display:flex; gap:var(--space-3);">
+                        <button type="button" class="btn btn--ghost" style="flex:1;" onclick="cancelCrop()">Cancel</button>
+                        <button type="button" class="btn btn--primary" style="flex:1;" onclick="saveCrop()">Save</button>
+                    </div>
+                </div>
+            </div>
+
             <form onsubmit="event.preventDefault(); saveDisplayName();">
                 <div class="field">
                     <label class="label" for="display-name">Display Name</label>
@@ -54,6 +79,7 @@
 
     <script>
         let currentUserId = null;
+        let currentAvatarCrop = null; // last-saved {scale, offsetX, offsetY}, relative to original.jpg
 
         async function init() {
             const { data: { session } } = await supabase.auth.getSession();
@@ -66,14 +92,254 @@
 
             const { data, error } = await supabase
                 .from('profiles')
-                .select('display_name')
+                .select('display_name, avatar_url, avatar_crop')
                 .eq('id', currentUserId)
                 .single();
 
             if (!error && data) {
                 document.getElementById('display-name').value = data.display_name || '';
+                renderAvatar(data.avatar_url, data.display_name || session.user.email);
+                currentAvatarCrop = data.avatar_crop || null;
+            } else {
+                renderAvatar(null, session.user.email);
             }
         }
+
+        function renderAvatar(avatarUrl, fallbackName) {
+            const preview = document.getElementById('avatar-preview');
+            if (avatarUrl) {
+                preview.innerHTML = `<img src="${avatarUrl}" alt="Avatar" style="width:100%; height:100%; object-fit:cover;" />`;
+            } else {
+                preview.textContent = (fallbackName || '?')[0].toUpperCase();
+            }
+        }
+
+        // The cropper lets the user pan/zoom before upload. Viewport is a
+        // fixed-size square; scale/offset describe how the working image
+        // maps onto it, so the final crop can be read straight off that
+        // image (no quality loss from an intermediate canvas).
+        //
+        // "Working" image = the source resized so its longest side is
+        // capped at MAX_WORKING_DIM. It's kept in memory as workingBlob
+        // and also persisted to storage as original.jpg, together with
+        // the transform (avatar_crop), so reposition-without-re-upload
+        // works even after a page reload.
+        const CROP_VIEWPORT = 240;
+        const MAX_WORKING_DIM = 1024;
+        const cropImg = new Image();
+        let cropObjectUrl = null;
+        let workingBlob = null;
+        let cropScale = 1, cropMinScale = 1, cropOffsetX = 0, cropOffsetY = 0;
+        let cropDragging = false, cropDragStartX = 0, cropDragStartY = 0, cropStartOffsetX = 0, cropStartOffsetY = 0;
+
+        function makeWorkingBlob(file) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    const scale = Math.min(1, MAX_WORKING_DIM / Math.max(img.width, img.height));
+                    const w = Math.round(img.width * scale);
+                    const h = Math.round(img.height * scale);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    URL.revokeObjectURL(img.src);
+                    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not process image.')), 'image/jpeg', 0.92);
+                };
+                img.onerror = () => reject(new Error('Could not read image.'));
+                img.src = URL.createObjectURL(file);
+            });
+        }
+
+        function openCropperFromBlob(blob, restore) {
+            if (cropObjectUrl) URL.revokeObjectURL(cropObjectUrl);
+            workingBlob = blob;
+            cropObjectUrl = URL.createObjectURL(blob);
+            cropImg.onload = () => {
+                cropMinScale = CROP_VIEWPORT / Math.min(cropImg.naturalWidth, cropImg.naturalHeight);
+                if (restore) {
+                    cropScale = Math.max(restore.scale, cropMinScale);
+                    cropOffsetX = restore.offsetX;
+                    cropOffsetY = restore.offsetY;
+                } else {
+                    cropScale = cropMinScale;
+                    cropOffsetX = (CROP_VIEWPORT - cropImg.naturalWidth * cropScale) / 2;
+                    cropOffsetY = (CROP_VIEWPORT - cropImg.naturalHeight * cropScale) / 2;
+                }
+                clampCropOffsets();
+
+                const zoom = document.getElementById('crop-zoom');
+                zoom.min = cropMinScale;
+                zoom.max = cropMinScale * 4;
+                zoom.step = (cropMinScale * 4 - cropMinScale) / 200;
+                zoom.value = cropScale;
+
+                document.getElementById('crop-img').src = cropObjectUrl;
+                applyCropTransform();
+                document.getElementById('crop-overlay').style.display = 'flex';
+            };
+            cropImg.src = cropObjectUrl;
+        }
+
+        async function onAvatarSelected(event) {
+            const file = event.target.files[0];
+            event.target.value = '';
+            if (!file) return;
+
+            const statusEl = document.getElementById('avatar-status');
+            try {
+                const blob = await makeWorkingBlob(file);
+                openCropperFromBlob(blob, null);
+            } catch (err) {
+                statusEl.textContent = err.message || 'Could not read image.';
+                statusEl.className = 'text-xs mt-1 text-danger';
+            }
+        }
+
+        // Avatar click: reuse the in-memory working image if this session
+        // already loaded one, otherwise pull the persisted original + last
+        // crop back from storage. No avatar yet at all -> same as Upload.
+        async function openRepositioner() {
+            if (workingBlob) {
+                openCropperFromBlob(workingBlob, { scale: cropScale, offsetX: cropOffsetX, offsetY: cropOffsetY });
+                return;
+            }
+
+            if (!currentAvatarCrop) {
+                document.getElementById('avatar-input').click();
+                return;
+            }
+
+            const statusEl = document.getElementById('avatar-status');
+            statusEl.textContent = 'Loading…';
+            statusEl.className = 'text-xs mt-1';
+            try {
+                const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(`${currentUserId}/original.jpg`);
+                const res = await fetch(publicUrl);
+                if (!res.ok) throw new Error('Could not load your photo.');
+                const blob = await res.blob();
+                openCropperFromBlob(blob, currentAvatarCrop);
+                statusEl.textContent = '';
+            } catch (err) {
+                statusEl.textContent = err.message || 'Could not load your photo.';
+                statusEl.classList.add('text-danger');
+            }
+        }
+
+        function applyCropTransform() {
+            const el = document.getElementById('crop-img');
+            el.style.width = `${cropImg.naturalWidth * cropScale}px`;
+            el.style.height = `${cropImg.naturalHeight * cropScale}px`;
+            el.style.transform = `translate(${cropOffsetX}px, ${cropOffsetY}px)`;
+        }
+
+        function clampCropOffsets() {
+            const dispW = cropImg.naturalWidth * cropScale;
+            const dispH = cropImg.naturalHeight * cropScale;
+            cropOffsetX = Math.min(0, Math.max(CROP_VIEWPORT - dispW, cropOffsetX));
+            cropOffsetY = Math.min(0, Math.max(CROP_VIEWPORT - dispH, cropOffsetY));
+        }
+
+        function onCropZoomInput(event) {
+            const newScale = parseFloat(event.target.value);
+            // Anchor the zoom on the viewport center so it doesn't jump.
+            const centerX = (CROP_VIEWPORT / 2 - cropOffsetX) / cropScale;
+            const centerY = (CROP_VIEWPORT / 2 - cropOffsetY) / cropScale;
+            cropScale = newScale;
+            cropOffsetX = CROP_VIEWPORT / 2 - centerX * cropScale;
+            cropOffsetY = CROP_VIEWPORT / 2 - centerY * cropScale;
+            clampCropOffsets();
+            applyCropTransform();
+        }
+
+        function onCropPointerDown(event) {
+            cropDragging = true;
+            cropDragStartX = event.clientX;
+            cropDragStartY = event.clientY;
+            cropStartOffsetX = cropOffsetX;
+            cropStartOffsetY = cropOffsetY;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            event.currentTarget.style.cursor = 'grabbing';
+        }
+
+        function onCropPointerMove(event) {
+            if (!cropDragging) return;
+            cropOffsetX = cropStartOffsetX + (event.clientX - cropDragStartX);
+            cropOffsetY = cropStartOffsetY + (event.clientY - cropDragStartY);
+            clampCropOffsets();
+            applyCropTransform();
+        }
+
+        function onCropPointerUp(event) {
+            cropDragging = false;
+            event.currentTarget.style.cursor = 'grab';
+        }
+
+        function cancelCrop() {
+            document.getElementById('crop-overlay').style.display = 'none';
+        }
+
+        async function saveCrop() {
+            const statusEl = document.getElementById('avatar-status');
+            const btn = document.getElementById('avatar-btn');
+
+            const sx = -cropOffsetX / cropScale;
+            const sy = -cropOffsetY / cropScale;
+            const sSize = CROP_VIEWPORT / cropScale;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            canvas.getContext('2d').drawImage(cropImg, sx, sy, sSize, sSize, 0, 0, 256, 256);
+
+            const cropToSave = { scale: cropScale, offsetX: cropOffsetX, offsetY: cropOffsetY };
+
+            document.getElementById('crop-overlay').style.display = 'none';
+            statusEl.textContent = 'Uploading…';
+            statusEl.className = 'text-xs mt-1';
+            btn.disabled = true;
+
+            try {
+                const avatarBlob = await new Promise((resolve, reject) =>
+                    canvas.toBlob(b => b ? resolve(b) : reject(new Error('Could not process image.')), 'image/jpeg', 0.85));
+
+                const avatarPath = `${currentUserId}/avatar.jpg`;
+                const originalPath = `${currentUserId}/original.jpg`;
+
+                const [avatarRes, originalRes] = await Promise.all([
+                    supabase.storage.from('avatars').upload(avatarPath, avatarBlob, { upsert: true, contentType: 'image/jpeg' }),
+                    supabase.storage.from('avatars').upload(originalPath, workingBlob, { upsert: true, contentType: 'image/jpeg' })
+                ]);
+                if (avatarRes.error) throw avatarRes.error;
+                if (originalRes.error) throw originalRes.error;
+
+                const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(avatarPath);
+                const bustedUrl = `${publicUrl}?t=${Date.now()}`;
+
+                const { error: updateError } = await supabase
+                    .from('profiles')
+                    .update({ avatar_url: bustedUrl, avatar_crop: cropToSave, updated_at: new Date().toISOString() })
+                    .eq('id', currentUserId);
+                if (updateError) throw updateError;
+
+                currentAvatarCrop = cropToSave;
+                renderAvatar(bustedUrl);
+                statusEl.textContent = 'Saved.';
+                statusEl.classList.add('text-accent');
+            } catch (err) {
+                statusEl.textContent = err.message || 'Upload failed.';
+                statusEl.classList.add('text-danger');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        document.getElementById('crop-zoom').addEventListener('input', onCropZoomInput);
+        const cropViewportEl = document.getElementById('crop-viewport');
+        cropViewportEl.addEventListener('pointerdown', onCropPointerDown);
+        cropViewportEl.addEventListener('pointermove', onCropPointerMove);
+        cropViewportEl.addEventListener('pointerup', onCropPointerUp);
+        cropViewportEl.addEventListener('pointercancel', onCropPointerUp);
 
         async function saveDisplayName() {
             const input = document.getElementById('display-name');
