@@ -13,6 +13,7 @@
   <script src="/js/error-logging.js"></script>
   <script src="/js/feedback.js"></script>
   <script src="/js/auth.js"></script>
+  <script src="sound.js"></script>
 </head>
 <body>
 
@@ -27,8 +28,13 @@
 
   <main>
     <div class="page-max">
-      <h1>FedEx Cup Playoffs Draft</h1>
-      <p class="subtitle">Draft your roster — compete across all three playoff events</p>
+      <div class="page-header-row">
+        <div>
+          <h1>FedEx Cup Playoffs Draft</h1>
+          <p class="subtitle">Draft your roster — compete across all three playoff events</p>
+        </div>
+        <button class="btn-sm sound-toggle" id="sound-toggle-btn" title="Toggle draft sounds" aria-pressed="true">🔊</button>
+      </div>
 
       <!-- VIEW: LOADING -->
       <div id="view-loading">
@@ -57,6 +63,7 @@
             Draft starts in <strong id="lobby-countdown">—</strong>
             (<span id="lobby-draft-time"></span>)
           </p>
+          <div class="lobby-final-countdown" id="lobby-final-countdown" hidden></div>
 
           <h3>Draft Order</h3>
           <ol class="order-list" id="lobby-order-list"></ol>
@@ -154,7 +161,10 @@
 
       <!-- CHAT (shown once the lobby opens; hidden during loading/early) -->
       <div class="panel chat-panel" id="chat-panel" hidden>
-        <h2>Draft Chat</h2>
+        <div class="chat-panel-head">
+          <h2>Draft Chat</h2>
+          <button class="btn-sm sound-toggle" id="chat-sound-toggle-btn" title="Toggle chat sounds" aria-pressed="true">🔊</button>
+        </div>
         <div class="chat-messages" id="chat-messages"></div>
         <form class="chat-form" id="chat-form">
           <input type="text" id="chat-input" maxlength="280" placeholder="Say something…" autocomplete="off" />

@@ -28,6 +28,21 @@ h1 {
     max-width: 960px;
 }
 
+/* ── Page header + sound toggle ── */
+.page-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+    width: 100%;
+}
+
+.sound-toggle {
+    font-size: var(--text-md);
+    line-height: 1;
+    padding: 6px var(--space-3);
+}
+
 /* ── Panel card ── */
 .panel {
     background: var(--c-surface);
@@ -305,6 +320,24 @@ h1 {
     gap: var(--space-2);
 }
 
+/* ── Lobby final countdown (last 10s before draft start) ── */
+.lobby-final-countdown {
+    font-size: 64px;
+    font-weight: var(--weight-bold);
+    color: var(--c-accent);
+    text-align: center;
+    margin: var(--space-4) 0;
+}
+
+.lobby-final-countdown.pulse {
+    animation: lobby-tick-pulse 0.6s ease-out;
+}
+
+@keyframes lobby-tick-pulse {
+    0%   { transform: scale(1.35); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
 /* ── Draft two-column layout ── */
 .draft-layout { display: flex; gap: var(--space-5); align-items: flex-start; }
 .avail-panel  { flex: 0 0 360px; }
@@ -433,6 +466,15 @@ h1 {
 
 /* ── Draft chat ── */
 .chat-panel { display: flex; flex-direction: column; }
+
+.chat-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+}
+
+.chat-panel-head h2 { margin-bottom: 0; }
 
 .chat-messages {
     display: flex;

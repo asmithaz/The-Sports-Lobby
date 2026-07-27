@@ -103,8 +103,9 @@
                 return;
             }
 
-            statusEl.textContent = 'Saved.';
+            statusEl.textContent = 'Saved. Returning to league…';
             statusEl.classList.add('text-accent');
+            setTimeout(() => { window.location.href = '/golf/fedex-playoffs/dashboard/'; }, 700);
         }
 
         init();

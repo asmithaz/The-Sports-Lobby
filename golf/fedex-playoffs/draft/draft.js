@@ -21,6 +21,17 @@ let timerInterval    = null;
 let autopickInterval = null;
 let lobbyInterval    = null;
 
+// Sound edge-detection state — render()/renderDraftView()/updateTimer()
+// re-run on every Realtime event and the 20s fallback poll, so cues are
+// driven off changes since the last render, not raw state. Seeded once
+// right after the first loadAll() in the init handler below. Actual tone
+// generation lives in sound.js.
+let prevDraftStatus     = null;
+let prevIsMyTurn        = false;
+let prevPickCount       = 0;
+let warnedForDeadline   = null;
+let lastLobbyTickSecond = null;
+
 const TIER_RANGES = { 1: 'Rank 1-30', 2: 'Rank 31-50', 3: 'Rank 51-70' };
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -122,18 +133,23 @@ async function render() {
     return;
   }
 
+  const draftStatus = fcpLeague.draft_status;
+  if (prevDraftStatus !== 'completed' && draftStatus === 'completed') soundDraftComplete();
+  if (prevDraftStatus !== 'active' && draftStatus === 'active') soundDraftStart();
+  prevDraftStatus = draftStatus;
+
   if (fcpLeague.draft_format === 'auction') {
     showView('auction');
     return;
   }
 
-  if (fcpLeague.draft_status === 'completed') {
+  if (draftStatus === 'completed') {
     renderBoard('complete-table');
     showView('complete');
     return;
   }
 
-  if (fcpLeague.draft_status === 'active') {
+  if (draftStatus === 'active') {
     renderDraftView();
     showView('draft');
     return;
@@ -260,6 +276,7 @@ function saveDraftPickSeconds() {
 
 function startLobbyCountdown() {
   clearInterval(lobbyInterval);
+  lastLobbyTickSecond = null;
   updateLobbyCountdown();
   lobbyInterval = setInterval(updateLobbyCountdown, 1000);
 }
@@ -275,6 +292,22 @@ async function updateLobbyCountdown() {
   el.textContent = h > 0
     ? `${h}h ${m}m ${s}s`
     : `${m}m ${s}s`;
+
+  const finalEl = document.getElementById('lobby-final-countdown');
+  if (remaining > 0 && remaining <= 10) {
+    finalEl.hidden = false;
+    finalEl.textContent = String(remaining);
+    if (lastLobbyTickSecond !== remaining) {
+      soundLobbyTick();
+      lastLobbyTickSecond = remaining;
+      finalEl.classList.remove('pulse');
+      void finalEl.offsetWidth; // force reflow so the pulse animation restarts each tick
+      finalEl.classList.add('pulse');
+    }
+  } else {
+    finalEl.hidden = true;
+    lastLobbyTickSecond = null;
+  }
 
   if (remaining <= 0) {
     clearInterval(lobbyInterval);
@@ -313,6 +346,15 @@ function renderDraftView() {
   const isMyTurn = expectedUser === currentUserId;
   const isPaused = !!fcpLeague.paused_at;
   const isCommissioner = league.commissioner_id === currentUserId;
+
+  if (isMyTurn && !prevIsMyTurn) soundYourTurn();
+  prevIsMyTurn = isMyTurn;
+
+  if (picks.length > prevPickCount) {
+    const latestPick = picks[picks.length - 1];
+    if (latestPick && latestPick.user_id !== currentUserId) soundPickMade();
+  }
+  prevPickCount = picks.length;
 
   document.getElementById('pick-banner-text').textContent = isPaused
     ? `Draft Paused — Now Picking: ${who} — Round ${rnd}, Pick ${posInRound} of ${n}`
@@ -417,6 +459,11 @@ function updateTimer() {
   const s = remaining % 60;
   el.textContent = `${m}:${String(s).padStart(2, '0')}`;
   el.classList.toggle('timer-low', remaining <= 10);
+
+  if (remaining <= 10 && remaining > 0 && prevIsMyTurn && warnedForDeadline !== fcpLeague.pick_deadline) {
+    soundCountdownTick();
+    warnedForDeadline = fcpLeague.pick_deadline;
+  }
 }
 
 function startAutopickWatcher() {
@@ -524,7 +571,11 @@ function subscribeChatRealtime() {
       // Realtime filters only support one column condition, so guard the
       // season client-side — otherwise a stale tab from a prior season
       // could leak a mismatched message into the current chat view.
-      payload => { if (payload.new.season === currentSeason) appendChatMessage(payload.new); })
+      payload => {
+        if (payload.new.season !== currentSeason) return;
+        appendChatMessage(payload.new);
+        if (payload.new.user_id !== currentUserId) soundChatMessage();
+      })
     .subscribe();
 }
 
@@ -556,6 +607,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('chat-form').addEventListener('submit', sendChatMessage);
 
   await loadAll();
+  prevDraftStatus = fcpLeague?.draft_status ?? null;
+  prevPickCount = picks.length;
   await render();
   subscribeRealtime();
   await loadChatMessages();
