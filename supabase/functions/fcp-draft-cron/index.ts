@@ -1,6 +1,6 @@
 // FedEx Cup Playoffs — draft scheduling cron
 //
-// Two jobs, run together so a single scheduled invocation covers both:
+// Three jobs, run together so a single scheduled invocation covers all:
 //  1. Auto-start any pending draft whose draft_time has passed. This backs
 //     up the client-side auto-start in golf/fedex-playoffs/draft/draft.js
 //     (which only fires if a league member happens to have the lobby page
@@ -8,6 +8,12 @@
 //     on anyone's browser being open.
 //  2. Email every member of a league whose draft starts within the next 30
 //     minutes, once, via fcp_leagues.draft_reminder_sent_at as a dedupe flag.
+//  3. Autopick any active draft whose current pick's clock has expired.
+//     This backs up the client-side watcher in draft.js (startAutopickWatcher,
+//     a 3s poll) — if nobody has the draft board open, picks would otherwise
+//     never advance and the draft would stall indefinitely. fcp_autopick_if_expired
+//     only advances one pick per call, so a stalled draft needs the loop below
+//     to catch it back up to the present.
 //
 // Triggered by:
 //  - A GitHub Actions cron job every 5 minutes
@@ -19,6 +25,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const REMINDER_WINDOW_MS = 30 * 60 * 1000;
 const DASHBOARD_URL = "https://thesportslobby.com/golf/fedex-playoffs/dashboard/";
+
+// Upper bound on autopicks per league per invocation, so a pathological
+// state (e.g. pick_deadline stuck in the past because a draft can never
+// finish) can't loop forever — well above any realistic roster_size *
+// draft_order length for this format.
+const MAX_AUTOPICKS_PER_LEAGUE = 200;
 
 function reminderEmailHtml(leagueName: string, draftTime: string): string {
   const when = new Date(draftTime).toLocaleString("en-US", {
@@ -113,7 +125,51 @@ Deno.serve(async (_req) => {
     }
   }
 
-  // ── 2. Email members of leagues drafting within 30 minutes ─────────────
+  // ── 2. Autopick active drafts whose current pick has timed out ─────────
+  const autopicked: Record<string, number> = {};
+  const autopickErrors: Record<string, string> = {};
+
+  const { data: stalledLeagues, error: stalledErr } = await supabase
+    .from("fcp_leagues")
+    .select("league_id")
+    .eq("draft_status", "active")
+    .not("pick_deadline", "is", null)
+    .lte("pick_deadline", nowIso);
+
+  if (stalledErr) {
+    return new Response(JSON.stringify({ ok: false, error: stalledErr.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  for (const league of stalledLeagues ?? []) {
+    let picksMade = 0;
+    try {
+      for (; picksMade < MAX_AUTOPICKS_PER_LEAGUE; picksMade++) {
+        const { error } = await supabase.rpc("fcp_autopick_if_expired", { p_league_id: league.league_id });
+        if (error) throw error;
+
+        const { data: state, error: stateErr } = await supabase
+          .from("fcp_leagues")
+          .select("draft_status, pick_deadline")
+          .eq("league_id", league.league_id)
+          .eq("draft_status", "active")
+          .maybeSingle();
+        if (stateErr) throw stateErr;
+
+        // Draft finished, or the next pick's clock hasn't expired yet —
+        // either way, nothing left to catch up on for this league.
+        if (!state || !state.pick_deadline || new Date(state.pick_deadline) > now) break;
+      }
+    } catch (err) {
+      autopickErrors[league.league_id] = err instanceof Error ? err.message : String(err);
+      continue;
+    }
+    if (picksMade > 0) autopicked[league.league_id] = picksMade;
+  }
+
+  // ── 3. Email members of leagues drafting within 30 minutes ─────────────
   const { data: soonLeagues, error: soonErr } = await supabase
     .from("fcp_leagues")
     .select("league_id, season, draft_time, leagues(name)")
@@ -125,7 +181,7 @@ Deno.serve(async (_req) => {
 
   if (soonErr) {
     return new Response(
-      JSON.stringify({ ok: true, started, startErrors, reminded, reminderErrors, reminderQueryError: soonErr.message }),
+      JSON.stringify({ ok: true, started, startErrors, autopicked, autopickErrors, reminded, reminderErrors, reminderQueryError: soonErr.message }),
       { headers: { "Content-Type": "application/json" } },
     );
   }
@@ -174,7 +230,7 @@ Deno.serve(async (_req) => {
   }
 
   return new Response(
-    JSON.stringify({ ok: true, started, startErrors, reminded, reminderErrors }),
+    JSON.stringify({ ok: true, started, startErrors, autopicked, autopickErrors, reminded, reminderErrors }),
     { headers: { "Content-Type": "application/json" } },
   );
 });

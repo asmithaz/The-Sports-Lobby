@@ -685,6 +685,7 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION fcp_autopick_if_expired(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION fcp_autopick_if_expired(uuid) TO service_role;
 
 
 -- ------------------------------------------------------------

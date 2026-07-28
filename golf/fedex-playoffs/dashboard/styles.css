@@ -225,10 +225,19 @@ h1 {
     color: var(--c-text-muted);
 }
 
-.col-name  { font-weight: var(--weight-bold); color: var(--c-text-primary); white-space: nowrap; }
-.col-date  { color: var(--c-text-muted); white-space: nowrap; }
+.data-table .col-name  { text-align: left; font-weight: var(--weight-bold); color: var(--c-text-primary); white-space: nowrap; }
+.data-table .col-date  { text-align: left; color: var(--c-text-muted); white-space: nowrap; }
 
 .standings-table .col-name { text-align: center; }
+
+/* Header cells have no column-specific class to hang an override off of,
+   so match them up with the left-aligned body cells above by exclusion —
+   everything except the rank/center/pick-col headers, which set their
+   own alignment, and the first column, which /css/components.css already
+   left-aligns via :first-child. */
+.data-table thead th:not(.th-rank):not(.th-center):not(.pick-col):not(:first-child) {
+    text-align: left;
+}
 
 .data-table .col-points {
     text-align: center;
