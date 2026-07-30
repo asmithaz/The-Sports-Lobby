@@ -60,9 +60,16 @@ function soundYourTurn() {
 
 function soundDraftStart() {
   if (!isSoundEnabled()) return;
-  playTone(659, 110, 'triangle', 0.18);
-  setTimeout(() => playTone(880, 110, 'triangle', 0.18), 110);
-  setTimeout(() => playTone(1318, 220, 'triangle', 0.18), 220);
+  // Rising run into a held landing chord — reads as an announcement/fanfare
+  // rather than the short single-line blips used for the other cues.
+  playTone(523, 130, 'triangle', 0.22);
+  setTimeout(() => playTone(659, 130, 'triangle', 0.22), 130);
+  setTimeout(() => playTone(784, 130, 'triangle', 0.22), 260);
+  setTimeout(() => {
+    playTone(659, 550, 'triangle', 0.22);
+    playTone(784, 550, 'triangle', 0.2);
+    playTone(1046, 550, 'triangle', 0.22);
+  }, 390);
 }
 
 function soundDraftComplete() {

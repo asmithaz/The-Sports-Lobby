@@ -86,6 +86,7 @@
     <script>
         let currentUserId = null;
         let currentSeason = null;
+        let leagueId = null;
 
         // The three FedEx Cup Playoffs events, in order.
         const EVENTS = [
@@ -338,6 +339,10 @@
                 </div>` : '';
 
             return `
+                <div class="draft-active-banner">
+                    <strong>Draft room is open.</strong>
+                    <a href="/golf/fedex-playoffs/draft/" class="draft-link">Enter Draft Room →</a>
+                </div>
                 <div class="section">
                     <h2>Members <span class="count">${members.length}</span></h2>
                     <div class="table-scroll">
@@ -668,14 +673,43 @@
         }
 
         // ── Main ──────────────────────────────────────────────────────────────
+        // A deep link (e.g. from the draft reminder email) carries the league
+        // in ?league_id= — prefer that over the last-visited league already
+        // in sessionStorage, and persist it so the rest of the page's calls
+        // (which all read from sessionStorage) keep working unchanged.
+        function resolveLeagueId() {
+            const fromUrl = new URLSearchParams(window.location.search).get('league_id');
+            if (fromUrl) {
+                sessionStorage.setItem('league_id', fromUrl);
+                return fromUrl;
+            }
+            return sessionStorage.getItem('league_id');
+        }
+
+        function subscribeRealtime() {
+            supabase
+                .channel(`fcp-dashboard-${leagueId}`)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'fcp_leagues', filter: `league_id=eq.${leagueId}` }, loadAndRender)
+                .subscribe();
+        }
+
         async function init() {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) { window.location.href = '/login/index.html'; return; }
             currentUserId = session.user.id;
 
-            const leagueId = sessionStorage.getItem('league_id');
+            leagueId = resolveLeagueId();
             if (!leagueId) { window.location.href = '/golf/index.html'; return; }
 
+            await loadAndRender();
+            subscribeRealtime();
+
+            // Fallback poll — catches anything a realtime event might have
+            // missed, same pattern as the draft room's own poll.
+            setInterval(loadAndRender, 20000);
+        }
+
+        async function loadAndRender() {
             const leagueRes = await supabase.from('leagues').select('*').eq('id', leagueId).single();
 
             if (leagueRes.error) {

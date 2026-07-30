@@ -1049,3 +1049,32 @@ DO $$ BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE fcp_draft_messages;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+
+-- ============================================================
+-- SECTION 12 — DRAFT AUTO-START SCHEDULING
+-- Guarantees a pending draft goes active within seconds of its
+-- draft_time, independent of any client's browser being open and
+-- independent of the fcp-draft-cron edge function's 5-minute
+-- GitHub Actions cadence (which is only precise to the minute and
+-- isn't guaranteed to fire exactly on schedule). Runs inside
+-- Postgres itself via pg_cron, so there's no HTTP round trip and
+-- no dependency on external CI infrastructure for on-time starts.
+-- fcp_start_draft is idempotent (only flips leagues still in
+-- 'pending', schema.sql section 10.4) so this is safe to run
+-- alongside the client-side lobby auto-start and a commissioner's
+-- manual "Start Draft" with no risk of double-starting a draft.
+--
+-- On Supabase, pg_cron must be enabled once via Database > Extensions
+-- in the dashboard before this CREATE EXTENSION will succeed.
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions;
+
+SELECT cron.schedule(
+  'fcp-draft-autostart',
+  '15 seconds',
+  $$
+  SELECT fcp_start_draft(league_id) FROM fcp_leagues
+  WHERE draft_status = 'pending' AND draft_time IS NOT NULL AND draft_time <= now();
+  $$
+);

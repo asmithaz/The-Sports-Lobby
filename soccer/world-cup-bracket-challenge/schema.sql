@@ -576,10 +576,14 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 
 -- Auto-create profile when a new user signs up
+-- search_path is set explicitly because this fires (as SECURITY DEFINER)
+-- from GoTrue's own session on auth.users INSERT, whose search_path does
+-- not include public — an unqualified "profiles" reference here 500s
+-- every signup/admin-create-user call with "relation profiles does not exist".
 CREATE OR REPLACE FUNCTION create_profile_on_signup()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
-    INSERT INTO profiles (id, display_name)
+    INSERT INTO public.profiles (id, display_name)
     VALUES (
         NEW.id,
         COALESCE(

@@ -43,6 +43,19 @@ h1 {
     padding: 6px var(--space-3);
 }
 
+/* Muted state gets its own look (not just a swapped emoji on the same
+   green fill) so on/off is readable at a glance. */
+.sound-toggle[aria-pressed="false"] {
+    background: var(--c-surface-2);
+    color: var(--c-text-secondary);
+    border: 1px solid var(--c-border-strong);
+    padding: 5px calc(var(--space-3) - 1px); /* keep same box size despite the added border */
+}
+
+.sound-toggle[aria-pressed="false"]:hover {
+    background: var(--c-surface-hover);
+}
+
 /* ── Panel card ── */
 .panel {
     background: var(--c-surface);

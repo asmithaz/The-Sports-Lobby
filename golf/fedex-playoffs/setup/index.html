@@ -254,6 +254,21 @@
             if (!validateRoster()) return;
 
             const btn = this.querySelector('button[type="submit"]');
+
+            const leagueName = document.getElementById('league-name').value;
+
+            // Guards against the double-submit that happens when a user hits
+            // the browser back button after a successful create (e.g. after
+            // dismissing the browser's own "password found in a breach"
+            // prompt) and the form re-submits with the same name: if this
+            // exact league was already created this session, skip straight
+            // to the invite page instead of inserting a second row.
+            if (sessionStorage.getItem('fcp_pending_league_name') === leagueName
+                && sessionStorage.getItem('league_id')) {
+                window.location.replace('/golf/fedex-playoffs/invite/');
+                return;
+            }
+
             btn.textContent = 'Creating…';
             btn.disabled = true;
 
@@ -263,7 +278,8 @@
                 return;
             }
 
-            const leagueName = document.getElementById('league-name').value;
+            sessionStorage.setItem('fcp_pending_league_name', leagueName);
+
             const visibility = document.querySelector('input[name="visibility"]:checked').value;
             const maxPlayers = parseInt(document.getElementById('max-players').value, 10);
             const password   = document.getElementById('league-password').value.trim();
@@ -297,6 +313,7 @@
                 .single();
 
             if (error) {
+                sessionStorage.removeItem('fcp_pending_league_name');
                 btn.textContent = 'Next →';
                 btn.disabled = false;
                 alert('Failed to create league. Please try again.');
@@ -314,7 +331,7 @@
             sessionStorage.setItem('fcp_tier1_count', tier1Count);
             sessionStorage.setItem('fcp_tier2_count', tier2Count);
             sessionStorage.setItem('fcp_tier3_count', tier3Count);
-            window.location.href = '/golf/fedex-playoffs/invite/';
+            window.location.replace('/golf/fedex-playoffs/invite/');
         });
 
         validateRoster();

@@ -36,7 +36,7 @@
                 Continue with Google
             </button>
             <div class="divider"></div>
-            <form>
+            <form onsubmit="handleLogin(event)">
                 <div class="field">
                     <label class="label" for="email">Email</label>
                     <input class="input" type="email" id="email" name="email" placeholder="Enter your email" />
@@ -59,7 +59,7 @@
                 </div>
                 <p id="login-error" class="text-danger text-xs mb-3"></p>
                 <div class="flex gap-2 mb-4">
-                    <button type="button" class="btn btn--primary login-btn-flex" onclick="handleLogin()">Log In</button>
+                    <button type="submit" class="btn btn--primary login-btn-flex">Log In</button>
                     <a href="forgot-password.html" class="btn btn--ghost login-btn-flex">Forgot Password?</a>
                 </div>
                 <div class="divider"></div>
@@ -105,7 +105,8 @@
             if (error) errorEl.textContent = error.message;
         }
 
-        async function handleLogin() {
+        async function handleLogin(event) {
+            event.preventDefault();
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
             const errorEl = document.getElementById('login-error');

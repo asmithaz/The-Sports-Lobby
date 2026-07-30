@@ -26,11 +26,11 @@ let lobbyInterval    = null;
 // driven off changes since the last render, not raw state. Seeded once
 // right after the first loadAll() in the init handler below. Actual tone
 // generation lives in sound.js.
-let prevDraftStatus     = null;
-let prevIsMyTurn        = false;
-let prevPickCount       = 0;
-let warnedForDeadline   = null;
-let lastLobbyTickSecond = null;
+let prevDraftStatus        = null;
+let prevIsMyTurn           = false;
+let prevPickCount          = 0;
+let lastCountdownTickSecond = null;
+let lastLobbyTickSecond    = null;
 
 const TIER_RANGES = { 1: 'Rank 1-30', 2: 'Rank 31-50', 3: 'Rank 51-70' };
 
@@ -437,6 +437,7 @@ async function makePick(golferId) {
 
 function startTimer() {
   clearInterval(timerInterval);
+  lastCountdownTickSecond = null;
   updateTimer();
   timerInterval = setInterval(updateTimer, 1000);
 }
@@ -460,9 +461,9 @@ function updateTimer() {
   el.textContent = `${m}:${String(s).padStart(2, '0')}`;
   el.classList.toggle('timer-low', remaining <= 10);
 
-  if (remaining <= 10 && remaining > 0 && prevIsMyTurn && warnedForDeadline !== fcpLeague.pick_deadline) {
+  if (remaining <= 10 && remaining > 0 && prevIsMyTurn && lastCountdownTickSecond !== remaining) {
     soundCountdownTick();
-    warnedForDeadline = fcpLeague.pick_deadline;
+    lastCountdownTickSecond = remaining;
   }
 }
 
