@@ -74,8 +74,31 @@ function soundDraftStart() {
 
 function soundDraftComplete() {
   if (!isSoundEnabled()) return;
-  playTone(880, 160, 'triangle', 0.18);
-  setTimeout(() => playTone(587, 260, 'triangle', 0.18), 160);
+  // Bigger fanfare than the other cues — this only fires once per draft,
+  // so it can afford to be a full ascending run into a held landing chord.
+  playTone(659, 110, 'triangle', 0.2);
+  setTimeout(() => playTone(784, 110, 'triangle', 0.2), 110);
+  setTimeout(() => playTone(988, 110, 'triangle', 0.2), 220);
+  setTimeout(() => playTone(1175, 140, 'triangle', 0.22), 330);
+  setTimeout(() => {
+    playTone(784, 650, 'triangle', 0.2);
+    playTone(988, 650, 'triangle', 0.18);
+    playTone(1318, 650, 'triangle', 0.2);
+  }, 470);
+}
+
+// Commissioner pauses the draft — a short descending pair reads as "hold."
+function soundDraftPaused() {
+  if (!isSoundEnabled()) return;
+  playTone(659, 120, 'sine', 0.16);
+  setTimeout(() => playTone(440, 220, 'sine', 0.16), 120);
+}
+
+// Commissioner resumes — mirror of soundDraftPaused, ascending instead.
+function soundDraftResumed() {
+  if (!isSoundEnabled()) return;
+  playTone(440, 120, 'sine', 0.16);
+  setTimeout(() => playTone(659, 220, 'sine', 0.16), 120);
 }
 
 // Pick-clock urgency (own turn, <=10s left).
@@ -97,15 +120,19 @@ function soundPickMade() {
   playTone(440, 80, 'sine', 0.08);
 }
 
+// Gated on the chat flag alone — the master toggle's effect on chat is
+// applied by force-syncing fcp_chat_sound_enabled when master is pressed
+// (see wireSoundToggle below), not by gating playback on both flags. That
+// way, re-enabling chat sound after a master press actually plays again.
 function soundChatMessage() {
-  if (!isSoundEnabled() || !isChatSoundEnabled()) return;
+  if (!isChatSoundEnabled()) return;
   playTone(1568, 60, 'sine', 0.06);
 }
 
 // ─── Toggle buttons ─────────────────────────────────────────────────────
-function wireSoundToggle(btnId, getEnabled, setEnabled) {
+function wireSoundToggle(btnId, getEnabled, setEnabled, onToggle) {
   const btn = document.getElementById(btnId);
-  if (!btn) return;
+  if (!btn) return null;
   const sync = () => {
     const on = getEnabled();
     btn.textContent = on ? '🔊' : '🔇';
@@ -113,12 +140,21 @@ function wireSoundToggle(btnId, getEnabled, setEnabled) {
   };
   sync();
   btn.addEventListener('click', () => {
-    setEnabled(!getEnabled());
+    const on = !getEnabled();
+    setEnabled(on);
     sync();
+    onToggle?.(on);
   });
+  return sync;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  wireSoundToggle('sound-toggle-btn', isSoundEnabled, setSoundEnabled);
-  wireSoundToggle('chat-sound-toggle-btn', isChatSoundEnabled, setChatSoundEnabled);
+  // Master toggle forces chat's own flag to match on every press, then
+  // chat stays independently controllable again until master is pressed
+  // again — pressing master always wins, syncing both flags/icons together.
+  const syncChat = wireSoundToggle('chat-sound-toggle-btn', isChatSoundEnabled, setChatSoundEnabled);
+  wireSoundToggle('sound-toggle-btn', isSoundEnabled, setSoundEnabled, on => {
+    setChatSoundEnabled(on);
+    syncChat?.();
+  });
 });

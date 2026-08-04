@@ -4,11 +4,13 @@
 //  1. Email every member of a league whose draft starts within the next 30
 //     minutes, once, via fcp_leagues.draft_reminder_sent_at as a dedupe flag.
 //  2. Autopick any active draft whose current pick's clock has expired.
-//     This backs up the client-side watcher in draft.js (startAutopickWatcher,
-//     a 3s poll) — if nobody has the draft board open, picks would otherwise
-//     never advance and the draft would stall indefinitely. fcp_autopick_if_expired
-//     only advances one pick per call, so a stalled draft needs the loop below
-//     to catch it back up to the present.
+//     This is now a belt-and-suspenders backup — the primary driver is the
+//     pg_cron job 'fcp-draft-autopick' running every 15s directly in Postgres
+//     (golf/fedex-playoffs/schema.sql, SECTION 12, fcp_autopick_catchup()),
+//     same rationale as auto-start below. This 5-minute GitHub Actions pass
+//     just catches anything in the unlikely event pg_cron is ever disabled.
+//     fcp_autopick_if_expired only advances one pick per call, so a stalled
+//     draft needs the loop below to catch it back up to the present.
 //
 // Auto-starting a pending draft whose draft_time has passed used to live
 // here too, but a 5-minute GitHub Actions cadence isn't precise enough for

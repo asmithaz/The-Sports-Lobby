@@ -689,6 +689,47 @@ GRANT EXECUTE ON FUNCTION fcp_autopick_if_expired(uuid) TO service_role;
 
 
 -- ------------------------------------------------------------
+-- 10.6a fcp_autopick_catchup
+-- Driven by pg_cron (SECTION 12) every 15s, independent of any client's
+-- browser being open. fcp_autopick_if_expired only advances one pick per
+-- call, so for each league with an expired pick_deadline this calls it
+-- in a loop until that league's clock is no longer expired (or the draft
+-- finishes), catching a stalled draft back up to the present in one pass.
+-- Bounded per league so a pathological state can't loop forever.
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fcp_autopick_catchup()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_league_id uuid;
+  v_status    text;
+  v_deadline  timestamptz;
+  v_picks     int;
+BEGIN
+  FOR v_league_id IN
+    SELECT DISTINCT league_id FROM fcp_leagues
+    WHERE draft_status = 'active' AND pick_deadline IS NOT NULL AND pick_deadline <= now()
+  LOOP
+    v_picks := 0;
+    LOOP
+      PERFORM fcp_autopick_if_expired(v_league_id);
+      v_picks := v_picks + 1;
+
+      SELECT draft_status, pick_deadline INTO v_status, v_deadline
+      FROM fcp_leagues WHERE league_id = v_league_id AND draft_status = 'active';
+
+      EXIT WHEN v_status IS DISTINCT FROM 'active' OR v_deadline IS NULL OR v_deadline > now() OR v_picks >= 200;
+    END LOOP;
+  END LOOP;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION fcp_autopick_catchup() TO service_role;
+
+
+-- ------------------------------------------------------------
 -- 10.6b fcp_pause_draft / fcp_resume_draft
 -- Commissioner-only. Pausing blanks pick_deadline (so
 -- fcp_autopick_if_expired's `v_deadline IS NULL` check already no-ops
@@ -1052,18 +1093,19 @@ END $$;
 
 
 -- ============================================================
--- SECTION 12 — DRAFT AUTO-START SCHEDULING
+-- SECTION 12 — DRAFT AUTO-START & AUTOPICK SCHEDULING
 -- Guarantees a pending draft goes active within seconds of its
--- draft_time, independent of any client's browser being open and
--- independent of the fcp-draft-cron edge function's 5-minute
--- GitHub Actions cadence (which is only precise to the minute and
--- isn't guaranteed to fire exactly on schedule). Runs inside
--- Postgres itself via pg_cron, so there's no HTTP round trip and
--- no dependency on external CI infrastructure for on-time starts.
--- fcp_start_draft is idempotent (only flips leagues still in
--- 'pending', schema.sql section 10.4) so this is safe to run
--- alongside the client-side lobby auto-start and a commissioner's
--- manual "Start Draft" with no risk of double-starting a draft.
+-- draft_time, and that an active draft's pick clock keeps advancing,
+-- independent of any client's browser being open and independent of
+-- the fcp-draft-cron edge function's 5-minute GitHub Actions cadence
+-- (which is only precise to the minute and isn't guaranteed to fire
+-- exactly on schedule). Runs inside Postgres itself via pg_cron, so
+-- there's no HTTP round trip and no dependency on external CI
+-- infrastructure. fcp_start_draft and fcp_autopick_if_expired are
+-- both idempotent/no-op-safe, so these jobs are safe to run alongside
+-- the client-side lobby auto-start, the client-side autopick watcher,
+-- and a commissioner's manual "Start Draft" with no risk of
+-- double-starting a draft or double-advancing a pick.
 --
 -- On Supabase, pg_cron must be enabled once via Database > Extensions
 -- in the dashboard before this CREATE EXTENSION will succeed.
@@ -1077,4 +1119,13 @@ SELECT cron.schedule(
   SELECT fcp_start_draft(league_id) FROM fcp_leagues
   WHERE draft_status = 'pending' AND draft_time IS NOT NULL AND draft_time <= now();
   $$
+);
+
+-- Without this, a draft whose first pick's clock expires while zero
+-- clients have the room open stalls indefinitely — nothing else calls
+-- fcp_autopick_if_expired on its own. See schema.sql section 10.6a.
+SELECT cron.schedule(
+  'fcp-draft-autopick',
+  '15 seconds',
+  $$ SELECT fcp_autopick_catchup(); $$
 );

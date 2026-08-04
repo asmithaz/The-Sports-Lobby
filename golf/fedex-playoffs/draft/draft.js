@@ -29,6 +29,7 @@ let lobbyInterval    = null;
 let prevDraftStatus        = null;
 let prevIsMyTurn           = false;
 let prevPickCount          = 0;
+let prevIsPaused           = false;
 let lastCountdownTickSecond = null;
 let lastLobbyTickSecond    = null;
 
@@ -356,6 +357,10 @@ function renderDraftView() {
   }
   prevPickCount = picks.length;
 
+  if (isPaused && !prevIsPaused) soundDraftPaused();
+  if (!isPaused && prevIsPaused) soundDraftResumed();
+  prevIsPaused = isPaused;
+
   document.getElementById('pick-banner-text').textContent = isPaused
     ? `Draft Paused — Now Picking: ${who} — Round ${rnd}, Pick ${posInRound} of ${n}`
     : `Now Picking: ${who} — Round ${rnd}, Pick ${posInRound} of ${n}`;
@@ -610,6 +615,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadAll();
   prevDraftStatus = fcpLeague?.draft_status ?? null;
   prevPickCount = picks.length;
+  prevIsPaused = !!fcpLeague?.paused_at;
   await render();
   subscribeRealtime();
   await loadChatMessages();
