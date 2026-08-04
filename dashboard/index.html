@@ -70,7 +70,10 @@
         <main class="dash-main">
             <div class="dash-header">
                 <h1>Your Leagues</h1>
-                <a href="/dashboard/new-league/" class="btn btn--primary">+ New League</a>
+                <div class="dash-header-actions">
+                    <button type="button" class="btn btn--ghost" id="join-league-btn">Join League</button>
+                    <a href="/dashboard/new-league/" class="btn btn--primary">+ New League</a>
+                </div>
             </div>
 
             <div class="league-filters">
@@ -88,6 +91,19 @@
             </div>
         </main>
 
+    </div>
+
+    <div class="join-overlay" id="join-overlay" style="display:none;">
+        <div class="join-panel">
+            <h3>Join a League</h3>
+            <p class="text-secondary">Enter the invite code your commissioner shared with you.</p>
+            <input type="text" id="join-code-input" placeholder="e.g. fcp-a1b2c3" autocomplete="off" />
+            <p class="join-error" id="join-error" style="display:none;"></p>
+            <div class="join-actions">
+                <button type="button" class="btn btn--ghost" id="join-cancel-btn">Cancel</button>
+                <button type="button" class="btn btn--primary" id="join-submit-btn">Join</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -152,7 +168,50 @@
             document.getElementById('status-toggle').addEventListener('click', onStatusToggleClick);
             document.getElementById('sport-toggle').addEventListener('click', onSportToggleClick);
 
+            document.getElementById('join-league-btn').addEventListener('click', openJoinModal);
+            document.getElementById('join-cancel-btn').addEventListener('click', closeJoinModal);
+            document.getElementById('join-submit-btn').addEventListener('click', submitJoinCode);
+            document.getElementById('join-code-input').addEventListener('keydown', e => {
+                if (e.key === 'Enter') submitJoinCode();
+            });
+            document.getElementById('join-overlay').addEventListener('click', e => {
+                if (e.target.id === 'join-overlay') closeJoinModal();
+            });
+
             await loadLeagues(session);
+        }
+
+        function openJoinModal() {
+            const errorEl = document.getElementById('join-error');
+            errorEl.style.display = 'none';
+            document.getElementById('join-code-input').value = '';
+            document.getElementById('join-overlay').style.display = 'flex';
+            document.getElementById('join-code-input').focus();
+        }
+
+        function closeJoinModal() {
+            document.getElementById('join-overlay').style.display = 'none';
+        }
+
+        function submitJoinCode() {
+            const raw = document.getElementById('join-code-input').value.trim();
+            const errorEl = document.getElementById('join-error');
+            if (!raw) {
+                errorEl.textContent = 'Please enter an invite code.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            // Accept either a bare code or a full invite link — pull the code param if a link was pasted.
+            let code = raw;
+            try {
+                if (raw.includes('code=')) {
+                    const url = new URL(raw, window.location.origin);
+                    code = url.searchParams.get('code') || raw;
+                }
+            } catch (e) {}
+
+            window.location.href = '/join/?code=' + encodeURIComponent(code);
         }
 
         function onStatusToggleClick(e) {
