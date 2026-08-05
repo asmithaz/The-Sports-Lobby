@@ -167,10 +167,11 @@ async function render() {
     return;
   }
 
-  if (draftOrder.length === 0) {
-    await supabase.rpc('fcp_ensure_draft_order', { p_league_id: leagueId });
-    await loadAll();
-  }
+  // Idempotent — no-ops server-side once every current league member
+  // already has a draft-order row. Called unconditionally (not just when
+  // draftOrder is empty) so a late joiner shows up on the next refresh.
+  await supabase.rpc('fcp_ensure_draft_order', { p_league_id: leagueId });
+  await loadAll();
 
   renderLobby();
   showView('lobby');

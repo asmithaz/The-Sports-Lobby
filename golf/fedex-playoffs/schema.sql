@@ -312,21 +312,24 @@ CREATE POLICY "League members can view scores"
 -- 10.1 Draft order helpers
 -- ------------------------------------------------------------
 
--- Populate a randomized draft order the first time anyone opens the lobby.
--- Idempotent — does nothing once an order exists for the league.
+-- Populate a randomized draft order the first time anyone opens the lobby,
+-- and keep syncing in any member who joins the league after that but
+-- before the draft goes active (appended after the current max position).
+-- Once the draft is active the order is locked — pick_number sequencing
+-- depends on a stable position count, so late joiners after that point
+-- are not added. Safe to call on every lobby load: no-ops once every
+-- current league member already has a row.
 CREATE OR REPLACE FUNCTION fcp_ensure_draft_order(p_league_id uuid)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_season int;
+  v_season  int;
+  v_status  text;
+  v_max_pos int;
 BEGIN
   SELECT current_season INTO v_season FROM leagues WHERE id = p_league_id;
-
-  IF EXISTS (SELECT 1 FROM fcp_draft_order WHERE league_id = p_league_id AND season = v_season) THEN
-    RETURN;
-  END IF;
 
   -- auth.uid() is NULL when called from the fcp-draft-cron Edge Function
   -- (service_role, no user session) via fcp_start_draft's time-based
@@ -338,10 +341,23 @@ BEGIN
     RAISE EXCEPTION 'Not a member of this league';
   END IF;
 
+  SELECT draft_status INTO v_status FROM fcp_leagues WHERE league_id = p_league_id AND season = v_season;
+  IF v_status IS DISTINCT FROM 'pending' THEN
+    RETURN;
+  END IF;
+
+  SELECT COALESCE(MAX(position), 0) INTO v_max_pos
+  FROM fcp_draft_order WHERE league_id = p_league_id AND season = v_season;
+
   INSERT INTO fcp_draft_order (league_id, season, user_id, position)
-  SELECT p_league_id, v_season, user_id, row_number() OVER (ORDER BY random())
-  FROM league_members
-  WHERE league_id = p_league_id;
+  SELECT p_league_id, v_season, lm.user_id,
+         v_max_pos + row_number() OVER (ORDER BY random())
+  FROM league_members lm
+  WHERE lm.league_id = p_league_id
+    AND NOT EXISTS (
+      SELECT 1 FROM fcp_draft_order fdo
+      WHERE fdo.league_id = p_league_id AND fdo.season = v_season AND fdo.user_id = lm.user_id
+    );
 END;
 $$;
 
@@ -417,7 +433,13 @@ DECLARE
   v_n    int;
   v_slot int;
 BEGIN
-  SELECT count(*) INTO v_n FROM league_members WHERE league_id = p_league_id;
+  -- Sourced from fcp_draft_order, not league_members — draft_order is the
+  -- actual, positioned roster the snake sequence is built from, and this
+  -- must agree with draft.js's client-side copy of the same formula
+  -- (which also counts draftOrder.length), or the two disagree on whose
+  -- turn it is whenever a member joins the league after the order was
+  -- first populated but isn't yet synced into fcp_draft_order.
+  SELECT count(*) INTO v_n FROM fcp_draft_order WHERE league_id = p_league_id AND season = p_season;
   IF v_n = 0 THEN RETURN NULL; END IF;
 
   v_slot := (p_pick_number - 1) % v_n;
@@ -449,7 +471,8 @@ DECLARE
   v_roster     int;
   v_pick_secs  int;
 BEGIN
-  SELECT count(*) INTO v_n FROM league_members WHERE league_id = p_league_id;
+  -- Same fcp_draft_order source as _fcp_expected_drafter — see comment there.
+  SELECT count(*) INTO v_n FROM fcp_draft_order WHERE league_id = p_league_id AND season = p_season;
   SELECT roster_size, pick_seconds INTO v_roster, v_pick_secs
   FROM fcp_leagues WHERE league_id = p_league_id AND season = p_season;
 
