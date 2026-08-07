@@ -70,6 +70,22 @@ function positionFor(competitor: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// TOUR Championship par (East Lake GC, 4 rounds) — used to convert ESPN's
+// relative-to-par score into a total-strokes number for the
+// fcp_tiebreakers guessing game (golf/fedex-playoffs/schema.sql).
+const TOUR_CHAMPIONSHIP_PAR = 288;
+
+// ESPN reports score relative to par as a string, e.g. "-18", "+2", or "E"
+// for even par.
+function relativeScoreFor(competitor: any): number | null {
+  const raw = competitor?.score?.displayValue ?? competitor?.score;
+  if (raw == null) return null;
+  const s = String(raw).trim().toUpperCase();
+  if (s === "E") return 0;
+  const n = parseInt(s.replace(/^\+/, ""), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
 Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -128,6 +144,12 @@ Deno.serve(async (req) => {
         }
       }
 
+      let totalStrokes: number | null = null;
+      if (tourChampionWinner) {
+        const relative = relativeScoreFor(competitor);
+        if (relative != null) totalStrokes = TOUR_CHAMPIONSHIP_PAR + relative;
+      }
+
       rows.push({
         golfer_id: golferId,
         event,
@@ -135,6 +157,7 @@ Deno.serve(async (req) => {
         finish_position: position,
         status,
         points,
+        total_strokes: totalStrokes,
         updated_at: new Date().toISOString(),
       });
     }

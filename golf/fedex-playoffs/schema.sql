@@ -156,6 +156,12 @@ CREATE TABLE IF NOT EXISTS fcp_event_results (
   PRIMARY KEY (golfer_id, event)
 );
 
+-- Total strokes across all rounds played so far. Only populated for the
+-- tour_championship event (par 288 at East Lake GC) — that's the only
+-- event whose score matters, as the tiebreaker input for fcp_tiebreakers
+-- below. See supabase/functions/fcp-sync-scores/index.ts.
+ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS total_strokes int;
+
 -- Idempotent for installs that ran this schema before seasons existed.
 -- Season-scoping this table is what stops next year's ESPN sync from
 -- silently overwriting this year's finished results in place — see
@@ -192,6 +198,38 @@ ALTER TABLE fcp_scores DROP CONSTRAINT IF EXISTS fcp_scores_pkey;
 ALTER TABLE fcp_scores DROP CONSTRAINT IF EXISTS fcp_scores_league_id_season_user_id_pkey;
 ALTER TABLE fcp_scores ADD CONSTRAINT fcp_scores_league_id_season_user_id_pkey
   PRIMARY KEY (league_id, season, user_id);
+
+
+-- ------------------------------------------------------------
+-- 6b. TIEBREAKERS
+-- Season-ending ties in fcp_scores.total_points are broken by whichever
+-- team's guess is closest to the FedEx Cup Champion's actual total
+-- strokes across the four TOUR Championship rounds (par 288). Each
+-- member submits/edits their own guess (via fcp_submit_tiebreaker_guess
+-- below) up until fcp_tiebreaker_lock_at() for that season — tee time
+-- of the TOUR Championship's final round field, so no one can guess
+-- with knowledge of in-progress scoring.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS fcp_tiebreakers (
+  league_id     uuid NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  season        int  NOT NULL,
+  user_id       uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  guess_strokes int  NOT NULL CHECK (guess_strokes BETWEEN 240 AND 320),
+  updated_at    timestamptz DEFAULT now(),
+  PRIMARY KEY (league_id, season, user_id)
+);
+
+GRANT SELECT ON fcp_tiebreakers TO authenticated;
+
+ALTER TABLE fcp_tiebreakers ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "League members can view tiebreakers" ON fcp_tiebreakers;
+CREATE POLICY "League members can view tiebreakers" ON fcp_tiebreakers FOR SELECT
+  USING (is_league_member(league_id));
+
+-- No INSERT/UPDATE policy — writes only go through
+-- fcp_submit_tiebreaker_guess() below, which enforces the range check
+-- and the lock deadline server-side.
 
 
 -- ------------------------------------------------------------
@@ -979,6 +1017,58 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION fcp_recalculate_all_scores() TO service_role;
+
+
+-- ------------------------------------------------------------
+-- 10.7c fcp_tiebreaker_lock_at / fcp_submit_tiebreaker_guess
+-- Tiebreaker guesses lock at the TOUR Championship's tee time — exact
+-- per-season PGA Tour dates aren't stored anywhere (same caveat as
+-- draftLockFor() in dashboard/index.html), so this is a fixed
+-- approximation. 2026's actual tee time is 7:00 AM ET on 8/27;
+-- America/New_York handles the EDT offset (and future DST changes)
+-- automatically. Mirrored client-side by tiebreakerLockFor() in
+-- dashboard/index.html and draft/draft.js.
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fcp_tiebreaker_lock_at(p_season int)
+RETURNS timestamptz
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT make_timestamptz(p_season, 8, 27, 7, 0, 0, 'America/New_York');
+$$;
+
+GRANT EXECUTE ON FUNCTION fcp_tiebreaker_lock_at(int) TO authenticated, anon;
+
+CREATE OR REPLACE FUNCTION fcp_submit_tiebreaker_guess(p_league_id uuid, p_guess_strokes int)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_season int;
+BEGIN
+  IF NOT is_league_member(p_league_id) THEN
+    RAISE EXCEPTION 'Not a member of this league';
+  END IF;
+
+  IF p_guess_strokes < 240 OR p_guess_strokes > 320 THEN
+    RAISE EXCEPTION 'Guess must be between 240 and 320 strokes';
+  END IF;
+
+  SELECT current_season INTO v_season FROM leagues WHERE id = p_league_id;
+
+  IF now() >= fcp_tiebreaker_lock_at(v_season) THEN
+    RAISE EXCEPTION 'Tiebreaker guesses are locked';
+  END IF;
+
+  INSERT INTO fcp_tiebreakers (league_id, season, user_id, guess_strokes, updated_at)
+  VALUES (p_league_id, v_season, auth.uid(), p_guess_strokes, now())
+  ON CONFLICT (league_id, season, user_id)
+  DO UPDATE SET guess_strokes = EXCLUDED.guess_strokes, updated_at = now();
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION fcp_submit_tiebreaker_guess(uuid, int) TO authenticated;
 
 
 -- ------------------------------------------------------------

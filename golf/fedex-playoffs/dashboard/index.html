@@ -34,6 +34,8 @@
 
         <div class="info-strip" id="info-strip"></div>
 
+        <div id="tiebreaker-section"></div>
+
         <div class="content-stack">
             <div class="standings-row">
                 <div id="main-content" class="standings-row-main"><p class="loading">Loading…</p></div>
@@ -102,6 +104,14 @@
         // instead of hardcoded to one year.
         function draftLockFor(season) {
             return new Date(Date.UTC(season, 7, 8, 12, 0, 0));
+        }
+
+        // Tiebreaker guesses lock at TOUR Championship tee time — mirrors
+        // fcp_tiebreaker_lock_at() in schema.sql. EDT is UTC-4 in late August,
+        // so 7:00 AM ET on 8/27 is 11:00 UTC. Same per-season approximation
+        // caveat as draftLockFor() above.
+        function tiebreakerLockFor(season) {
+            return new Date(Date.UTC(season, 7, 27, 11, 0, 0));
         }
         const pad = n => String(n).padStart(2, '0');
         const toLocalDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -311,6 +321,7 @@
                         <button class="btn-primary" onclick="saveReschedule('${escapeHtml(league.id)}')">Save</button>
                         <button class="btn-text" onclick="toggleReschedule()">Cancel</button>
                     </div>
+                    ${canReschedule ? '<span class="hint" id="reschedule-hint" style="display:none;">Time is shown in your local time zone.</span>' : ''}
                     <button class="btn-outline" id="reschedule-toggle" onclick="toggleReschedule()">Reschedule Draft</button>
                     ` : `<p class="comm-note warn">Draft lock is in effect — time cannot be changed.</p>`}
                 </div>` : '';
@@ -367,9 +378,11 @@
         function toggleReschedule() {
             const row = document.getElementById('reschedule-row');
             const btn = document.getElementById('reschedule-toggle');
+            const hint = document.getElementById('reschedule-hint');
             const visible = row.style.display !== 'none';
             row.style.display = visible ? 'none' : 'flex';
             btn.style.display = visible ? '' : 'none';
+            if (hint) hint.style.display = visible ? 'none' : '';
             if (!visible) refreshRescheduleTimeOptions();
         }
 
@@ -426,17 +439,40 @@
         }
 
         // ── Render: standings (draft complete / playoffs running) ─────────────
-        // Clicking a row loads that member's roster breakdown below.
-        function renderStandings(members, scores, isCommissioner, league) {
+        // Clicking a row loads that member's roster breakdown below. Ties on
+        // points are broken by whichever team's tiebreaker guess is closest
+        // to the FedEx Cup Champion's actual TOUR Championship score (see
+        // renderTiebreakerCard() below) — a missing guess always loses the
+        // tiebreak, and no tiebreak is applied until the champion's score
+        // is known (championStrokes null).
+        function renderStandings(members, scores, isCommissioner, league, tiebreakers, championStrokes) {
             const scoreMap = {};
             (scores ?? []).forEach(s => { scoreMap[s.user_id] = s.total_points; });
 
-            const sorted = [...members].sort((a, b) => (scoreMap[b.user_id] ?? 0) - (scoreMap[a.user_id] ?? 0));
+            const guessMap = {};
+            (tiebreakers ?? []).forEach(t => { guessMap[t.user_id] = t.guess_strokes; });
+
+            const diffFor = uid => {
+                const guess = guessMap[uid];
+                if (championStrokes == null || guess == null) return Infinity;
+                return Math.abs(guess - championStrokes);
+            };
+
+            const sorted = [...members].sort((a, b) => {
+                const byPoints = (scoreMap[b.user_id] ?? 0) - (scoreMap[a.user_id] ?? 0);
+                return byPoints !== 0 ? byPoints : diffFor(a.user_id) - diffFor(b.user_id);
+            });
 
             const rows = sorted.map((m, i) => {
                 const pts = scoreMap[m.user_id] ?? 0;
                 const rankCls = i === 0 ? 'rank-gold' : i === 1 ? 'rank-silver' : i === 2 ? 'rank-bronze' : '';
                 const selectedCls = m.user_id === currentUserId ? ' selected-row' : '';
+                const guess = guessMap[m.user_id];
+                const guessCell = guess == null
+                    ? '—'
+                    : championStrokes == null
+                        ? String(guess)
+                        : `${guess} (Δ${Math.abs(guess - championStrokes)})`;
 
                 return `
                     <tr class="${rankCls}${selectedCls} clickable-row" data-user-id="${escapeHtml(m.user_id)}" data-user-name="${escapeHtml(m.display_name)}">
@@ -444,6 +480,7 @@
                         <td class="col-name">${escapeHtml(m.display_name)}</td>
                         <td class="col-name">${escapeHtml(m.team_name || '—')}</td>
                         <td class="col-points">${pts}</td>
+                        <td class="col-points">${guessCell}</td>
                     </tr>`;
             }).join('');
 
@@ -458,14 +495,86 @@
                                     <th class="th-center">Name</th>
                                     <th class="th-center">Team</th>
                                     <th class="th-center th-points">Points</th>
+                                    <th class="th-center th-points">Tiebreak Guess</th>
                                 </tr>
                             </thead>
                             <tbody>${rows}</tbody>
                         </table>
                     </div>
-                    <p class="comm-note standings-note">Click a player to view their roster and per-event scoring.</p>
+                    <p class="comm-note standings-note">Click a player to view their roster and per-event scoring. Points ties are broken by closest tiebreaker guess.</p>
                 </div>
             `;
+        }
+
+        // ── Render: tiebreaker guess card ───────────────────────────────────
+        // Lets the current user set/update their strokes guess for the FedEx
+        // Cup Champion's total TOUR Championship score (par 288), up until
+        // tiebreakerLockFor(currentSeason). Enforcement is server-side (see
+        // fcp_submit_tiebreaker_guess in schema.sql) — the disabled input
+        // here is just UX, not the real guard.
+        function renderTiebreakerCard(tiebreakers, championStrokes) {
+            const guessMap = {};
+            (tiebreakers ?? []).forEach(t => { guessMap[t.user_id] = t.guess_strokes; });
+            const myGuess = guessMap[currentUserId];
+
+            const lockAt = tiebreakerLockFor(currentSeason);
+            const locked = new Date() >= lockAt;
+            const lockLabel = lockAt.toLocaleString(undefined, {
+                month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+            });
+
+            const statusLine = championStrokes != null
+                ? `The FedEx Cup Champion finished at <strong>${championStrokes}</strong> strokes.`
+                : locked
+                    ? `Guesses are locked — the TOUR Championship has teed off.`
+                    : `Locks ${lockLabel} (TOUR Championship tee time). You can change your guess until then.`;
+
+            const formBlock = locked ? '' : `
+                <div class="flex gap-2" style="align-items:center;margin-top:var(--space-2);">
+                    <input type="number" id="tiebreaker-guess-input" class="input" min="240" max="320"
+                           style="max-width:120px;" placeholder="e.g. 270"
+                           value="${myGuess != null ? escapeHtml(String(myGuess)) : ''}" />
+                    <button class="btn-primary" id="tiebreaker-save-btn" onclick="saveTiebreakerGuess()">Save Guess</button>
+                    <span id="tiebreaker-status" class="comm-note" style="margin:0;"></span>
+                </div>`;
+
+            return `
+                <div class="commissioner-panel">
+                    <h3>🎯 Tiebreaker: TOUR Championship Score</h3>
+                    <p class="comm-note">If two or more teams end tied in points, the tie goes to whichever guess is
+                        closest to the FedEx Cup Champion's total strokes across all four TOUR Championship rounds
+                        (par 288).</p>
+                    <p class="comm-note">${statusLine}</p>
+                    ${formBlock}
+                </div>
+            `;
+        }
+
+        async function saveTiebreakerGuess() {
+            const input = document.getElementById('tiebreaker-guess-input');
+            const statusEl = document.getElementById('tiebreaker-status');
+            const val = parseInt(input.value, 10);
+            if (!Number.isFinite(val) || val < 240 || val > 320) {
+                statusEl.textContent = 'Enter a value between 240 and 320.';
+                return;
+            }
+
+            const btn = document.getElementById('tiebreaker-save-btn');
+            btn.disabled = true;
+            statusEl.textContent = 'Saving…';
+
+            const { error } = await supabase.rpc('fcp_submit_tiebreaker_guess', {
+                p_league_id: leagueId,
+                p_guess_strokes: val
+            });
+
+            if (error) {
+                statusEl.textContent = 'Failed: ' + error.message;
+                btn.disabled = false;
+                return;
+            }
+
+            await loadAndRender();
         }
 
         // ── Render: live scoring block (commissioner-only refresh control) ─────
@@ -577,10 +686,13 @@
         }
 
         async function loadAndRenderStandings(leagueId) {
-            const [membersRes, scoresRes, leagueRes] = await Promise.all([
+            const [membersRes, scoresRes, leagueRes, tiebreakersRes, championRes] = await Promise.all([
                 supabase.from('league_members').select('user_id, joined_at, team_name').eq('league_id', leagueId),
                 supabase.from('fcp_scores').select('user_id, total_points').eq('league_id', leagueId).eq('season', currentSeason),
-                supabase.from('leagues').select('id, commissioner_id').eq('id', leagueId).single()
+                supabase.from('leagues').select('id, commissioner_id').eq('id', leagueId).single(),
+                supabase.from('fcp_tiebreakers').select('user_id, guess_strokes').eq('league_id', leagueId).eq('season', currentSeason),
+                supabase.from('fcp_event_results').select('total_strokes')
+                    .eq('season', currentSeason).eq('event', 'tour_championship').eq('finish_position', 1).maybeSingle()
             ]);
 
             const memberRows = membersRes.data ?? [];
@@ -592,9 +704,10 @@
             }
             const members = memberRows.map(m => ({ ...m, display_name: profileMap[m.user_id] ?? 'Unknown' }));
             const isCommissioner = leagueRes.data?.commissioner_id === currentUserId;
+            const championStrokes = championRes.data?.total_strokes ?? null;
 
             document.getElementById('main-content').innerHTML =
-                renderStandings(members, scoresRes.data, isCommissioner, leagueRes.data);
+                renderStandings(members, scoresRes.data, isCommissioner, leagueRes.data, tiebreakersRes.data, championStrokes);
 
             document.getElementById('live-scoring-inline').innerHTML =
                 renderLiveScoringPanel(isCommissioner, leagueRes.data);
@@ -760,6 +873,28 @@
             } else {
                 await loadAndRenderStandings(leagueId);
             }
+
+            // Shown from the moment a member joins (pending) through the draft
+            // and playoffs, regardless of draft_status — separate from the
+            // status branches above since the guess window isn't tied to them.
+            await refreshTiebreakerSection();
+        }
+
+        // ── Tiebreaker guess card — persistent, independent of draft status ────
+        async function refreshTiebreakerSection() {
+            // Don't clobber the input while the user is actively typing in it —
+            // this runs on every Realtime event and the 20s fallback poll.
+            const input = document.getElementById('tiebreaker-guess-input');
+            if (input && document.activeElement === input) return;
+
+            const [tiebreakersRes, championRes] = await Promise.all([
+                supabase.from('fcp_tiebreakers').select('user_id, guess_strokes').eq('league_id', leagueId).eq('season', currentSeason),
+                supabase.from('fcp_event_results').select('total_strokes')
+                    .eq('season', currentSeason).eq('event', 'tour_championship').eq('finish_position', 1).maybeSingle()
+            ]);
+
+            document.getElementById('tiebreaker-section').innerHTML =
+                renderTiebreakerCard(tiebreakersRes.data, championRes.data?.total_strokes ?? null);
         }
 
         init();
