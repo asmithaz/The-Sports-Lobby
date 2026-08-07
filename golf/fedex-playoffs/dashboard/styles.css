@@ -500,6 +500,14 @@ h1 {
     display: none;
 }
 
+.scoring-col-tiebreaker {
+    max-width: 260px;
+}
+
+.scoring-col-tiebreaker .input {
+    max-width: 100px;
+}
+
 .live-scoring-note {
     font-size: var(--text-sm);
     color: var(--c-text-secondary);

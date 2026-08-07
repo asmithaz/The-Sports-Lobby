@@ -34,8 +34,6 @@
 
         <div class="info-strip" id="info-strip"></div>
 
-        <div id="tiebreaker-section"></div>
-
         <div class="content-stack">
             <div class="standings-row">
                 <div id="main-content" class="standings-row-main"><p class="loading">Loading…</p></div>
@@ -67,6 +65,7 @@
                             </div>
                             <div id="live-scoring-inline" class="live-scoring-block"></div>
                         </div>
+                        <div class="scoring-col-tiebreaker" id="tiebreaker-section"></div>
                     </div>
                 </div>
             </div>
@@ -507,8 +506,10 @@
         }
 
         // ── Render: tiebreaker guess card ───────────────────────────────────
-        // Lets the current user set/update their strokes guess for the FedEx
-        // Cup Champion's total TOUR Championship score (par 288), up until
+        // Lives as a third column in the Scoring Rules panel, next to the
+        // FedEx Tournament Bonus column. Lets the current user set/update
+        // their strokes guess for the FedEx Cup Champion's total TOUR
+        // Championship score (par 288), up until
         // tiebreakerLockFor(currentSeason). Enforcement is server-side (see
         // fcp_submit_tiebreaker_guess in schema.sql) — the disabled input
         // here is just UX, not the real guard.
@@ -527,26 +528,23 @@
                 ? `The FedEx Cup Champion finished at <strong>${championStrokes}</strong> strokes.`
                 : locked
                     ? `Guesses are locked — the TOUR Championship has teed off.`
-                    : `Locks ${lockLabel} (TOUR Championship tee time). You can change your guess until then.`;
+                    : `Locks ${lockLabel} ET (tee time). Editable until then.`;
 
             const formBlock = locked ? '' : `
                 <div class="flex gap-2" style="align-items:center;margin-top:var(--space-2);">
                     <input type="number" id="tiebreaker-guess-input" class="input" min="240" max="320"
-                           style="max-width:120px;" placeholder="e.g. 270"
+                           placeholder="e.g. 270"
                            value="${myGuess != null ? escapeHtml(String(myGuess)) : ''}" />
-                    <button class="btn-primary" id="tiebreaker-save-btn" onclick="saveTiebreakerGuess()">Save Guess</button>
-                    <span id="tiebreaker-status" class="comm-note" style="margin:0;"></span>
-                </div>`;
+                    <button class="btn-primary" id="tiebreaker-save-btn" onclick="saveTiebreakerGuess()">Save</button>
+                </div>
+                <span id="tiebreaker-status" class="live-scoring-note" style="display:block;margin-top:var(--space-1);"></span>`;
 
             return `
-                <div class="commissioner-panel">
-                    <h3>🎯 Tiebreaker: TOUR Championship Score</h3>
-                    <p class="comm-note">If two or more teams end tied in points, the tie goes to whichever guess is
-                        closest to the FedEx Cup Champion's total strokes across all four TOUR Championship rounds
-                        (par 288).</p>
-                    <p class="comm-note">${statusLine}</p>
-                    ${formBlock}
-                </div>
+                <h4>🎯 Tiebreaker</h4>
+                <p class="live-scoring-note">Ties in points go to the closest guess of the FedEx Cup Champion's
+                    total TOUR Championship strokes (par 288).</p>
+                <p class="live-scoring-note">${statusLine}</p>
+                ${formBlock}
             `;
         }
 
