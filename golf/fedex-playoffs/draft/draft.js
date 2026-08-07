@@ -163,6 +163,7 @@ async function render() {
 
   if (!draftTime || now < lobbyOpensAt) {
     document.getElementById('early-draft-time').textContent = formatDraftTime(draftTime);
+    renderEarlyDraftOrder();
     showView('early');
     return;
   }
@@ -175,6 +176,26 @@ async function render() {
 
   renderLobby();
   showView('lobby');
+}
+
+// Shows the draft order ahead of the lobby opening, once the league has
+// filled and fcp_ensure_draft_order() has generated it server-side (see the
+// fcp_draft_order_on_league_full trigger in schema.sql). Read-only here —
+// reordering is only available once the lobby itself opens.
+function renderEarlyDraftOrder() {
+  const wrap = document.getElementById('early-draft-order');
+  if (!draftOrder.length) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  const sorted = [...draftOrder].sort((a, b) => a.position - b.position);
+  document.getElementById('early-order-list').innerHTML = sorted.map((o, i) => `
+    <li class="order-item">
+      <span class="order-pos">${i + 1}</span>
+      <span class="order-name">${escHtml(profileMap[o.user_id] ?? 'Unknown')}</span>
+    </li>
+  `).join('');
 }
 
 // ─── Lobby view ─────────────────────────────────────────────────────────

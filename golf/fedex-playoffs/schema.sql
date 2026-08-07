@@ -401,6 +401,39 @@ $$;
 
 GRANT EXECUTE ON FUNCTION fcp_ensure_draft_order(uuid) TO authenticated;
 
+-- Reveal the draft order as soon as the league fills up, rather than making
+-- members wait until the lobby opens (30 min before draft_time) to see it.
+-- Runs on every league_members insert; a no-op for non-fedex leagues since
+-- fcp_ensure_draft_order() only acts on leagues with a pending fcp_leagues row.
+CREATE OR REPLACE FUNCTION fcp_maybe_generate_draft_order_on_join()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_max_players  int;
+  v_member_count int;
+BEGIN
+  SELECT max_players INTO v_max_players FROM leagues WHERE id = NEW.league_id;
+
+  IF v_max_players IS NOT NULL THEN
+    SELECT count(*) INTO v_member_count FROM league_members WHERE league_id = NEW.league_id;
+    IF v_member_count >= v_max_players THEN
+      PERFORM fcp_ensure_draft_order(NEW.league_id);
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS fcp_draft_order_on_league_full ON league_members;
+CREATE TRIGGER fcp_draft_order_on_league_full
+  AFTER INSERT ON league_members
+  FOR EACH ROW
+  EXECUTE FUNCTION fcp_maybe_generate_draft_order_on_join();
+
 
 -- Let the commissioner reorder drafters any time before the draft starts.
 -- p_user_ids must contain every league member exactly once, in the desired

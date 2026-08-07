@@ -274,7 +274,7 @@
         }
 
         // ── Render: pending state ─────────────────────────────────────────────
-        function renderPending(members, league, fcpLeague, isCommissioner) {
+        function renderPending(members, league, fcpLeague, isCommissioner, draftOrder) {
             const canStart = members.length >= 2;
             const max = league.max_players ?? 0;
             const draftTime = fcpLeague?.draft_time ?? null;
@@ -348,6 +348,29 @@
                     </p>
                 </div>` : '';
 
+            // Populated by the fcp_draft_order_on_league_full trigger as soon as
+            // the league fills — visible here well before the draft room's own
+            // "not open yet" screen would otherwise show it (see schema.sql).
+            const nameByUserId = {};
+            members.forEach(m => { nameByUserId[m.user_id] = m.display_name; });
+            const draftOrderBlock = draftOrder.length ? `
+                <div class="section">
+                    <h2>Draft Order</h2>
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead><tr><th class="th-rank">#</th><th>Name</th></tr></thead>
+                            <tbody>
+                                ${[...draftOrder].sort((a, b) => a.position - b.position).map(o => `
+                                    <tr>
+                                        <td class="col-rank">${o.position}</td>
+                                        <td class="col-name">${escapeHtml(nameByUserId[o.user_id] ?? 'Unknown')}</td>
+                                    </tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="comm-note standings-note">The commissioner can still reorder drafters from the draft room until the lobby opens.</p>
+                </div>` : '';
+
             return `
                 <div class="draft-active-banner">
                     <strong>Draft room is open.</strong>
@@ -368,6 +391,7 @@
                         </table>
                     </div>
                 </div>
+                ${draftOrderBlock}
                 ${settingsBlock}
                 ${commissionerBlock}
                 ${waitingBlock}
@@ -801,6 +825,7 @@
             supabase
                 .channel(`fcp-dashboard-${leagueId}`)
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'fcp_leagues', filter: `league_id=eq.${leagueId}` }, loadAndRender)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'fcp_draft_order', filter: `league_id=eq.${leagueId}` }, loadAndRender)
                 .subscribe();
         }
 
@@ -863,8 +888,13 @@
             const isCommissioner = league.commissioner_id === currentUserId;
 
             if (status === 'pending') {
+                const { data: draftOrderRows } = await supabase
+                    .from('fcp_draft_order')
+                    .select('user_id, position')
+                    .eq('league_id', leagueId)
+                    .eq('season', currentSeason);
                 document.getElementById('main-content').innerHTML =
-                    renderPending(members, league, fcpLeague, isCommissioner);
+                    renderPending(members, league, fcpLeague, isCommissioner, draftOrderRows ?? []);
             } else if (status === 'active') {
                 document.getElementById('main-content').innerHTML =
                     renderActiveDraft(members, league, isCommissioner);
