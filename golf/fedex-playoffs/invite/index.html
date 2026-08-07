@@ -64,7 +64,7 @@
                         <input type="date" id="draft-date" name="draft-date" class="input" required />
                         <select id="draft-time" name="draft-time" class="input" required></select>
                     </div>
-                    <span class="hint">Drafts must be scheduled before the FedEx St. Jude Championship begins on August 8, 2026.</span>
+                    <span class="hint">Time is shown in your local time zone. Drafts must be scheduled before the FedEx St. Jude Championship begins on August 13, 2026.</span>
                 </div>
             </div>
 
@@ -110,6 +110,7 @@
             </div>
 
             <div class="form-actions">
+                <button type="button" class="btn btn--primary form-actions-back" onclick="history.back()">&larr; Back</button>
                 <button type="submit" class="btn btn--primary">Launch League</button>
             </div>
 
@@ -129,9 +130,9 @@
     </footer>
 
     <script>
-        // Lock draft scheduling at 8:00 AM ET = 12:00 UTC on August 8, 2026
+        // Lock draft scheduling at 8:00 AM ET = 12:00 UTC on August 13, 2026
         // (the morning the FedEx St. Jude Championship begins).
-        const DRAFT_LOCK_UTC = '2026-08-08T12:00';
+        const DRAFT_LOCK_UTC = '2026-08-13T12:00';
 
         const now = new Date();
         const pad = n => String(n).padStart(2, '0');
@@ -297,6 +298,15 @@
                 btn.disabled = false;
                 return;
             }
+
+            // League row was inserted as 'pending' back in Step 1 so an abandoned
+            // Step 2 doesn't show a half-configured league on the dashboard. Now
+            // that the draft config above saved, flip it to 'active'.
+            const { error: statusError } = await supabase
+                .from('leagues')
+                .update({ status: 'active' })
+                .eq('id', leagueId);
+            if (statusError) console.error(statusError);
 
             const inviteMethod = document.querySelector('input[name="invite-method"]:checked').value;
             if (inviteMethod === 'email') {

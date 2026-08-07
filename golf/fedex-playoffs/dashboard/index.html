@@ -60,7 +60,7 @@
                             <div>
                                 <h4>Fedex Tournament Bonus</h4>
                                 <table>
-                                    <tr><td>FedEx Cup Champion</td><td>10 pts</td></tr>
+                                    <tr><td>FedEx Cup Champion</td><td>5 pts</td></tr>
                                 </table>
                             </div>
                             <div id="live-scoring-inline" class="live-scoring-block"></div>
@@ -91,18 +91,18 @@
 
         // The three FedEx Cup Playoffs events, in order.
         const EVENTS = [
-            { key: 'st_jude',          label: 'FedEx St. Jude Championship', date: 'Aug 8' },
-            { key: 'bmw',               label: 'BMW Championship',            date: 'Aug 15' },
-            { key: 'tour_championship', label: 'TOUR Championship',           date: 'Aug 22' }
+            { key: 'st_jude',          label: 'FedEx St. Jude Championship', date: 'Aug 13' },
+            { key: 'bmw',               label: 'BMW Championship',            date: 'Aug 20' },
+            { key: 'tour_championship', label: 'TOUR Championship',           date: 'Aug 27' }
         ];
 
         // Approximate "draft lock" cutoff (roughly St. Jude week) for a given
         // season — exact per-season PGA Tour dates aren't stored anywhere in
-        // the schema, so this carries forward the same Aug 8 approximation
+        // the schema, so this carries forward the same Aug 13 approximation
         // used before seasons existed, just relative to the season year
         // instead of hardcoded to one year.
         function draftLockFor(season) {
-            return new Date(Date.UTC(season, 7, 8, 12, 0, 0));
+            return new Date(Date.UTC(season, 7, 13, 12, 0, 0));
         }
 
         // Tiebreaker guesses lock at TOUR Championship tee time — mirrors

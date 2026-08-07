@@ -143,7 +143,7 @@ ALTER TABLE fcp_picks ADD CONSTRAINT fcp_picks_league_id_season_pick_number_key
 -- `points` is the final score for that event using highest-tier-only
 -- scoring, including the FedEx Cup Champion bonus when applicable:
 --   Win = 10, Top 3 = 5, Top 10 = 3, Top 30 = 1, else 0
---   FedEx Cup Champion (tour_championship row only): +10
+--   FedEx Cup Champion (tour_championship row only): +5
 -- `status` lets the UI render "CUT" instead of a point value.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS fcp_event_results (

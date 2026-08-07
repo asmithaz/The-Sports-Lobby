@@ -307,7 +307,11 @@
                     invite_code: inviteCode,
                     game_type: 'fedex-playoffs',
                     league_type: null,
-                    league_password: password || null
+                    league_password: password || null,
+                    // Flipped to 'active' once Step 2 saves the fcp_leagues draft
+                    // config — see golf/fedex-playoffs/invite/index.html. Keeps a
+                    // league abandoned after this step off the dashboard.
+                    status: 'pending'
                 })
                 .select()
                 .single();
@@ -331,7 +335,7 @@
             sessionStorage.setItem('fcp_tier1_count', tier1Count);
             sessionStorage.setItem('fcp_tier2_count', tier2Count);
             sessionStorage.setItem('fcp_tier3_count', tier3Count);
-            window.location.replace('/golf/fedex-playoffs/invite/');
+            window.location.href = '/golf/fedex-playoffs/invite/';
         });
 
         validateRoster();

@@ -174,7 +174,11 @@
                     invite_code: inviteCode,
                     game_type: 'world-cup-draft',
                     league_type: null,
-                    league_password: password || null
+                    league_password: password || null,
+                    // Flipped to 'active' once Step 2 saves the wcd_leagues draft
+                    // config — see soccer/world-cup-draft/invite/index.html. Keeps
+                    // a league abandoned after this step off the dashboard.
+                    status: 'pending'
                 })
                 .select()
                 .single();

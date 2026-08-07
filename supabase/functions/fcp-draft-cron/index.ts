@@ -25,7 +25,7 @@
 //
 // Deploy with: supabase functions deploy fcp-draft-cron
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const REMINDER_WINDOW_MS = 30 * 60 * 1000;
 const DASHBOARD_URL = "https://thesportslobby.com/golf/fedex-playoffs/dashboard/";

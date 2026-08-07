@@ -1062,6 +1062,10 @@ body {
   margin-top: var(--space-1);
 }
 
+.form-actions:has(.form-actions-back) {
+  justify-content: space-between;
+}
+
 .stack-form {
   display: flex;
   flex-direction: column;

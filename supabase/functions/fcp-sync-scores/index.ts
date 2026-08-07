@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
         points = pointsForPosition(position);
         // FedEx Cup Champion bonus: the TOUR Championship winner is the FedEx Cup champion.
         if (tourChampionWinner && position === 1) {
-          points += 10;
+          points += 5;
         }
       }
 
