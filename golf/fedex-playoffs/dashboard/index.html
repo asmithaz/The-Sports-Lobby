@@ -156,6 +156,16 @@
             return d.innerHTML;
         }
 
+        // Avatar + display name, used in every member table (pending, active
+        // draft, standings). Falls back to an initial when the member has no
+        // avatar_url set.
+        function nameCell(m) {
+            const avatar = m.avatar_url
+                ? `<img class="member-avatar" src="${escapeHtml(m.avatar_url)}" alt="" />`
+                : `<span class="member-avatar member-avatar--fallback">${escapeHtml((m.display_name || '?')[0].toUpperCase())}</span>`;
+            return `<span class="name-cell">${avatar}<span>${escapeHtml(m.display_name)}</span></span>`;
+        }
+
         function formatDate(iso) {
             return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
         }
@@ -300,7 +310,7 @@
             const memberRows = members.length
                 ? members.map(m => `
                     <tr>
-                        <td class="col-name">${escapeHtml(m.display_name)}</td>
+                        <td class="col-name">${nameCell(m)}</td>
                         <td class="col-name">${escapeHtml(m.team_name || '—')}</td>
                         <td class="col-date">${formatDate(m.joined_at)}</td>
                     </tr>`).join('')
@@ -428,7 +438,7 @@
             const memberRows = members.length
                 ? members.map(m => `
                     <tr>
-                        <td class="col-name">${escapeHtml(m.display_name)}</td>
+                        <td class="col-name">${nameCell(m)}</td>
                         <td class="col-name">${escapeHtml(m.team_name || '—')}</td>
                         <td class="col-date">${formatDate(m.joined_at)}</td>
                     </tr>`).join('')
@@ -500,7 +510,7 @@
                 return `
                     <tr class="${rankCls}${selectedCls} clickable-row" data-user-id="${escapeHtml(m.user_id)}" data-user-name="${escapeHtml(m.display_name)}">
                         <td class="col-rank">${i + 1}</td>
-                        <td class="col-name">${escapeHtml(m.display_name)}</td>
+                        <td class="col-name">${nameCell(m)}</td>
                         <td class="col-name">${escapeHtml(m.team_name || '—')}</td>
                         <td class="col-points">${pts}</td>
                         <td class="col-points">${guessCell}</td>
@@ -721,10 +731,14 @@
             const ids = memberRows.map(m => m.user_id);
             const profileMap = {};
             if (ids.length) {
-                const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', ids);
-                (profiles ?? []).forEach(p => { profileMap[p.id] = p.display_name; });
+                const { data: profiles } = await supabase.from('profiles').select('id, display_name, avatar_url').in('id', ids);
+                (profiles ?? []).forEach(p => { profileMap[p.id] = p; });
             }
-            const members = memberRows.map(m => ({ ...m, display_name: profileMap[m.user_id] ?? 'Unknown' }));
+            const members = memberRows.map(m => ({
+                ...m,
+                display_name: profileMap[m.user_id]?.display_name ?? 'Unknown',
+                avatar_url: profileMap[m.user_id]?.avatar_url ?? null
+            }));
             const isCommissioner = leagueRes.data?.commissioner_id === currentUserId;
             const championStrokes = championRes.data?.total_strokes ?? null;
 
@@ -868,13 +882,14 @@
             const profileMap = {};
             if (ids.length) {
                 const { data: profiles } = await supabase
-                    .from('profiles').select('id, display_name').in('id', ids);
-                (profiles ?? []).forEach(p => { profileMap[p.id] = p.display_name; });
+                    .from('profiles').select('id, display_name, avatar_url').in('id', ids);
+                (profiles ?? []).forEach(p => { profileMap[p.id] = p; });
             }
 
             const members = memberRows.map(m => ({
                 ...m,
-                display_name: profileMap[m.user_id] ?? 'Unknown'
+                display_name: profileMap[m.user_id]?.display_name ?? 'Unknown',
+                avatar_url: profileMap[m.user_id]?.avatar_url ?? null
             }));
 
             document.getElementById('league-name').textContent = league.name;

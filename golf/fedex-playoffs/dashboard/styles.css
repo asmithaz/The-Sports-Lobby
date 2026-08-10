@@ -230,6 +230,32 @@ h1 {
 
 .standings-table .col-name { text-align: center; }
 
+/* ── Member avatar (table rows) ── */
+.name-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.member-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    object-fit: cover;
+}
+
+.member-avatar--fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--c-accent-dim);
+    border: 1px solid var(--c-accent-border);
+    color: var(--c-accent);
+    font-weight: var(--weight-bold);
+    font-size: var(--text-xs);
+}
+
 /* Header cells have no column-specific class to hang an override off of,
    so match them up with the left-aligned body cells above by exclusion —
    everything except the rank/center/pick-col headers, which set their

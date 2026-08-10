@@ -17,6 +17,7 @@ let picks      = [];    // fcp_picks rows [{user_id, golfer_id, pick_number, tie
 let profileMap = {};    // user_id -> display_name
 
 let lobbyOrderIds  = null; // working copy of draft order while in the lobby
+let earlyOrderIds  = null; // working copy of draft order while ahead of the lobby
 let timerInterval    = null;
 let autopickInterval = null;
 let lobbyInterval    = null;
@@ -180,8 +181,9 @@ async function render() {
 
 // Shows the draft order ahead of the lobby opening, once the league has
 // filled and fcp_ensure_draft_order() has generated it server-side (see the
-// fcp_draft_order_on_league_full trigger in schema.sql). Read-only here —
-// reordering is only available once the lobby itself opens.
+// fcp_draft_order_on_league_full trigger in schema.sql). The commissioner can
+// reorder here too — fcp_set_draft_order() already allows any change up
+// until the draft actually starts, this just exposes it before the lobby.
 function renderEarlyDraftOrder() {
   const wrap = document.getElementById('early-draft-order');
   if (!draftOrder.length) {
@@ -189,13 +191,52 @@ function renderEarlyDraftOrder() {
     return;
   }
   wrap.hidden = false;
-  const sorted = [...draftOrder].sort((a, b) => a.position - b.position);
-  document.getElementById('early-order-list').innerHTML = sorted.map((o, i) => `
+
+  if (!earlyOrderIds || earlyOrderIds.length !== draftOrder.length) {
+    earlyOrderIds = [...draftOrder].sort((a, b) => a.position - b.position).map(o => o.user_id);
+  }
+
+  const isCommissioner = league.commissioner_id === currentUserId;
+  document.getElementById('early-commissioner-controls').hidden = !isCommissioner;
+  document.getElementById('early-save-status').textContent = '';
+
+  const list = document.getElementById('early-order-list');
+  list.innerHTML = earlyOrderIds.map((uid, i) => `
     <li class="order-item">
       <span class="order-pos">${i + 1}</span>
-      <span class="order-name">${escHtml(profileMap[o.user_id] ?? 'Unknown')}</span>
+      <span class="order-name">${escHtml(profileMap[uid] ?? 'Unknown')}</span>
+      ${isCommissioner ? `
+        <button class="order-move" data-dir="up" data-idx="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button class="order-move" data-dir="down" data-idx="${i}" ${i === earlyOrderIds.length - 1 ? 'disabled' : ''}>↓</button>
+      ` : ''}
     </li>
   `).join('');
+
+  if (isCommissioner) {
+    list.querySelectorAll('.order-move').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        const swapIdx = btn.dataset.dir === 'up' ? idx - 1 : idx + 1;
+        [earlyOrderIds[idx], earlyOrderIds[swapIdx]] = [earlyOrderIds[swapIdx], earlyOrderIds[idx]];
+        renderEarlyDraftOrder();
+      });
+    });
+  }
+}
+
+async function saveEarlyOrder() {
+  const statusEl = document.getElementById('early-save-status');
+  statusEl.textContent = 'Saving…';
+  const { error } = await supabase.rpc('fcp_set_draft_order', {
+    p_league_id: leagueId,
+    p_user_ids: earlyOrderIds
+  });
+  if (error) {
+    statusEl.textContent = 'Failed: ' + error.message;
+    return;
+  }
+  statusEl.textContent = 'Saved!';
+  await loadAll();
 }
 
 // ─── Lobby view ─────────────────────────────────────────────────────────
@@ -628,6 +669,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   leagueId = sessionStorage.getItem('league_id');
   if (!leagueId) { window.location.href = '/golf/index.html'; return; }
 
+  document.getElementById('early-save-order').addEventListener('click', saveEarlyOrder);
   document.getElementById('lobby-save-order').addEventListener('click', saveLobbyOrder);
   document.getElementById('lobby-save-timer').addEventListener('click', saveLobbyPickSeconds);
   document.getElementById('draft-save-timer').addEventListener('click', saveDraftPickSeconds);
