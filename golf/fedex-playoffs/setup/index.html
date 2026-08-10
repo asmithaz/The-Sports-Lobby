@@ -75,15 +75,15 @@
                     <div class="tier-row">
                         <label class="tier-input">
                             <span>FedEx Rank 1–30</span>
-                            <input type="number" id="tier1-count" class="input" min="0" max="2" value="2" oninput="validateRoster()" />
+                            <input type="number" id="tier1-count" class="input" min="0" value="2" oninput="validateRoster()" />
                         </label>
                         <label class="tier-input">
                             <span>FedEx Rank 31–50</span>
-                            <input type="number" id="tier2-count" class="input" min="0" max="2" value="1" oninput="validateRoster()" />
+                            <input type="number" id="tier2-count" class="input" min="0" value="1" oninput="validateRoster()" />
                         </label>
                         <label class="tier-input">
                             <span>FedEx Rank 51–70</span>
-                            <input type="number" id="tier3-count" class="input" min="0" max="2" value="1" oninput="validateRoster()" />
+                            <input type="number" id="tier3-count" class="input" min="0" value="1" oninput="validateRoster()" />
                         </label>
                     </div>
                 </div>
@@ -202,9 +202,25 @@
             let msg = '';
 
             if (mode === 'tiered') {
-                const t1 = parseInt(document.getElementById('tier1-count').value, 10) || 0;
-                const t2 = parseInt(document.getElementById('tier2-count').value, 10) || 0;
-                const t3 = parseInt(document.getElementById('tier3-count').value, 10) || 0;
+                const tier1Input = document.getElementById('tier1-count');
+                const tier2Input = document.getElementById('tier2-count');
+                const tier3Input = document.getElementById('tier3-count');
+
+                // Cap each tier's input at (pool size / players) so the browser's
+                // native max tracks the real per-league constraint, not a fixed number.
+                if (maxPlayers > 0) {
+                    tier1Input.max = Math.floor(TIER_POOL_SIZES[1] / maxPlayers);
+                    tier2Input.max = Math.floor(TIER_POOL_SIZES[2] / maxPlayers);
+                    tier3Input.max = Math.floor(TIER_POOL_SIZES[3] / maxPlayers);
+                } else {
+                    tier1Input.removeAttribute('max');
+                    tier2Input.removeAttribute('max');
+                    tier3Input.removeAttribute('max');
+                }
+
+                const t1 = parseInt(tier1Input.value, 10) || 0;
+                const t2 = parseInt(tier2Input.value, 10) || 0;
+                const t3 = parseInt(tier3Input.value, 10) || 0;
                 const rosterSize = t1 + t2 + t3;
 
                 if (rosterSize === 0) {

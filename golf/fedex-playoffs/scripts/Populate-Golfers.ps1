@@ -70,25 +70,65 @@ foreach ($row in $rows) {
     name       = $name
     espn_id    = $espnId
     fedex_rank = $rank
+    season     = (Get-Date).Year
   }
 
   Start-Sleep -Milliseconds 300
 }
 
-$json = $golfers | ConvertTo-Json -Depth 5
-
-$headers = @{
-  apikey        = $ServiceRoleKey
-  Authorization = "Bearer $ServiceRoleKey"
-  "Content-Type" = "application/json"
-  Prefer        = "resolution=merge-duplicates"
+# ESPN's player search can mis-match two different golfers to the same
+# athlete id (common surnames like "Kim" or "Fitzpatrick" are ambiguous).
+# golfers.espn_id is UNIQUE, so sending duplicates would fail the whole
+# upsert with a 409 - clear them here instead and let the warning below
+# flag it for manual fixing.
+$dupeEspnIds = $golfers | Where-Object { $_.espn_id } | Group-Object espn_id | Where-Object { $_.Count -gt 1 }
+foreach ($grp in $dupeEspnIds) {
+  $names = ($grp.Group | ForEach-Object { $_.name }) -join ", "
+  Write-Warning "ESPN id $($grp.Name) matched multiple golfers ($names) - clearing espn_id for all of them, fix manually in the golfers table."
+  foreach ($g in $grp.Group) { $g.espn_id = $null }
 }
 
-try {
-  Invoke-RestMethod -Uri "$SupabaseUrl/rest/v1/golfers" -Method Post -Headers $headers -Body $json -UserAgent "The-Sports-Lobby-Populate-Golfers/1.0" -ErrorAction Stop | Out-Null
-} catch {
-  $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
-  Write-Error $reader.ReadToEnd()
+# A previous season's golfer could already occupy this espn_id under a
+# different `id` slug than the one we just generated for the same
+# person - on_conflict=id below wouldn't match that row, so Postgres
+# would try a fresh insert and collide on the espn_id UNIQUE constraint.
+# Clear those too rather than fail the whole batch.
+$existing = Invoke-RestMethod -Uri "$SupabaseUrl/rest/v1/golfers?select=id,espn_id" -Headers @{
+  apikey        = $ServiceRoleKey
+  Authorization = "Bearer $ServiceRoleKey"
+} -UserAgent "The-Sports-Lobby-Populate-Golfers/1.0"
+$existingIdByEspnId = @{}
+foreach ($e in $existing) {
+  if ($e.espn_id) { $existingIdByEspnId[[string]$e.espn_id] = $e.id }
+}
+foreach ($g in $golfers) {
+  if ($g.espn_id -and $existingIdByEspnId.ContainsKey([string]$g.espn_id) -and $existingIdByEspnId[[string]$g.espn_id] -ne $g.id) {
+    Write-Warning "ESPN id $($g.espn_id) for '$($g.name)' already belongs to existing golfer id '$($existingIdByEspnId[[string]$g.espn_id])' - clearing espn_id, fix manually in the golfers table."
+    $g.espn_id = $null
+  }
+}
+
+$json = $golfers | ConvertTo-Json -Depth 5
+
+# Invoke-RestMethod's error handling is unreliable for reading response
+# bodies on non-2xx status in Windows PowerShell 5.1 (the stream is often
+# already consumed by the time the catch block runs), so use HttpClient
+# directly to guarantee we see the real Supabase/PostgREST error message.
+Add-Type -AssemblyName System.Net.Http
+$httpClient = [System.Net.Http.HttpClient]::new()
+$request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, "$SupabaseUrl/rest/v1/golfers?on_conflict=id")
+$request.Headers.Add("apikey", $ServiceRoleKey)
+$request.Headers.Add("Authorization", "Bearer $ServiceRoleKey")
+$request.Headers.Add("Prefer", "resolution=merge-duplicates")
+$request.Headers.UserAgent.ParseAdd("The-Sports-Lobby-Populate-Golfers/1.0")
+$request.Content = [System.Net.Http.StringContent]::new($json, [System.Text.Encoding]::UTF8, "application/json")
+
+$response = $httpClient.SendAsync($request).GetAwaiter().GetResult()
+$responseBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+
+if (-not $response.IsSuccessStatusCode) {
+  Write-Error "Request failed: $($response.StatusCode) $($response.ReasonPhrase)"
+  Write-Error "Response body: $responseBody"
   exit 1
 }
 

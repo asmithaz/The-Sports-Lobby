@@ -30,6 +30,19 @@ CREATE TABLE IF NOT EXISTS golfers (
   ) STORED
 );
 
+-- Idempotent for installs that ran this schema before seasons existed.
+-- `golfers` keeps one row per real person (id is a stable name slug, not
+-- season-scoped) rather than one row per season, since fcp_picks/
+-- fcp_event_results reference golfers(id) with a single column. `season`
+-- just records the most recent playoff field this golfer was part of, so
+-- draft.js's golfer-pool query can filter out prior seasons' non-returning
+-- golfers instead of leaking them into the current draft (see
+-- golf/fedex-playoffs/scripts/Populate-Golfers.ps1, which must set this
+-- explicitly on every upsert - otherwise a returning golfer's season
+-- would silently stay stuck at whatever year they were first added).
+ALTER TABLE golfers ADD COLUMN IF NOT EXISTS season int NOT NULL
+  DEFAULT extract(year from now())::int;
+
 
 -- ------------------------------------------------------------
 -- 2. FCP LEAGUES

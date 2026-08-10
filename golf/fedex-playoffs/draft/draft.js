@@ -22,6 +22,9 @@ let timerInterval    = null;
 let autopickInterval = null;
 let lobbyInterval    = null;
 
+let presenceChannel = null;
+let onlineUserIds   = new Set(); // user_ids with a live connection to this draft room
+
 // Sound edge-detection state — render()/renderDraftView()/updateTimer()
 // re-run on every Realtime event and the 20s fallback poll, so cues are
 // driven off changes since the last render, not raw state. Seeded once
@@ -50,6 +53,15 @@ function formatDraftTime(d) {
   return new Date(d).toLocaleString(undefined, {
     month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
   });
+}
+
+// Small colored dot marking whether uid has a live connection to the draft
+// room right now, vs. relying on the server-side pick-clock to auto-draft
+// for them. Purely presentational — has no bearing on autopick eligibility.
+function presenceDotHtml(uid) {
+  const online = onlineUserIds.has(uid);
+  const label = online ? 'Here now' : 'Not connected — will auto-draft when their turn comes';
+  return `<span class="presence-dot ${online ? 'online' : 'offline'}" title="${label}"></span>`;
 }
 
 function showView(name) {
@@ -106,7 +118,7 @@ async function loadAll() {
   const [fcpRes, orderRes, golfersRes, picksRes] = await Promise.all([
     supabase.from('fcp_leagues').select('*').eq('league_id', leagueId).eq('season', currentSeason).maybeSingle(),
     supabase.from('fcp_draft_order').select('user_id, position').eq('league_id', leagueId).eq('season', currentSeason).order('position'),
-    supabase.from('golfers').select('id, name, fedex_rank, tier').order('fedex_rank'),
+    supabase.from('golfers').select('id, name, fedex_rank, tier').eq('season', currentSeason).order('fedex_rank'),
     supabase.from('fcp_picks').select('user_id, golfer_id, pick_number, tier_slot').eq('league_id', leagueId).eq('season', currentSeason).order('pick_number')
   ]);
 
@@ -204,7 +216,7 @@ function renderEarlyDraftOrder() {
   list.innerHTML = earlyOrderIds.map((uid, i) => `
     <li class="order-item">
       <span class="order-pos">${i + 1}</span>
-      <span class="order-name">${escHtml(profileMap[uid] ?? 'Unknown')}</span>
+      <span class="order-name">${presenceDotHtml(uid)}${escHtml(profileMap[uid] ?? 'Unknown')}</span>
       ${isCommissioner ? `
         <button class="order-move" data-dir="up" data-idx="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button class="order-move" data-dir="down" data-idx="${i}" ${i === earlyOrderIds.length - 1 ? 'disabled' : ''}>↓</button>
@@ -261,7 +273,7 @@ function renderLobby() {
   list.innerHTML = lobbyOrderIds.map((uid, i) => `
     <li class="order-item">
       <span class="order-pos">${i + 1}</span>
-      <span class="order-name">${escHtml(profileMap[uid] ?? 'Unknown')}</span>
+      <span class="order-name">${presenceDotHtml(uid)}${escHtml(profileMap[uid] ?? 'Unknown')}</span>
       ${isCommissioner ? `
         <button class="order-move" data-dir="up" data-idx="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button class="order-move" data-dir="down" data-idx="${i}" ${i === lobbyOrderIds.length - 1 ? 'disabled' : ''}>↓</button>
@@ -424,9 +436,11 @@ function renderDraftView() {
   if (!isPaused && prevIsPaused) soundDraftResumed();
   prevIsPaused = isPaused;
 
+  const expectedAutoNote = (!isPaused && expectedUser && !onlineUserIds.has(expectedUser))
+    ? ' (not here — will auto-draft)' : '';
   document.getElementById('pick-banner-text').textContent = isPaused
     ? `Draft Paused — Now Picking: ${who} — Round ${rnd}, Pick ${posInRound} of ${n}`
-    : `Now Picking: ${who} — Round ${rnd}, Pick ${posInRound} of ${n}`;
+    : `Now Picking: ${who} — Round ${rnd}, Pick ${posInRound} of ${n}${expectedAutoNote}`;
   document.getElementById('pick-banner').classList.toggle('paused', isPaused);
 
   const pauseBtn = document.getElementById('pause-toggle-btn');
@@ -484,7 +498,7 @@ function renderDraftView() {
     btn.addEventListener('click', () => makePick(btn.dataset.id));
   });
 
-  renderBoard('board-table');
+  renderBoard('board-table', true);
   startTimer();
   startAutopickWatcher();
 }
@@ -558,7 +572,7 @@ async function togglePause() {
 }
 
 // ─── Draft board (shared by draft + complete views) ───────────────────
-function renderBoard(tableId) {
+function renderBoard(tableId, showPresence = false) {
   const table = document.getElementById(tableId);
   const n = draftOrder.length;
   if (n === 0) { table.innerHTML = ''; return; }
@@ -573,7 +587,10 @@ function renderBoard(tableId) {
   golfers.forEach(g => { golferById[g.id] = g; });
 
   let html = '<thead><tr><th class="rnd-head">Rnd</th>';
-  order.forEach(o => { html += `<th>${escHtml(profileMap[o.user_id] ?? 'Unknown')}</th>`; });
+  order.forEach(o => {
+    const dot = showPresence ? presenceDotHtml(o.user_id) : '';
+    html += `<th>${dot}${escHtml(profileMap[o.user_id] ?? 'Unknown')}</th>`;
+  });
   html += '</tr></thead><tbody>';
 
   for (let r = 0; r < rounds; r++) {
@@ -648,6 +665,26 @@ function subscribeChatRealtime() {
     .subscribe();
 }
 
+// ─── Presence ───────────────────────────────────────────────────────────
+// Tracks who currently has this draft room open, so absent members can be
+// distinguished from ones who are here but simply haven't picked yet. This
+// is purely a UI signal — the pick clock and fcp_autopick_if_expired don't
+// care whether anyone is connected, they only care about pick_deadline.
+function subscribePresence() {
+  presenceChannel = supabase.channel(`fcp-presence-${leagueId}`, {
+    config: { presence: { key: currentUserId } }
+  });
+
+  presenceChannel
+    .on('presence', { event: 'sync' }, () => {
+      onlineUserIds = new Set(Object.keys(presenceChannel.presenceState()));
+      render();
+    })
+    .subscribe(async status => {
+      if (status === 'SUBSCRIBED') await presenceChannel.track({ online_at: new Date().toISOString() });
+    });
+}
+
 // ─── Realtime ───────────────────────────────────────────────────────────
 function subscribeRealtime() {
   const refresh = async () => { await loadAll(); await render(); };
@@ -682,6 +719,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   prevIsPaused = !!fcpLeague?.paused_at;
   await render();
   subscribeRealtime();
+  subscribePresence();
   await loadChatMessages();
   subscribeChatRealtime();
 

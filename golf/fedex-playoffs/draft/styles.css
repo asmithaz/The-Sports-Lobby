@@ -38,9 +38,10 @@ h1 {
 }
 
 .sound-toggle {
-    font-size: var(--text-md);
+    font-size: var(--text-lg);
     line-height: 1;
-    padding: 6px var(--space-3);
+    padding: 5px var(--space-3);
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
 }
 
 /* Muted state gets its own look (not just a swapped emoji on the same
@@ -282,6 +283,25 @@ h1 {
 }
 
 .order-item .order-name { flex: 1; }
+
+/* ── Presence dot (order list + board headers + pick banner) ── */
+.presence-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.presence-dot.online {
+    background: var(--c-accent);
+    box-shadow: 0 0 4px var(--c-accent);
+}
+
+.presence-dot.offline {
+    background: var(--c-text-muted);
+}
 
 .order-item .order-move {
     padding: 2px var(--space-2);
