@@ -68,7 +68,14 @@ function showView(name) {
   ['loading', 'early', 'lobby', 'auction', 'draft', 'complete'].forEach(v => {
     document.getElementById(`view-${v}`).hidden = v !== name;
   });
-  document.getElementById('chat-panel').hidden = (name === 'loading' || name === 'early');
+
+  const chatPanel = document.getElementById('chat-panel');
+  chatPanel.hidden = (name === 'loading' || name === 'early');
+
+  // The live draft view pairs chat with the pick feed in a 50/50 split;
+  // everywhere else it sits in its own default spot below the page.
+  const slot = document.getElementById(name === 'draft' ? 'draft-chat-slot' : 'chat-panel-home');
+  slot.appendChild(chatPanel);
 }
 
 function clearAllTimers() {
@@ -498,9 +505,38 @@ function renderDraftView() {
     btn.addEventListener('click', () => makePick(btn.dataset.id));
   });
 
+  renderPickFeed();
   renderBoard('board-table', true);
   startTimer();
   startAutopickWatcher();
+}
+
+// Reverse-chronological "just happened" view of picks, shown beside chat
+// in place of the full grid — the grid stays available lower on the page
+// for anyone who wants the whole board at a glance.
+function renderPickFeed() {
+  const list = document.getElementById('pick-feed');
+  const n = draftOrder.length;
+  if (n === 0) { list.innerHTML = ''; return; }
+
+  const golferById = {};
+  golfers.forEach(g => { golferById[g.id] = g; });
+
+  if (!picks.length) {
+    list.innerHTML = '<li class="feed-empty">No picks yet.</li>';
+    return;
+  }
+
+  list.innerHTML = [...picks].reverse().map(p => {
+    const rnd = Math.floor((p.pick_number - 1) / n) + 1;
+    const golfer = golferById[p.golfer_id];
+    const tierTag = golfer ? `<span class="tier-tag">T${golfer.tier}</span>` : '';
+    return `
+      <li class="feed-item">
+        <span class="feed-rnd">R${rnd}</span>
+        <span class="feed-body"><strong>${escHtml(profileMap[p.user_id] ?? 'Unknown')}</strong> drafted ${escHtml(golfer?.name ?? 'Unknown')} ${tierTag}</span>
+      </li>`;
+  }).join('');
 }
 
 async function makePick(golferId) {

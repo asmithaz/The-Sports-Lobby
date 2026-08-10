@@ -149,14 +149,26 @@
             </div>
           </div>
 
-          <div class="panel board-panel">
-            <h2>Draft Board</h2>
-            <div class="board-wrap">
-              <table class="board-table" id="board-table"></table>
+          <div class="feed-chat-col">
+            <div class="panel feed-panel">
+              <h2>Pick Feed</h2>
+              <div class="feed-wrap">
+                <ol class="pick-feed" id="pick-feed"></ol>
+              </div>
             </div>
+
+            <div id="draft-chat-slot"></div>
           </div>
 
         </div>
+
+        <div class="panel board-panel">
+          <h2>Draft Board</h2>
+          <div class="board-wrap">
+            <table class="board-table" id="board-table"></table>
+          </div>
+        </div>
+
       </div>
 
       <!-- VIEW: COMPLETE -->
@@ -176,7 +188,11 @@
 
       </div>
 
-      <!-- CHAT (shown once the lobby opens; hidden during loading/early) -->
+      <!-- CHAT (shown once the lobby opens; hidden during loading/early).
+           During the live draft view, draft.js physically relocates this
+           panel into #draft-chat-slot to sit beside the pick feed; this
+           empty div marks where it belongs the rest of the time. -->
+      <div id="chat-panel-home"></div>
       <div class="panel chat-panel" id="chat-panel" hidden>
         <div class="chat-panel-head">
           <h2>Draft Chat</h2>

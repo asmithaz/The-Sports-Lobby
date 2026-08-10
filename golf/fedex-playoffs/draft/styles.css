@@ -44,15 +44,23 @@ h1 {
     filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
 }
 
-/* Muted state gets its own look (not just a swapped emoji on the same
-   green fill) so on/off is readable at a glance. */
+/* Both states get a dark surface rather than .btn-sm's solid bright-green
+   fill — the emoji glyph washed out sitting on top of that much green. */
+.sound-toggle[aria-pressed="true"] {
+    background: var(--c-accent-dim);
+    color: var(--c-accent);
+    border: 1px solid var(--c-accent-border);
+    padding: 5px calc(var(--space-3) - 1px); /* keep same box size despite the added border */
+}
+
 .sound-toggle[aria-pressed="false"] {
     background: var(--c-surface-2);
     color: var(--c-text-secondary);
     border: 1px solid var(--c-border-strong);
-    padding: 5px calc(var(--space-3) - 1px); /* keep same box size despite the added border */
+    padding: 5px calc(var(--space-3) - 1px);
 }
 
+.sound-toggle[aria-pressed="true"]:hover,
 .sound-toggle[aria-pressed="false"]:hover {
     background: var(--c-surface-hover);
 }
@@ -371,12 +379,94 @@ h1 {
     100% { transform: scale(1); opacity: 1; }
 }
 
-/* ── Draft two-column layout ── */
-.draft-layout { display: flex; gap: var(--space-5); align-items: flex-start; }
-.avail-panel  { flex: 0 0 360px; }
-.board-panel  { flex: 1 1 0; min-width: 0; }
-.avail-wrap   { max-height: 520px; overflow-y: auto; }
-.board-wrap   { overflow-x: auto; max-height: 560px; overflow-y: auto; }
+/* ── Draft two-column layout ──
+   Left: available golfers. Right: pick feed + chat, stacked 50/50 — this
+   replaces what used to be the full draft-board grid here, since a wide
+   grid forced both a horizontal and a vertical scrollbar at once. The
+   grid still exists as its own full-width panel below (.board-panel) for
+   anyone who wants the whole board at a glance. A fixed row height lets
+   each column scroll internally instead of growing the page. */
+.draft-layout {
+    display: flex;
+    gap: var(--space-5);
+    align-items: stretch;
+    height: 560px;
+    margin-bottom: var(--space-5);
+}
+
+.avail-panel {
+    flex: 0 0 360px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin-bottom: 0;
+}
+
+.avail-wrap { flex: 1; min-height: 0; overflow-y: auto; }
+
+.feed-chat-col {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+}
+
+.feed-panel,
+.feed-chat-col .chat-panel {
+    flex: 1 1 0;
+    min-height: 0;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.feed-wrap { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* Chat's own message list is normally capped at a fixed height (see
+   .chat-messages below); inside the 50/50 split it should fill its half
+   of the column instead. */
+.feed-chat-col .chat-messages { flex: 1; min-height: 0; max-height: none; }
+
+.pick-feed {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.feed-item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 0.5px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    background: var(--c-surface-2);
+}
+
+.feed-rnd {
+    flex: 0 0 auto;
+    min-width: 26px;
+    font-weight: var(--weight-bold);
+    color: var(--c-accent);
+    font-size: var(--text-xs);
+}
+
+.feed-body { color: var(--c-text-secondary); font-size: var(--text-sm); }
+.feed-body strong { color: var(--c-text-primary); }
+
+.feed-empty {
+    list-style: none;
+    color: var(--c-text-secondary);
+    font-size: var(--text-sm);
+    font-style: italic;
+}
+
+.board-wrap { overflow-x: auto; max-height: 560px; overflow-y: auto; }
 
 /* ── Pick button ── */
 .pick-btn {
@@ -493,8 +583,14 @@ h1 {
 .reset-link:hover { color: var(--c-text-primary); }
 
 @media (max-width: 700px) {
-    .draft-layout { flex-direction: column; }
-    .avail-panel  { flex: none; width: 100%; }
+    .draft-layout  { flex-direction: column; height: auto; }
+    .avail-panel   { flex: none; width: 100%; }
+    .avail-wrap    { flex: none; max-height: 320px; }
+    .feed-chat-col { flex: none; width: 100%; }
+    .feed-panel,
+    .feed-chat-col .chat-panel { flex: none; }
+    .feed-wrap     { flex: none; max-height: 260px; }
+    .feed-chat-col .chat-messages { flex: none; max-height: 200px; }
 }
 
 /* ── Draft chat ── */
