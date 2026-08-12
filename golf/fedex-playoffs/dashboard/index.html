@@ -661,7 +661,7 @@
         // ── Render: roster breakdown table for a single member ────────────────
         // picks: [{ tier_slot, golfers: { id, name, tier } }]
         // results: [{ golfer_id, event, points, status }]
-        function renderBreakdown(memberName, picks, results, fcpLeague) {
+        function renderBreakdown(memberName, picks, results, fcpLeague, isCommissioner) {
             const sortedPicks = [...picks].sort((a, b) => a.tier_slot - b.tier_slot);
 
             // Column labels: tiered leagues get "1-30 A / 1-30 B / 31-50 / 51-70"
@@ -704,8 +704,19 @@
             const teamTotal = totals.reduce((sum, t) => sum + t, 0);
 
             const headerLabels = labels.map(l => `<th class="pick-col">${escapeHtml(l)}</th>`).join('');
-            const pickNames = sortedPicks.map(p => `<td class="pick-col">${escapeHtml(p.golfers?.name ?? '—')}</td>`).join('');
+            const pickNames = sortedPicks.map(p => {
+                const golferId = p.golfers?.id ?? '';
+                const golferName = p.golfers?.name ?? '—';
+                const subBtn = (isCommissioner && golferId)
+                    ? `<br><button type="button" class="btn-text sub-btn" data-golfer-id="${escapeHtml(golferId)}" data-golfer-name="${escapeHtml(golferName)}" data-tier="${p.golfers?.tier ?? ''}">🔁 Sub</button>`
+                    : '';
+                return `<td class="pick-col">${escapeHtml(golferName)}${subBtn}</td>`;
+            }).join('');
             const totalCells = totals.map(t => `<td class="pick-col">${t}</td>`).join('');
+
+            const subPanel = isCommissioner
+                ? `<div id="sub-panel" class="sub-panel" hidden data-roster-mode="${escapeHtml(fcpLeague?.roster_mode ?? 'tiered')}"></div>`
+                : '';
 
             return `
                 <div class="section">
@@ -723,11 +734,25 @@
                             </tbody>
                         </table>
                     </div>
+                    ${subPanel}
                 </div>
             `;
         }
 
-        async function loadAndRenderBreakdown(leagueId, userId, userName) {
+        // Tracks whichever member's roster is currently on screen, so a
+        // completed substitution (which doesn't necessarily change anyone's
+        // point total, e.g. pre-season) can force a re-render of this panel
+        // even when loadAndRenderStandings's setHtmlIfChanged would otherwise
+        // see no diff and skip it.
+        let currentBreakdownUserId = null;
+        let currentBreakdownUserName = null;
+        let breakdownIsCommissioner = false;
+
+        async function loadAndRenderBreakdown(leagueId, userId, userName, isCommissioner) {
+            currentBreakdownUserId = userId;
+            currentBreakdownUserName = userName;
+            breakdownIsCommissioner = isCommissioner;
+
             const [picksRes, resultsRes] = await Promise.all([
                 supabase.from('fcp_picks')
                     .select('tier_slot, golfers(id, name, tier)')
@@ -743,17 +768,96 @@
                 .eq('league_id', leagueId).eq('season', currentSeason).maybeSingle();
 
             setHtmlIfChanged('breakdown-section',
-                renderBreakdown(userName, picksRes.data ?? [], resultsRes.data ?? [], fcpLeague));
+                renderBreakdown(userName, picksRes.data ?? [], resultsRes.data ?? [], fcpLeague, isCommissioner));
+
+            if (isCommissioner) attachSubHandlers();
         }
 
-        function attachStandingsClickHandlers(leagueId) {
+        function attachStandingsClickHandlers(leagueId, isCommissioner) {
             document.querySelectorAll('.standings-table .clickable-row').forEach(row => {
                 row.addEventListener('click', () => {
                     document.querySelectorAll('.standings-table .clickable-row').forEach(r => r.classList.remove('selected-row'));
                     row.classList.add('selected-row');
-                    loadAndRenderBreakdown(leagueId, row.dataset.userId, row.dataset.userName);
+                    loadAndRenderBreakdown(leagueId, row.dataset.userId, row.dataset.userName, isCommissioner);
                 });
             });
+        }
+
+        // ── Commissioner: substitute a withdrawn golfer ─────────────────────
+        // Opens an inline picker (below the roster table) listing every
+        // undrafted golfer in this season's field — narrowed to the outgoing
+        // golfer's tier in tiered leagues, since the roster's tier slots have
+        // to stay valid. Confirms via fcp_substitute_golfer (schema.sql),
+        // which re-checks eligibility server-side.
+        function attachSubHandlers() {
+            document.querySelectorAll('.sub-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    openSubPanel(btn.dataset.golferId, btn.dataset.golferName, btn.dataset.tier);
+                });
+            });
+        }
+
+        async function openSubPanel(oldGolferId, oldGolferName, tierStr) {
+            const panel = document.getElementById('sub-panel');
+            if (!panel) return;
+            const rosterMode = panel.dataset.rosterMode;
+            const tier = tierStr ? parseInt(tierStr, 10) : null;
+
+            panel.hidden = false;
+            panel.innerHTML = '<p class="live-scoring-note">Loading available golfers…</p>';
+
+            const [{ data: seasonGolfers }, { data: leaguePicks }] = await Promise.all([
+                supabase.from('golfers').select('id, name, tier').eq('season', currentSeason).order('fedex_rank'),
+                supabase.from('fcp_picks').select('golfer_id').eq('league_id', leagueId).eq('season', currentSeason)
+            ]);
+
+            const pickedIds = new Set((leaguePicks ?? []).map(p => p.golfer_id));
+            let pool = (seasonGolfers ?? []).filter(g => !pickedIds.has(g.id));
+            if (rosterMode !== 'open' && tier != null) pool = pool.filter(g => g.tier === tier);
+
+            const options = pool.map(g => `<option value="${escapeHtml(g.id)}">${escapeHtml(g.name)}</option>`).join('');
+
+            panel.innerHTML = `
+                <p class="live-scoring-note">Replace <strong>${escapeHtml(oldGolferName)}</strong> with:</p>
+                <div class="flex gap-2" style="align-items:center;flex-wrap:wrap;">
+                    <select id="sub-select" class="input">${options || '<option value="">No eligible replacements</option>'}</select>
+                    <button class="btn-primary" id="sub-confirm-btn" ${pool.length ? '' : 'disabled'}>Confirm Swap</button>
+                    <button type="button" class="btn-text" id="sub-cancel-btn">Cancel</button>
+                </div>
+                <span id="sub-status" class="live-scoring-note" style="display:block;margin-top:var(--space-2);"></span>
+            `;
+
+            document.getElementById('sub-cancel-btn').addEventListener('click', () => { panel.hidden = true; });
+            document.getElementById('sub-confirm-btn').addEventListener('click', () => confirmSub(oldGolferId));
+        }
+
+        async function confirmSub(oldGolferId) {
+            const select = document.getElementById('sub-select');
+            const statusEl = document.getElementById('sub-status');
+            const newGolferId = select.value;
+            if (!newGolferId) return;
+
+            const btn = document.getElementById('sub-confirm-btn');
+            btn.disabled = true;
+            statusEl.textContent = 'Saving…';
+
+            const { error } = await supabase.rpc('fcp_substitute_golfer', {
+                p_league_id: leagueId,
+                p_old_golfer_id: oldGolferId,
+                p_new_golfer_id: newGolferId
+            });
+
+            if (error) {
+                statusEl.textContent = 'Failed: ' + error.message;
+                btn.disabled = false;
+                return;
+            }
+
+            document.getElementById('sub-panel').hidden = true;
+            await loadAndRenderStandings(leagueId);
+            if (currentBreakdownUserId) {
+                await loadAndRenderBreakdown(leagueId, currentBreakdownUserId, currentBreakdownUserName, breakdownIsCommissioner);
+            }
         }
 
         async function loadAndRenderStandings(leagueId) {
@@ -791,9 +895,9 @@
             // — otherwise this would blow away whichever member's roster
             // you clicked to view every 20s, even with no new data.
             if (standingsChanged) {
-                attachStandingsClickHandlers(leagueId);
+                attachStandingsClickHandlers(leagueId, isCommissioner);
                 const me = members.find(m => m.user_id === currentUserId) ?? members[0];
-                if (me) loadAndRenderBreakdown(leagueId, me.user_id, me.display_name);
+                if (me) loadAndRenderBreakdown(leagueId, me.user_id, me.display_name, isCommissioner);
             }
 
             loadLiveLeaderboard();

@@ -254,8 +254,12 @@ CREATE POLICY "League members can view tiebreakers" ON fcp_tiebreakers FOR SELEC
 
 -- ------------------------------------------------------------
 -- 7. FREE AGENCY — placeholder (not implemented)
--- Initial build keeps rosters locked for all three events. When
--- swaps are added, transactions will need roughly:
+-- Initial build keeps rosters locked for all three events. Note this
+-- is distinct from fcp_substitute_golfer (10.6b above), which is a
+-- narrower commissioner-only tool for swapping out a withdrawn golfer
+-- — it has no per-event "effective from" tracking, so it isn't a
+-- substitute for real free agency. If open free-agent swaps get built,
+-- transactions will need roughly:
 --
 -- CREATE TABLE fcp_transactions (
 --   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -987,6 +991,85 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION fcp_set_pick_seconds(uuid, int) TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 10.6b fcp_substitute_golfer
+-- Commissioner-only mid-season roster replacement, for when a golfer
+-- withdraws / is injured. Swaps p_old_golfer_id for p_new_golfer_id on
+-- whichever fcp_picks row holds it, in the league's current season.
+-- Tiered leagues require the replacement to come from the same tier
+-- so the roster's tier composition stays valid; open leagues just
+-- require the golfer to be unpicked.
+--
+-- Note: fcp_recalculate_scores sums fcp_event_results by whatever
+-- golfer_id currently sits in fcp_picks, so this rewrites scoring
+-- history for that roster slot too — points already earned by the
+-- withdrawn golfer in events played before the swap move to whatever
+-- the new golfer scored in those same events (0, if they weren't in
+-- that event's field). That's fine used pre-season / before the first
+-- event tees off, which is the intended use here; there's no
+-- "effective from event X" tracking (see the Free Agency placeholder
+-- above), so using this mid-event will retroactively reshuffle points
+-- rather than only affecting future events.
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fcp_substitute_golfer(p_league_id uuid, p_old_golfer_id text, p_new_golfer_id text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_season      int;
+  v_roster_mode text;
+  v_old_tier    int;
+  v_new_tier    int;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM leagues WHERE id = p_league_id AND commissioner_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Only the commissioner can substitute a golfer';
+  END IF;
+
+  SELECT current_season INTO v_season FROM leagues WHERE id = p_league_id;
+
+  SELECT roster_mode INTO v_roster_mode FROM fcp_leagues
+  WHERE league_id = p_league_id AND season = v_season;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM fcp_picks
+    WHERE league_id = p_league_id AND season = v_season AND golfer_id = p_old_golfer_id
+  ) THEN
+    RAISE EXCEPTION 'That golfer is not on a roster in this league';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM fcp_picks
+    WHERE league_id = p_league_id AND season = v_season AND golfer_id = p_new_golfer_id
+  ) THEN
+    RAISE EXCEPTION 'Replacement golfer is already on a roster in this league';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM golfers WHERE id = p_new_golfer_id AND season = v_season) THEN
+    RAISE EXCEPTION 'Replacement golfer is not in this season''s field';
+  END IF;
+
+  IF v_roster_mode = 'tiered' THEN
+    SELECT tier INTO v_old_tier FROM golfers WHERE id = p_old_golfer_id;
+    SELECT tier INTO v_new_tier FROM golfers WHERE id = p_new_golfer_id;
+    IF v_new_tier IS DISTINCT FROM v_old_tier THEN
+      RAISE EXCEPTION 'Replacement must be from the same tier as the withdrawn golfer';
+    END IF;
+  END IF;
+
+  UPDATE fcp_picks
+  SET golfer_id = p_new_golfer_id, picked_at = now()
+  WHERE league_id = p_league_id AND season = v_season AND golfer_id = p_old_golfer_id;
+
+  PERFORM fcp_recalculate_scores(p_league_id);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION fcp_substitute_golfer(uuid, text, text) TO authenticated;
 
 
 -- ------------------------------------------------------------
