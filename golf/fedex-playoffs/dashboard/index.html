@@ -156,6 +156,27 @@
             return d.innerHTML;
         }
 
+        // Every section re-renders on both the 20s fallback poll and every
+        // Realtime event, but the underlying data usually hasn't changed
+        // between calls. Unconditionally reassigning innerHTML every time
+        // tears down and rebuilds the DOM regardless (avatars reload, the
+        // leaderboard panel blinks through :empty, in-progress form state
+        // like an open reschedule row or a breakdown selection gets reset)
+        // — visible as a flash every ~10-20s. Cache the last string we
+        // rendered per element id (not element.innerHTML itself, since the
+        // browser's serialized markup can differ syntactically from what we
+        // set even when semantically identical) and skip the DOM write
+        // entirely when nothing changed. Returns whether it actually wrote,
+        // so callers can skip other now-stale-DOM-dependent work (event
+        // listener re-attachment, etc.) along with it.
+        const renderCache = {};
+        function setHtmlIfChanged(id, html) {
+            if (renderCache[id] === html) return false;
+            renderCache[id] = html;
+            document.getElementById(id).innerHTML = html;
+            return true;
+        }
+
         // Avatar + display name, used in every member table (pending, active
         // draft, standings). Falls back to an initial when the member has no
         // avatar_url set.
@@ -721,8 +742,8 @@
             const { data: fcpLeague } = await supabase.from('fcp_leagues').select('*')
                 .eq('league_id', leagueId).eq('season', currentSeason).maybeSingle();
 
-            document.getElementById('breakdown-section').innerHTML =
-                renderBreakdown(userName, picksRes.data ?? [], resultsRes.data ?? [], fcpLeague);
+            setHtmlIfChanged('breakdown-section',
+                renderBreakdown(userName, picksRes.data ?? [], resultsRes.data ?? [], fcpLeague));
         }
 
         function attachStandingsClickHandlers(leagueId) {
@@ -760,17 +781,20 @@
             const isCommissioner = leagueRes.data?.commissioner_id === currentUserId;
             const championStrokes = championRes.data?.total_strokes ?? null;
 
-            document.getElementById('main-content').innerHTML =
-                renderStandings(members, scoresRes.data, isCommissioner, leagueRes.data, tiebreakersRes.data, championStrokes);
+            const standingsChanged = setHtmlIfChanged('main-content',
+                renderStandings(members, scoresRes.data, isCommissioner, leagueRes.data, tiebreakersRes.data, championStrokes));
 
-            document.getElementById('live-scoring-inline').innerHTML =
-                renderLiveScoringPanel(isCommissioner, leagueRes.data);
+            setHtmlIfChanged('live-scoring-inline', renderLiveScoringPanel(isCommissioner, leagueRes.data));
 
-            attachStandingsClickHandlers(leagueId);
-
-            // Default the breakdown to the current user's roster.
-            const me = members.find(m => m.user_id === currentUserId) ?? members[0];
-            if (me) loadAndRenderBreakdown(leagueId, me.user_id, me.display_name);
+            // Only re-attach click handlers and reset the breakdown panel
+            // back to "my roster" when the standings table actually changed
+            // — otherwise this would blow away whichever member's roster
+            // you clicked to view every 20s, even with no new data.
+            if (standingsChanged) {
+                attachStandingsClickHandlers(leagueId);
+                const me = members.find(m => m.user_id === currentUserId) ?? members[0];
+                if (me) loadAndRenderBreakdown(leagueId, me.user_id, me.display_name);
+            }
 
             loadLiveLeaderboard();
         }
@@ -787,53 +811,58 @@
 
         // ── Render: live leaderboard (position/score/points from the most
         // recently synced event) ───────────────────────────────────────────
+        // Builds the full HTML (or '' if there's nothing to show yet) before
+        // touching the DOM at all — clearing #live-leaderboard up front on
+        // every call used to make the whole panel disappear (it collapses
+        // via :empty) and reappear on every poll/Realtime tick, even when
+        // the leaderboard hadn't changed.
         async function loadLiveLeaderboard() {
-            const el = document.getElementById('live-leaderboard');
-            el.innerHTML = '';
-
             const { data: allResults } = await supabase
                 .from('fcp_event_results')
                 .select('golfer_id, event, finish_position, status, points, score_to_par, golfers(name)')
                 .eq('season', currentSeason);
 
-            if (!allResults || !allResults.length) return;
+            let html = '';
 
             // Show the most recent event (last in EVENTS order) with any synced results.
             let event = null;
             for (let i = EVENTS.length - 1; i >= 0; i--) {
-                if (allResults.some(r => r.event === EVENTS[i].key)) { event = EVENTS[i]; break; }
+                if ((allResults ?? []).some(r => r.event === EVENTS[i].key)) { event = EVENTS[i]; break; }
             }
-            if (!event) return;
 
-            const results = allResults
-                .filter(r => r.event === event.key)
-                .sort((a, b) => (a.finish_position ?? 999) - (b.finish_position ?? 999));
+            if (event) {
+                const results = allResults
+                    .filter(r => r.event === event.key)
+                    .sort((a, b) => (a.finish_position ?? 999) - (b.finish_position ?? 999));
 
-            const rows = results.map(r => `<tr>
-                    <td class="col-rank">${r.finish_position ?? '—'}</td>
-                    <td class="col-name">${escapeHtml(r.golfers?.name ?? 'Unknown')}</td>
-                    <td class="td-center">${escapeHtml(formatToPar(r.score_to_par, r.status))}</td>
-                    <td class="col-points">${r.points}</td>
-                </tr>`).join('');
+                const rows = results.map(r => `<tr>
+                        <td class="col-rank">${r.finish_position ?? '—'}</td>
+                        <td class="col-name">${escapeHtml(r.golfers?.name ?? 'Unknown')}</td>
+                        <td class="td-center">${escapeHtml(formatToPar(r.score_to_par, r.status))}</td>
+                        <td class="col-points">${r.points}</td>
+                    </tr>`).join('');
 
-            el.innerHTML = `
-                <div class="section">
-                    <h2>Live: ${escapeHtml(event.label)}</h2>
-                    <div class="table-scroll">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th class="th-rank">Pos</th>
-                                    <th>Player</th>
-                                    <th class="th-center">Score</th>
-                                    <th class="th-points th-center">Pts</th>
-                                </tr>
-                            </thead>
-                            <tbody>${rows}</tbody>
-                        </table>
+                html = `
+                    <div class="section">
+                        <h2>Live: ${escapeHtml(event.label)}</h2>
+                        <div class="table-scroll">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th class="th-rank">Pos</th>
+                                        <th>Player</th>
+                                        <th class="th-center">Score</th>
+                                        <th class="th-points th-center">Pts</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${rows}</tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+            }
+
+            setHtmlIfChanged('live-leaderboard', html);
         }
 
         // ── Main ──────────────────────────────────────────────────────────────
@@ -878,7 +907,11 @@
             const leagueRes = await supabase.from('leagues').select('*').eq('id', leagueId).single();
 
             if (leagueRes.error) {
-                document.getElementById('main-content').innerHTML = `<p class="error">Failed to load league: ${leagueRes.error.message}</p>`;
+                // Routed through the cache too — otherwise if a later
+                // successful render happens to match whatever was cached
+                // from *before* this error, setHtmlIfChanged would think
+                // nothing changed and leave this error message stuck.
+                setHtmlIfChanged('main-content', `<p class="error">Failed to load league: ${leagueRes.error.message}</p>`);
                 return;
             }
 
@@ -912,8 +945,7 @@
 
             const status = fcpLeague?.draft_status ?? 'pending';
 
-            document.getElementById('info-strip').innerHTML =
-                renderInfoStrip(league, fcpLeague, members.length);
+            setHtmlIfChanged('info-strip', renderInfoStrip(league, fcpLeague, members.length));
 
             const isCommissioner = league.commissioner_id === currentUserId;
 
@@ -923,11 +955,10 @@
                     .select('user_id, position')
                     .eq('league_id', leagueId)
                     .eq('season', currentSeason);
-                document.getElementById('main-content').innerHTML =
-                    renderPending(members, league, fcpLeague, isCommissioner, draftOrderRows ?? []);
+                setHtmlIfChanged('main-content',
+                    renderPending(members, league, fcpLeague, isCommissioner, draftOrderRows ?? []));
             } else if (status === 'active') {
-                document.getElementById('main-content').innerHTML =
-                    renderActiveDraft(members, league, isCommissioner);
+                setHtmlIfChanged('main-content', renderActiveDraft(members, league, isCommissioner));
             } else {
                 await loadAndRenderStandings(leagueId);
             }
@@ -951,8 +982,8 @@
                     .eq('season', currentSeason).eq('event', 'tour_championship').eq('finish_position', 1).maybeSingle()
             ]);
 
-            document.getElementById('tiebreaker-section').innerHTML =
-                renderTiebreakerCard(tiebreakersRes.data, championRes.data?.total_strokes ?? null);
+            setHtmlIfChanged('tiebreaker-section',
+                renderTiebreakerCard(tiebreakersRes.data, championRes.data?.total_strokes ?? null));
         }
 
         init();
