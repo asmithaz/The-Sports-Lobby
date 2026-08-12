@@ -175,6 +175,13 @@ CREATE TABLE IF NOT EXISTS fcp_event_results (
 -- below. See supabase/functions/fcp-sync-scores/index.ts.
 ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS total_strokes int;
 
+-- Live tournament score relative to par (e.g. -8, 0, +2), populated for
+-- every event from ESPN's scoreboard — this is the "Score" column on the
+-- dashboard's live leaderboard, distinct from total_strokes above (which
+-- only exists for tour_championship and feeds the tiebreaker guess game).
+-- See supabase/functions/fcp-sync-scores/index.ts.
+ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS score_to_par int;
+
 -- Idempotent for installs that ran this schema before seasons existed.
 -- Season-scoping this table is what stops next year's ESPN sync from
 -- silently overwriting this year's finished results in place — see

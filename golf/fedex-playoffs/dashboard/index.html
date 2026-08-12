@@ -335,19 +335,22 @@
                     ` : `<p class="comm-note warn">Draft lock is in effect — time cannot be changed.</p>`}
                 </div>` : '';
 
+            const isFull = members.length >= max;
             const commissionerBlock = isCommissioner ? `
                 <div class="commissioner-panel">
                     <h3>Commissioner Controls</h3>
                     <p class="comm-note">
-                        ${canStart
-                            ? members.length >= max
-                                ? 'League is full — ready to start the draft.'
-                                : `${members.length} of ${max} players joined. You can start early or wait for the full league.`
-                            : 'At least 2 players must join before you can start the draft.'}
+                        ${isFull
+                            ? 'League is full — head to the draft room to start the draft.'
+                            : canStart
+                                ? `${members.length} of ${max} players joined. You can start early from the draft room, or wait for the full league.`
+                                : 'At least 2 players must join before you can start the draft.'}
                     </p>
-                    <button id="start-draft-btn" class="btn-primary" onclick="startDraft('${league.id}')" ${canStart ? '' : 'disabled'}>
+                    ${isFull
+                        ? `<a href="/golf/fedex-playoffs/draft/" class="btn-primary">Enter Draft Room →</a>`
+                        : `<button id="start-draft-btn" class="btn-primary" onclick="startDraft('${league.id}')" ${canStart ? '' : 'disabled'}>
                         Start Draft
-                    </button>
+                    </button>`}
                 </div>` : '';
 
             const waitingBlock = !isCommissioner ? `
@@ -424,9 +427,15 @@
             const timeVal = document.getElementById('reschedule-time-select').value;
             if (!dateVal || !timeVal) return;
             const iso = new Date(`${dateVal}T${timeVal}`).toISOString();
+            // Reset the reminder dedupe flag whenever the draft time moves —
+            // otherwise a league whose reminder already fired for the old
+            // time (or that was marked sent after a partial-failure send)
+            // would never get reminded again for the new time, since the
+            // cron's query only looks at leagues with draft_reminder_sent_at
+            // still null.
             const { error } = await supabase
                 .from('fcp_leagues')
-                .update({ draft_time: iso })
+                .update({ draft_time: iso, draft_reminder_sent_at: null })
                 .eq('league_id', leagueId)
                 .eq('season', currentSeason);
             if (error) { alert('Failed to reschedule: ' + error.message); return; }
@@ -478,12 +487,18 @@
         // renderTiebreakerCard() below) — a missing guess always loses the
         // tiebreak, and no tiebreak is applied until the champion's score
         // is known (championStrokes null).
+        //
+        // Other members' guesses stay hidden (your own is always visible to
+        // you) until tiebreakerLockFor(currentSeason) passes, so nobody can
+        // see a rival's number and sandbag their own guess before submitting.
         function renderStandings(members, scores, isCommissioner, league, tiebreakers, championStrokes) {
             const scoreMap = {};
             (scores ?? []).forEach(s => { scoreMap[s.user_id] = s.total_points; });
 
             const guessMap = {};
             (tiebreakers ?? []).forEach(t => { guessMap[t.user_id] = t.guess_strokes; });
+
+            const guessesRevealed = new Date() >= tiebreakerLockFor(currentSeason);
 
             const diffFor = uid => {
                 const guess = guessMap[uid];
@@ -501,11 +516,14 @@
                 const rankCls = i === 0 ? 'rank-gold' : i === 1 ? 'rank-silver' : i === 2 ? 'rank-bronze' : '';
                 const selectedCls = m.user_id === currentUserId ? ' selected-row' : '';
                 const guess = guessMap[m.user_id];
-                const guessCell = guess == null
-                    ? '—'
-                    : championStrokes == null
-                        ? String(guess)
-                        : `${guess} (Δ${Math.abs(guess - championStrokes)})`;
+                const canSeeGuess = guessesRevealed || m.user_id === currentUserId;
+                const guessCell = !canSeeGuess
+                    ? '🔒'
+                    : guess == null
+                        ? '—'
+                        : championStrokes == null
+                            ? String(guess)
+                            : `${guess} (Δ${Math.abs(guess - championStrokes)})`;
 
                 return `
                     <tr class="${rankCls}${selectedCls} clickable-row" data-user-id="${escapeHtml(m.user_id)}" data-user-name="${escapeHtml(m.display_name)}">
@@ -525,7 +543,7 @@
                             <thead>
                                 <tr>
                                     <th class="th-rank">#</th>
-                                    <th class="th-center">Name</th>
+                                    <th>Name</th>
                                     <th class="th-center">Team</th>
                                     <th class="th-center th-points">Points</th>
                                     <th class="th-center th-points">Tiebreak Guess</th>
@@ -754,19 +772,28 @@
             const me = members.find(m => m.user_id === currentUserId) ?? members[0];
             if (me) loadAndRenderBreakdown(leagueId, me.user_id, me.display_name);
 
-            loadLiveLeaderboard(leagueId);
+            loadLiveLeaderboard();
         }
 
-        // ── Render: live leaderboard (position/points/status from the most
-        // recently synced event — no to-par score or "thru", since
-        // fcp_event_results only stores finish_position/status/points) ──────
-        async function loadLiveLeaderboard(leagueId) {
+        // Formats a relative-to-par int as golf convention: "E", "-8", "+2".
+        // CUT/WD golfers have no live score to show, regardless of the
+        // last value fcp_event_results happened to record for them.
+        function formatToPar(scoreToPar, status) {
+            if (status === 'cut' || status === 'withdrawn') return status === 'cut' ? 'CUT' : 'WD';
+            if (scoreToPar == null) return '—';
+            if (scoreToPar === 0) return 'E';
+            return scoreToPar > 0 ? `+${scoreToPar}` : String(scoreToPar);
+        }
+
+        // ── Render: live leaderboard (position/score/points from the most
+        // recently synced event) ───────────────────────────────────────────
+        async function loadLiveLeaderboard() {
             const el = document.getElementById('live-leaderboard');
             el.innerHTML = '';
 
             const { data: allResults } = await supabase
                 .from('fcp_event_results')
-                .select('golfer_id, event, finish_position, status, points, golfers(name)')
+                .select('golfer_id, event, finish_position, status, points, score_to_par, golfers(name)')
                 .eq('season', currentSeason);
 
             if (!allResults || !allResults.length) return;
@@ -782,23 +809,12 @@
                 .filter(r => r.event === event.key)
                 .sort((a, b) => (a.finish_position ?? 999) - (b.finish_position ?? 999));
 
-            const { data: picks } = await supabase.from('fcp_picks')
-                .select('golfer_id').eq('league_id', leagueId).eq('season', currentSeason);
-            const pickCounts = {};
-            (picks ?? []).forEach(p => { pickCounts[p.golfer_id] = (pickCounts[p.golfer_id] ?? 0) + 1; });
-
-            const STATUS_LABELS = { cut: 'CUT', withdrawn: 'WD', made_cut: 'F', active: 'Active' };
-
-            const rows = results.map(r => {
-                const picked = pickCounts[r.golfer_id] ?? 0;
-                return `<tr>
+            const rows = results.map(r => `<tr>
                     <td class="col-rank">${r.finish_position ?? '—'}</td>
                     <td class="col-name">${escapeHtml(r.golfers?.name ?? 'Unknown')}</td>
+                    <td class="td-center">${escapeHtml(formatToPar(r.score_to_par, r.status))}</td>
                     <td class="col-points">${r.points}</td>
-                    <td class="td-center">${STATUS_LABELS[r.status] ?? r.status}</td>
-                    <td class="td-center">${picked ? `${picked}×` : '—'}</td>
-                </tr>`;
-            }).join('');
+                </tr>`).join('');
 
             el.innerHTML = `
                 <div class="section">
@@ -809,9 +825,8 @@
                                 <tr>
                                     <th class="th-rank">Pos</th>
                                     <th>Player</th>
+                                    <th class="th-center">Score</th>
                                     <th class="th-points th-center">Pts</th>
-                                    <th class="th-center">Status</th>
-                                    <th class="th-center">Picked</th>
                                 </tr>
                             </thead>
                             <tbody>${rows}</tbody>

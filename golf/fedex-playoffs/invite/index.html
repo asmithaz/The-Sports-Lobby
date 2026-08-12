@@ -292,12 +292,21 @@
                 });
 
             if (error) {
-                alert('Failed to save draft settings. Please try again.');
+                alert('Failed to save draft settings: ' + error.message);
                 console.error(error);
                 btn.textContent = 'Launch League';
                 btn.disabled = false;
                 return;
             }
+
+            // Step 1's setup form guards against re-inserting a league on
+            // back-button resubmit by comparing the entered name against
+            // fcp_pending_league_name — but that guard only makes sense while
+            // this flow is still in progress. Clear it now that step 2 has
+            // saved, so creating a later, genuinely new league with the same
+            // name doesn't get misrouted back to this (already-configured)
+            // league and fail here with a duplicate-key error.
+            sessionStorage.removeItem('fcp_pending_league_name');
 
             // League row was inserted as 'pending' back in Step 1 so an abandoned
             // Step 2 doesn't show a half-configured league on the dashboard. Now

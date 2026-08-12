@@ -144,10 +144,11 @@ Deno.serve(async (req) => {
         }
       }
 
+      const relative = relativeScoreFor(competitor);
+
       let totalStrokes: number | null = null;
-      if (tourChampionWinner) {
-        const relative = relativeScoreFor(competitor);
-        if (relative != null) totalStrokes = TOUR_CHAMPIONSHIP_PAR + relative;
+      if (tourChampionWinner && relative != null) {
+        totalStrokes = TOUR_CHAMPIONSHIP_PAR + relative;
       }
 
       rows.push({
@@ -158,6 +159,7 @@ Deno.serve(async (req) => {
         status,
         points,
         total_strokes: totalStrokes,
+        score_to_par: relative,
         updated_at: new Date().toISOString(),
       });
     }

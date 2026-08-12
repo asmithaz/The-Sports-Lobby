@@ -47,6 +47,68 @@ h1 {
     display: none;
 }
 
+/* Full tournament fields run 70+ rows — cap the leaderboard to a scrollable
+   window instead of pushing the rest of the dashboard down the page. Scoped
+   to .live-leaderboard only; other .table-scroll tables (standings, roster
+   breakdown, etc.) are short enough to stay unbounded. */
+.live-leaderboard .table-scroll {
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.live-leaderboard .data-table thead th {
+    position: sticky;
+    top: 0;
+    background-color: var(--c-surface-2);
+    z-index: 1;
+}
+
+/* Tighter columns/padding than the shared .data-table defaults (which are
+   sized for the wider Standings table), and table-layout:fixed so Pos/Score/
+   Pts stay pinned to their set widths instead of table-layout:auto handing
+   their leftover space to Player and blowing out the container — that's
+   what caused the horizontal scroll even after the first size pass. Player
+   gets whatever's left and wraps instead of forcing extra width. */
+.live-leaderboard .data-table {
+    table-layout: fixed;
+    /* /css/components.css's shared .data-table sets min-width:480px — a
+       hard floor wider than this narrower flex column, which is the actual
+       reason every column-width tweak above kept overflowing regardless.
+       Overriding it here is the real fix. */
+    min-width: 0;
+}
+
+.live-leaderboard .data-table th,
+.live-leaderboard .data-table td {
+    padding: var(--space-2) var(--space-3);
+}
+
+.live-leaderboard .th-rank {
+    width: 44px;
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+}
+
+.live-leaderboard .th-points,
+.live-leaderboard .th-center {
+    width: 50px;
+}
+
+/* .data-table .col-points / .data-table .col-name (base rules further down
+   this file) are the exact same specificity as a plain .live-leaderboard
+   .col-* override and win on source order, silently no-op'ing it — same
+   trap the .data-table prefix comment above .col-rank warns about. Adding
+   .data-table into the selector here bumps to 3 classes so this always
+   wins regardless of where it sits in the file. */
+.live-leaderboard .data-table .col-points {
+    min-width: 0;
+}
+
+.live-leaderboard .data-table .col-name {
+    white-space: normal;
+    word-break: break-word;
+}
+
 .league-name {
     color: var(--c-text-secondary);
     font-size: var(--text-lg);
@@ -227,8 +289,6 @@ h1 {
 
 .data-table .col-name  { text-align: left; font-weight: var(--weight-bold); color: var(--c-text-primary); white-space: nowrap; }
 .data-table .col-date  { text-align: left; color: var(--c-text-muted); white-space: nowrap; }
-
-.standings-table .col-name { text-align: center; }
 
 /* ── Member avatar (table rows) ── */
 .name-cell {

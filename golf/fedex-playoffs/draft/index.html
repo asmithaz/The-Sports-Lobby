@@ -63,6 +63,11 @@
                 <button class="btn-primary" id="early-save-order">Save Order</button>
                 <span class="save-status" id="early-save-status"></span>
               </div>
+              <div class="lobby-controls">
+                <p class="comm-note">League is full — you can start the draft now instead of waiting for the scheduled time.</p>
+                <button class="btn-primary" id="early-start-draft">Start Draft Now</button>
+                <span class="save-status" id="early-start-status"></span>
+              </div>
             </div>
           </div>
 
@@ -99,6 +104,11 @@
               <input type="number" id="lobby-pick-seconds" class="timer-input" min="10" max="600" step="5" />
               <button class="btn-sm" id="lobby-save-timer">Save</button>
               <span class="save-status" id="lobby-timer-status"></span>
+            </div>
+            <div class="lobby-controls" id="lobby-start-now-row" hidden>
+              <p class="comm-note">League is full — you can start the draft now instead of waiting for the countdown.</p>
+              <button class="btn-primary" id="lobby-start-draft">Start Draft Now</button>
+              <span class="save-status" id="lobby-start-status"></span>
             </div>
           </div>
         </div>

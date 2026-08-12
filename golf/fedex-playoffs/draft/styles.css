@@ -361,6 +361,14 @@ h1 {
     gap: var(--space-2);
 }
 
+/* Author `display` rules win over the UA stylesheet's [hidden]{display:none}
+   at equal specificity, so .timer-adjust's own display:inline-flex above was
+   silently defeating the JS `.hidden = !isCommissioner` toggle and showing
+   the pick-clock control to every drafter, not just the commissioner. */
+.timer-adjust[hidden] {
+    display: none;
+}
+
 /* ── Lobby final countdown (last 10s before draft start) ── */
 .lobby-final-countdown {
     font-size: 64px;

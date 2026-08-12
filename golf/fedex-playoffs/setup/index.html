@@ -336,7 +336,7 @@
                 sessionStorage.removeItem('fcp_pending_league_name');
                 btn.textContent = 'Next →';
                 btn.disabled = false;
-                alert('Failed to create league. Please try again.');
+                alert('Failed to create league: ' + error.message);
                 console.error(error);
                 return;
             }

@@ -258,6 +258,21 @@ async function saveEarlyOrder() {
   await loadAll();
 }
 
+// Manual commissioner override once the league is full — lets them skip
+// waiting for the scheduled draft_time (view-early) or the lobby countdown
+// (view-lobby). fcp_start_draft() itself enforces the commissioner check
+// server-side, so this is just the UI entry point.
+async function startDraftNow(statusEl) {
+  statusEl.textContent = 'Starting…';
+  const { error } = await supabase.rpc('fcp_start_draft', { p_league_id: leagueId });
+  if (error) {
+    statusEl.textContent = 'Failed: ' + error.message;
+    return;
+  }
+  await loadAll();
+  await render();
+}
+
 // ─── Lobby view ─────────────────────────────────────────────────────────
 function renderLobby() {
   document.getElementById('lobby-draft-time').textContent = formatDraftTime(fcpLeague.draft_time);
@@ -275,6 +290,10 @@ function renderLobby() {
     lobbySecondsInput.value = fcpLeague.pick_seconds;
   }
   document.getElementById('lobby-timer-status').textContent = '';
+
+  const isFull = league.max_players != null && draftOrder.length >= league.max_players;
+  document.getElementById('lobby-start-now-row').hidden = !(isCommissioner && isFull);
+  document.getElementById('lobby-start-status').textContent = '';
 
   const list = document.getElementById('lobby-order-list');
   list.innerHTML = lobbyOrderIds.map((uid, i) => `
@@ -743,7 +762,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!leagueId) { window.location.href = '/golf/index.html'; return; }
 
   document.getElementById('early-save-order').addEventListener('click', saveEarlyOrder);
+  document.getElementById('early-start-draft').addEventListener('click', () =>
+    startDraftNow(document.getElementById('early-start-status')));
   document.getElementById('lobby-save-order').addEventListener('click', saveLobbyOrder);
+  document.getElementById('lobby-start-draft').addEventListener('click', () =>
+    startDraftNow(document.getElementById('lobby-start-status')));
   document.getElementById('lobby-save-timer').addEventListener('click', saveLobbyPickSeconds);
   document.getElementById('draft-save-timer').addEventListener('click', saveDraftPickSeconds);
   document.getElementById('pause-toggle-btn').addEventListener('click', togglePause);
