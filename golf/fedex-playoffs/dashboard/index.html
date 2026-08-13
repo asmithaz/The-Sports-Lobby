@@ -939,8 +939,20 @@
                     .filter(r => r.event === event.key)
                     .sort((a, b) => (a.finish_position ?? 999) - (b.finish_position ?? 999));
 
+                // finish_position groups tied scores under the same rank (see
+                // fcp-sync-scores) — show a "T" prefix whenever more than one
+                // golfer shares a position.
+                const posCounts = {};
+                for (const r of results) {
+                    if (r.finish_position != null) posCounts[r.finish_position] = (posCounts[r.finish_position] ?? 0) + 1;
+                }
+                const posLabel = (pos) => {
+                    if (pos == null) return '—';
+                    return posCounts[pos] > 1 ? `T${pos}` : `${pos}`;
+                };
+
                 const rows = results.map(r => `<tr>
-                        <td class="col-rank">${r.finish_position ?? '—'}</td>
+                        <td class="col-rank">${posLabel(r.finish_position)}</td>
                         <td class="col-name">${escapeHtml(r.golfers?.name ?? 'Unknown')}</td>
                         <td class="td-center">${escapeHtml(formatToPar(r.score_to_par, r.status))}</td>
                         <td class="col-points">${r.points}</td>
