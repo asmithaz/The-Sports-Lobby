@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Bowl Season Pick 'Em — My Picks</title>
+    <link rel="icon" href="/favicon.ico" />
+
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="styles.css" />
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">The Sports Lobby</a>
+        <div class="nav-links">
+            <a href="/cfb/index.html" class="nav-link">CFB</a>
+        </div>
+    </nav>
+
+    <main class="page-wrapper">
+
+        <div class="dash-header">
+            <div>
+                <h1 id="league-name">Loading…</h1>
+                <div class="sub" id="league-sub"></div>
+            </div>
+            <a href="#" id="dashboard-link" class="btn btn--ghost">📊 Dashboard</a>
+        </div>
+
+        <div class="tabs">
+            <a href="#" id="standings-tab-link" class="tab" style="text-decoration:none;">Standings</a>
+            <button class="tab active" data-tab="picks">My Picks</button>
+        </div>
+
+        <div id="rounds-container">
+            <p class="text-muted" style="padding:var(--space-4);">Loading…</p>
+        </div>
+
+    </main>
+
+    <footer class="site-footer">
+        <span>2026 The Sports Lobby. All rights reserved.</span>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/terms.html" class="footer-link">Terms</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
+    </footer>
+
+    <script>
+        let currentUserId = null;
+        let leagueId = null;
+        let currentSeason = null;
+        let bpeLeague = null; // { pick_mode, scoring_mode }
+
+        const ROUND_DEFS = [
+            { key: 'w1', title: 'Bowls + CFP Round 1', tiers: ['bowl', 'cfp_r1'], confKind: 'range', confMax: 39,
+              hint: "Rank every pick's confidence from 1 (least sure) to 39 (most sure) — each number can only be used once. All picks + rankings are required before you can save.",
+              emptyHint: 'Games appear here as bowl matchups get set — check back after Selection Sunday.' },
+            { key: 'w2', title: 'Quarterfinals', tiers: ['cfp_qf'], confKind: 'fixed', confValues: [8, 16, 24, 32],
+              hint: 'Opens once Round 1 results set the matchups.', emptyHint: 'Opens once Round 1 results set the matchups.' },
+            { key: 'w3', title: 'Semifinals', tiers: ['cfp_sf'], confKind: 'fixed', confValues: [13, 27],
+              hint: 'Opens once Quarterfinal results set the matchups.', emptyHint: 'Opens once Quarterfinal results set the matchups.' },
+            { key: 'w4', title: 'Championship', tiers: ['cfp_championship'], confKind: 'forced', confValues: [20],
+              hint: 'Opens once Semifinal results set the matchup.', emptyHint: 'Opens once Semifinal results set the matchup.' },
+        ];
+
+        // pending[gameId] = { picked_team, confidence_points } — local edit state,
+        // seeded from existing picks, flushed to the server by the round's Save button.
+        const pending = {};
+        let allGames = [];
+        let gamesById = {};
+
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.appendChild(document.createTextNode(str ?? ''));
+            return d.innerHTML;
+        }
+        function fmtKickoff(iso) {
+            if (!iso) return null;
+            return new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+        }
+        function isLocked(game) {
+            if (game.status === 'final') return true;
+            if (!game.kickoff_at) return false;
+            return new Date() >= new Date(new Date(game.kickoff_at).getTime() - 5 * 60 * 1000);
+        }
+        function isCorrect(pick, game) {
+            if (!pick || game.status !== 'final') return null;
+            if (bpeLeague.pick_mode === 'spread') {
+                if (game.ats_winner_team == null) return null;
+                return pick.picked_team === game.ats_winner_team;
+            }
+            return pick.picked_team === game.winner_team;
+        }
+
+        function resolveLeagueId() {
+            const fromUrl = new URLSearchParams(window.location.search).get('league_id');
+            if (fromUrl) { sessionStorage.setItem('league_id', fromUrl); return fromUrl; }
+            return sessionStorage.getItem('league_id');
+        }
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { window.location.href = '/login/index.html'; return; }
+            currentUserId = session.user.id;
+
+            leagueId = resolveLeagueId();
+            if (!leagueId) { window.location.href = '/cfb/index.html'; return; }
+
+            document.getElementById('dashboard-link').href = `/cfb/bowl-season-pick-em/dashboard/?league_id=${leagueId}`;
+            document.getElementById('standings-tab-link').href = `/cfb/bowl-season-pick-em/dashboard/?league_id=${leagueId}`;
+
+            const { data: leagueRow } = await supabase
+                .from('leagues').select('name, current_season').eq('id', leagueId).single();
+            currentSeason = leagueRow?.current_season;
+            document.getElementById('league-name').textContent = leagueRow?.name ?? 'League';
+
+            const { data: memberRow } = await supabase
+                .from('league_members').select('team_name').eq('league_id', leagueId).eq('user_id', currentUserId).single();
+            if (!memberRow?.team_name) {
+                window.location.href = `/cfb/bowl-season-pick-em/settings/?league_id=${leagueId}&require=team_name&next=/cfb/bowl-season-pick-em/picks/`;
+                return;
+            }
+
+            const { data: bpeLeagueRow } = await supabase
+                .from('bpe_leagues').select('pick_mode, scoring_mode').eq('league_id', leagueId).eq('season', currentSeason).single();
+            bpeLeague = bpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat' };
+            document.getElementById('league-sub').textContent =
+                `${bpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${bpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring`;
+
+            await loadAndRender();
+        }
+
+        async function loadAndRender() {
+            const [{ data: games }, { data: myPicks }, { data: myTiebreak }] = await Promise.all([
+                supabase.from('bpe_games').select('*').eq('season', currentSeason).order('kickoff_at', { ascending: true, nullsFirst: false }),
+                supabase.from('bpe_picks').select('*').eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', currentUserId),
+                supabase.from('bpe_tiebreakers').select('*').eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', currentUserId).maybeSingle()
+            ]);
+
+            allGames = games || [];
+            gamesById = Object.fromEntries(allGames.map(g => [g.id, g]));
+
+            for (const key in pending) delete pending[key];
+            (myPicks || []).forEach(p => { pending[p.game_id] = { picked_team: p.picked_team, confidence_points: p.confidence_points }; });
+
+            const container = document.getElementById('rounds-container');
+            container.innerHTML = '';
+            ROUND_DEFS.forEach(def => container.appendChild(renderRound(def, myPicks || [])));
+            renderTiebreakerCard(myTiebreak);
+        }
+
+        function renderRound(def, myPicks) {
+            const games = allGames.filter(g => def.tiers.includes(g.tier));
+            const block = document.createElement('div');
+            block.className = 'round-block';
+            block.dataset.round = def.key;
+
+            if (games.length === 0) {
+                block.classList.add('round-block--locked');
+                block.innerHTML = `
+                  <div class="round-head"><h2>${def.title}</h2></div>
+                  <div class="round-hint">${def.emptyHint}</div>`;
+                return block;
+            }
+
+            const openGames = games.filter(g => !isLocked(g));
+            const confCount = def.confKind === 'range' ? def.confMax : def.confValues.length;
+
+            block.innerHTML = `
+              <div class="round-head" id="${def.key}-toggle">
+                <h2><span class="round-caret">▾</span>${def.title}</h2>
+                <span class="round-count">${games.length} game${games.length === 1 ? '' : 's'}</span>
+              </div>
+              <div class="round-panel" id="${def.key}-panel">
+                <div class="round-hint">${def.hint}</div>
+                ${bpeLeague.scoring_mode === 'confidence' && def.confKind === 'range' ? `
+                  <div class="conf-tracker-box">
+                    <div class="conf-tracker-label">
+                      <span>Your confidence numbers</span>
+                      <div class="conf-legend">
+                        <span><i style="background:transparent; border:1px dashed var(--c-text-secondary);"></i>Available</span>
+                        <span><i style="background:var(--c-accent-dim); border:1px solid var(--c-accent-border);"></i>Assigned</span>
+                        <span><i style="background:var(--c-surface-2); border:1px solid var(--c-border-strong);"></i>Locked/live</span>
+                        <span><i style="background:var(--c-accent);"></i>Correct</span>
+                        <span><i style="background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.25);"></i>Incorrect</span>
+                      </div>
+                    </div>
+                    <div class="conf-tracker" id="${def.key}-tracker"></div>
+                  </div>` : ''}
+                <div class="round-toolbar">
+                  <div class="sort-toggle">
+                    Sort:
+                    <div class="sort-btns">
+                      <button class="sort-btn active" data-sort="date">Kickoff date</button>
+                      ${bpeLeague.scoring_mode === 'confidence' ? '<button class="sort-btn" data-sort="conf">Confidence</button>' : ''}
+                    </div>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table class="picks-table">
+                    <colgroup><col class="c-matchup"><col class="c-kick"><col class="c-conf"><col class="c-result"></colgroup>
+                    <thead><tr><th>Matchup</th><th>Kickoff</th><th>Conf.</th><th>Result</th></tr></thead>
+                    <tbody id="${def.key}-body"></tbody>
+                  </table>
+                </div>
+                ${openGames.length > 0 ? `
+                  <div class="save-bar">
+                    <span class="save-bar__msg" id="${def.key}-save-msg"></span>
+                    <button class="btn btn--primary" id="${def.key}-save-btn" disabled>Save Picks</button>
+                  </div>` : ''}
+              </div>
+            `;
+
+            const tbody = block.querySelector(`#${def.key}-body`);
+            games.forEach(g => tbody.appendChild(renderGameRow(g, def)));
+
+            const toggle = block.querySelector(`#${def.key}-toggle`);
+            if (toggle) toggle.addEventListener('click', () => block.classList.toggle('collapsed'));
+
+            wireRoundInteractions(def, block);
+            if (bpeLeague.scoring_mode === 'confidence' && def.confKind === 'range') refreshConfTracker(def);
+            refreshSaveState(def);
+
+            return block;
+        }
+
+        function renderGameRow(g, def) {
+            const tr = document.createElement('tr');
+            const locked = isLocked(g);
+            const pick = pending[g.id];
+            tr.dataset.gameId = g.id;
+            tr.dataset.date = g.kickoff_at || '9999-12-31';
+            tr.dataset.state = g.status === 'final' ? 'final' : locked ? 'live' : 'open';
+
+            const spreadOn = bpeLeague.pick_mode === 'spread';
+            const favIsHome = g.favorite_team === g.home_team;
+            const awayTag = spreadOn && g.spread != null ? (favIsHome ? `+${g.spread}` : `−${g.spread}`) : null;
+            const homeTag = spreadOn && g.spread != null ? (favIsHome ? `−${g.spread}` : `+${g.spread}`) : null;
+
+            function teamRow(team, isHome, tagText) {
+                if (g.status === 'scheduled' && !locked) {
+                    const selected = pick?.picked_team === team ? ' selected' : '';
+                    return `<div class="mu-team-row selectable${selected}" data-team="${escapeHtml(team)}">
+                        <span class="t-name">${escapeHtml(team)}${isHome ? ' <span class="home-tag">· Home</span>' : ''}</span>
+                        <span class="t-right">${tagText != null ? `<span class="t-spread">${tagText}</span>` : ''}</span>
+                      </div>`;
+                }
+                const isPicked = pick?.picked_team === team;
+                const correct = isCorrect(pick, g);
+                let cls = 'plain';
+                if (isPicked) cls = correct === true ? 'picked-hit' : correct === false ? 'picked-miss' : 'picked-pending';
+                const score = isHome ? g.home_score : g.away_score;
+                return `<div class="mu-team-row ${cls}">
+                    <span class="t-name">${escapeHtml(team)}${isPicked ? ' <span class="pick-tag">Your pick</span>' : ''}${isHome ? ' <span class="home-tag">· Home</span>' : ''}</span>
+                    <span class="t-right">${score != null ? `<span class="t-score">${score}</span>` : ''}</span>
+                  </div>`;
+            }
+
+            const matchupHtml = `
+              <div class="mu-head">${escapeHtml(g.bowl_name)}${fmtKickoff(g.kickoff_at) ? ' · ' + fmtKickoff(g.kickoff_at) : ''}</div>
+              ${teamRow(g.away_team, false, awayTag)}
+              ${teamRow(g.home_team, true, homeTag)}
+            `;
+
+            let kickHtml, confHtml, resultHtml;
+
+            if (g.status === 'final') {
+                kickHtml = `<div class="kline kline--final">Final</div>`;
+            } else if (locked) {
+                kickHtml = `<div class="kline kline--live"><span class="status-dot"></span>Live${g.home_score != null ? ` · ${g.away_score}–${g.home_score}` : ''}</div>`;
+            } else {
+                kickHtml = `<div class="kline kline--muted">${fmtKickoff(g.kickoff_at) || 'Kickoff TBD'}</div>`;
+            }
+
+            if (bpeLeague.scoring_mode !== 'confidence') {
+                confHtml = `<span class="text-muted">—</span>`;
+            } else if (g.status === 'final' || locked) {
+                confHtml = pick?.confidence_points != null
+                    ? `<span class="conf-fixed" ${isCorrect(pick, g) === false ? 'style="color:var(--c-text-muted); text-decoration:line-through;"' : ''}>${pick.confidence_points}</span>`
+                    : `<span class="text-muted">—</span>`;
+            } else if (def.confKind === 'forced') {
+                confHtml = `<span class="conf-fixed">20</span>`;
+            } else {
+                const options = def.confKind === 'range'
+                    ? Array.from({ length: def.confMax }, (_, i) => i + 1)
+                    : def.confValues;
+                confHtml = `<select class="conf-select" data-game-id="${g.id}">
+                    <option value="">Rank…</option>
+                    ${options.map(n => `<option value="${n}" ${pick?.confidence_points === n ? 'selected' : ''}>${n}</option>`).join('')}
+                  </select>`;
+            }
+
+            if (g.status === 'final') {
+                const correct = isCorrect(pick, g);
+                if (!pick) {
+                    resultHtml = `<span class="text-muted">No pick</span>`;
+                } else if (correct === null) {
+                    resultHtml = `<span class="pill pill--muted">Push</span>`;
+                } else if (correct) {
+                    const pts = bpeLeague.scoring_mode === 'confidence' ? (pick.confidence_points ?? 0) : { bowl: 1, cfp_r1: 2, cfp_qf: 3, cfp_sf: 4, cfp_championship: 5 }[g.tier];
+                    resultHtml = `<span class="pill pill--green">✓ Correct +${pts}</span>`;
+                } else {
+                    resultHtml = `<span class="pill pill--danger">✗ Incorrect +0</span>`;
+                }
+            } else {
+                resultHtml = `<span class="text-muted">—</span>`;
+            }
+
+            tr.innerHTML = `<td>${matchupHtml}</td><td class="kick-block">${kickHtml}</td><td>${confHtml}</td><td>${resultHtml}</td>`;
+            return tr;
+        }
+
+        function wireRoundInteractions(def, block) {
+            const tbody = block.querySelector(`#${def.key}-body`);
+
+            tbody.querySelectorAll('tr[data-state="open"]').forEach(row => {
+                const gameId = row.dataset.gameId;
+                row.querySelectorAll('.mu-team-row.selectable').forEach(el => {
+                    el.addEventListener('click', () => {
+                        row.querySelectorAll('.mu-team-row.selectable').forEach(x => x.classList.remove('selected'));
+                        el.classList.add('selected');
+                        pending[gameId] = { ...(pending[gameId] || {}), picked_team: el.dataset.team };
+                        refreshSaveState(def);
+                    });
+                });
+            });
+
+            tbody.querySelectorAll('.conf-select').forEach(sel => {
+                sel.addEventListener('change', () => {
+                    const gameId = sel.dataset.gameId;
+                    const val = sel.value ? parseInt(sel.value, 10) : null;
+                    pending[gameId] = { ...(pending[gameId] || {}), confidence_points: val };
+                    refreshConfAvailability(def, block);
+                    if (def.confKind === 'range') refreshConfTracker(def);
+                    refreshSaveState(def);
+                });
+            });
+            refreshConfAvailability(def, block);
+
+            block.querySelectorAll('.sort-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    block.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    sortRoundRows(def, btn.dataset.sort);
+                });
+            });
+
+            const saveBtn = block.querySelector(`#${def.key}-save-btn`);
+            if (saveBtn) saveBtn.addEventListener('click', () => saveRound(def, block));
+        }
+
+        function refreshConfAvailability(def, block) {
+            if (bpeLeague.scoring_mode !== 'confidence') return;
+            const tbody = block.querySelector(`#${def.key}-body`);
+            const selects = Array.from(tbody.querySelectorAll('.conf-select'));
+            const taken = new Set();
+            allGames.filter(g => def.tiers.includes(g.tier)).forEach(g => {
+                const p = pending[g.id];
+                if (p?.confidence_points != null) taken.add(p.confidence_points);
+            });
+            selects.forEach(sel => {
+                const myVal = sel.value ? parseInt(sel.value, 10) : null;
+                Array.from(sel.options).forEach(opt => {
+                    if (opt.value === '') return;
+                    const n = parseInt(opt.value, 10);
+                    opt.disabled = taken.has(n) && n !== myVal;
+                });
+            });
+        }
+
+        function refreshConfTracker(def) {
+            const tracker = document.getElementById(`${def.key}-tracker`);
+            if (!tracker) return;
+            tracker.innerHTML = '';
+            const games = allGames.filter(g => def.tiers.includes(g.tier));
+            const numToState = {};
+            games.forEach(g => {
+                const p = pending[g.id];
+                if (p?.confidence_points == null) return;
+                if (g.status === 'final') {
+                    numToState[p.confidence_points] = isCorrect(p, g) ? 'hit' : 'miss';
+                } else if (isLocked(g)) {
+                    numToState[p.confidence_points] = 'live';
+                } else {
+                    numToState[p.confidence_points] = 'pending';
+                }
+            });
+            for (let n = 1; n <= def.confMax; n++) {
+                const chip = document.createElement('div');
+                chip.className = 'conf-chip';
+                chip.textContent = n;
+                const state = numToState[n];
+                if (state) chip.classList.add(`conf-chip--${state}`);
+                tracker.appendChild(chip);
+            }
+        }
+
+        function refreshSaveState(def) {
+            const btn = document.getElementById(`${def.key}-save-btn`);
+            const msg = document.getElementById(`${def.key}-save-msg`);
+            if (!btn) return;
+
+            const openGames = allGames.filter(g => def.tiers.includes(g.tier) && !isLocked(g));
+            const incomplete = [];
+            openGames.forEach(g => {
+                const p = pending[g.id];
+                const hasPick = !!p?.picked_team;
+                const needsConf = bpeLeague.scoring_mode === 'confidence';
+                const hasConf = !needsConf || p?.confidence_points != null;
+                if (hasPick && hasConf) return;
+                let need = !hasPick && !hasConf ? 'a pick and a confidence rank' : !hasPick ? 'a pick' : 'a confidence rank';
+                incomplete.push({ name: g.bowl_name, need });
+            });
+
+            if (incomplete.length === 0) {
+                msg.textContent = openGames.length ? 'All picks made — ready to save.' : '';
+                msg.classList.add('complete');
+                btn.disabled = openGames.length === 0;
+            } else {
+                msg.classList.remove('complete');
+                btn.disabled = true;
+                if (incomplete.length <= 3) {
+                    msg.textContent = incomplete.map(i => `${i.name} still needs ${i.need}.`).join(' ');
+                } else {
+                    msg.textContent = `${incomplete.length} games still need a pick and/or a confidence rank.`;
+                }
+            }
+        }
+
+        function sortRoundRows(def, mode) {
+            const tbody = document.getElementById(`${def.key}-body`);
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort((a, b) => {
+                if (mode === 'date') return a.dataset.date.localeCompare(b.dataset.date);
+                const confOf = row => pending[row.dataset.gameId]?.confidence_points ?? -1;
+                return confOf(b) - confOf(a);
+            });
+            rows.forEach(r => tbody.appendChild(r));
+        }
+
+        async function saveRound(def, block) {
+            const btn = block.querySelector(`#${def.key}-save-btn`);
+            const original = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
+
+            const openGames = allGames.filter(g => def.tiers.includes(g.tier) && !isLocked(g));
+            const results = await Promise.allSettled(openGames.map(g => {
+                const p = pending[g.id];
+                if (!p?.picked_team) return Promise.resolve();
+                return supabase.rpc('bpe_submit_pick', {
+                    p_league_id: leagueId,
+                    p_game_id: g.id,
+                    p_picked_team: p.picked_team,
+                    p_confidence_points: p.confidence_points ?? null
+                });
+            }));
+
+            const failed = results.filter(r => r.status === 'rejected' || r.value?.error);
+            if (failed.length) {
+                btn.textContent = original;
+                btn.disabled = false;
+                alert('Some picks failed to save — please try again.');
+                console.error(failed);
+                return;
+            }
+
+            btn.textContent = 'Saved ✓';
+            setTimeout(() => loadAndRender(), 900);
+        }
+
+        function renderTiebreakerCard(existing) {
+            let el = document.getElementById('tiebreak-block');
+            if (el) el.remove();
+
+            const champGame = allGames.find(g => g.tier === 'cfp_championship');
+            const locked = champGame ? isLocked(champGame) : false;
+
+            el = document.createElement('div');
+            el.id = 'tiebreak-block';
+            el.className = 'round-block';
+            el.innerHTML = `
+              <div class="round-head"><h2>Tiebreaker</h2><span class="round-count">Championship total score</span></div>
+              <div class="round-hint">Guess the combined final score of both teams in the National Championship — closest guess breaks ties in the standings. Doesn't depend on knowing the matchup, so you can lock this in any time. Locks at Championship kickoff − 5 min, same as every other pick.</div>
+              <div class="tiebreak-row">
+                <input type="number" class="input tiebreak-input" id="tiebreak-input" placeholder="e.g. 51" min="0" max="150" ${locked ? 'disabled' : ''} value="${existing?.guess_total_points ?? ''}" />
+                <button class="btn btn--primary btn--sm" id="tiebreak-save" ${locked ? 'disabled' : ''}>Save Guess</button>
+                <span class="tiebreak-status" id="tiebreak-status">${locked ? 'Locked' : existing ? `Saved: ${existing.guess_total_points}` : 'Not yet submitted'}</span>
+              </div>
+            `;
+            document.getElementById('rounds-container').appendChild(el);
+
+            const saveBtn = document.getElementById('tiebreak-save');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', async () => {
+                    const val = parseInt(document.getElementById('tiebreak-input').value, 10);
+                    const status = document.getElementById('tiebreak-status');
+                    if (!Number.isFinite(val)) { status.textContent = 'Enter a guess first'; status.classList.remove('saved'); return; }
+                    saveBtn.disabled = true;
+                    const { error } = await supabase.rpc('bpe_submit_tiebreaker_guess', { p_league_id: leagueId, p_guess: val });
+                    saveBtn.disabled = false;
+                    if (error) { status.textContent = error.message; status.classList.remove('saved'); return; }
+                    status.textContent = `Saved: ${val}`;
+                    status.classList.add('saved');
+                });
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

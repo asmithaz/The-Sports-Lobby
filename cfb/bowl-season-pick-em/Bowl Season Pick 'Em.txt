@@ -1,0 +1,68 @@
+Bowl Season Pick 'Em - Rules & Timing Plan
+(design locked 8/14/26 - dashboard/standings UI still being worked out separately)
+
+LEAGUE LIFECYCLE
+* League creation opens ~Nov 15, 2026 (about 3 weeks before Selection Sunday, 12/6/26)
+* No draft step - commissioner creates league, invites members, members pick as games unlock
+* Full 46-game slate every league picks - no commissioner exclusions
+
+SELECTION SUNDAY
+* 12/6/26, CFP bracket + bowl reveal broadcast noon-3pm ET
+* Historically ~44-46 games have matchups finalized same day; any stragglers (e.g. Holiday
+  Bowl / Arizona Bowl-style TBDs) are usually just kickoff date/network TBD, not the teams
+
+DATA SOURCE
+* ESPN site API auto-sync, reusing the fcp-sync-scores cron pattern already built for golf
+  (site.api.espn.com .../football/college-football/scoreboard)
+* Each game's spread is snapshotted the moment it first syncs (both competitors known) and
+  is never re-synced - everyone who picks that game, whenever they pick, sees the same frozen
+  number. Only the pick submission deadline moves, not the number.
+* If a synced game's matchup changes after people have already picked it (opt-out, vacated
+  bid, etc.): existing picks on that game auto-clear, and an email goes out to every member
+  of every Bowl Pick'em league (not just people who'd already picked it)
+* "Notify me when all bowls are set" opt-in email, offered while >=1 game is still unresolved,
+  fires once the last game syncs in
+
+PICK WINDOWS
+* Each game becomes pickable the instant its matchup syncs from ESPN (not a fixed clock time)
+* Pick submission locks at kickoff minus 5 minutes - universal rule, same for every game,
+  no per-league override, no commissioner setting
+* Applies identically to regular bowls and every CFP round (Round 1 / Quarterfinal /
+  Semifinal / Championship) - a round's games just aren't pickable until that round's
+  matchups are determined by the prior round's results
+
+SCORING - two independent per-league toggles
+  (a) Spread vs Straight-up - changes what counts as "correct" only, not point values
+  (b) Confidence vs Flat
+
+CONFIDENCE MODE (wave-based - ranking is scoped per wave since later-round matchups
+aren't known far enough ahead to rank against everything else)
+  Wave 1 - Bowls + CFP Round 1 (39 games): ranked 1-39, raw rank = points
+  Wave 2 - Quarterfinals (4 games): 80-pt budget -> ranks pay 8 / 16 / 24 / 32
+  Wave 3 - Semifinals (2 games): 40-pt budget -> ranks pay 13 / 27
+  Wave 4 - Championship (1 game): flat 20 pts, no wager (correct = 20, wrong = 0,
+           same win-only rule as every other pick - no +/- risk mechanic)
+  Season max: 920 pts
+  Players re-enter confidence rankings fresh each time a new wave opens.
+
+FLAT MODE (fixed point value per correct pick, by tier)
+  Bowls: 1 pt
+  CFP Round 1: 2 pts
+  Quarterfinal: 3 pts
+  Semifinal: 4 pts
+  Championship: 5 pts
+
+Both confidence budgets and flat tier values are FIXED for every league - not
+commissioner-customizable. Chosen deliberately to avoid a commissioner breaking the
+balance worked out above.
+
+TIEBREAKER
+* Guess-the-total: players submit a guess for the combined final score of the National
+  Championship game; closest guess wins ties - same pattern as FedEx Playoffs' tiebreak
+  guess column
+
+STILL OPEN / NOT YET DESIGNED
+* Dashboard + standings UI, "what-if" scenario display
+* Invite flow - assumed to reuse the existing shared join_league_by_invite_code()
+  infrastructure used by every other game module, not redesigned here
+* Schema/table design - not started

@@ -1,0 +1,63 @@
+/* ============================================================
+   Bowl Season Pick 'Em — Dashboard
+   Only styles NOT already covered by /css/components.css.
+   ============================================================ */
+
+.dash-header .sub { color: var(--c-text-muted); font-size: var(--text-sm); margin-top: 2px; }
+
+.section-title { font-size: var(--text-md); font-weight: var(--weight-bold); margin-bottom: 2px; }
+.section-sub { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: var(--space-3); }
+.section-block { margin-bottom: var(--space-8); }
+
+/* ---- standings: team-name-primary identity ---- */
+.name-cell { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+.name-cell .caret { color: var(--c-text-muted); font-size: 10px; transition: transform var(--transition); }
+tr.expanded .name-cell .caret { transform: rotate(90deg); color: var(--c-accent); }
+.name-stack { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; }
+.team-name { color: var(--c-text-primary); font-weight: var(--weight-bold); font-size: var(--text-sm); display: flex; align-items: center; gap: 6px; }
+.owner-name { color: var(--c-text-secondary); font-size: var(--text-xs); font-weight: var(--weight-normal); }
+.data-table tbody tr.row--me { background: var(--c-accent-dim); }
+.data-table thead th:nth-child(2) { text-align: left; }
+
+/* ---- standings breakdown (expand-a-name row) ---- */
+.breakdown-row td { padding: 0; }
+.breakdown { display: none; padding: var(--space-4) var(--space-5); background: var(--c-surface); }
+tr.expanded + tr .breakdown { display: block; }
+.breakdown-hint { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: var(--space-2); }
+.breakdown-waves { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
+.breakdown-wave { background: var(--c-surface-2); border: 0.5px solid var(--c-border); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);
+                   cursor: pointer; transition: all var(--transition); }
+.breakdown-wave:hover { border-color: var(--c-border-strong); }
+.breakdown-wave.active { background: var(--c-accent-dim); border-color: var(--c-accent-border); }
+.breakdown-wave .wl { font-size: var(--text-xs); color: var(--c-text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.breakdown-wave .wv { font-family: var(--font-mono); font-size: var(--text-md); color: var(--c-text-primary); font-weight: var(--weight-bold); margin-top: 2px; }
+.breakdown-wave.active .wl, .breakdown-wave.active .wv { color: var(--c-accent); }
+.pick-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick-chip { font-family: var(--font-mono); font-size: var(--text-xs); padding: 2px 7px; border-radius: var(--radius-sm); border: 0.5px solid var(--c-border); color: var(--c-text-muted); }
+.pick-chip--hit { color: var(--c-accent); border-color: var(--c-accent-border); background: var(--c-accent-dim); }
+.pick-chip--miss { color: var(--c-danger); border-color: rgba(248,113,113,0.25); background: rgba(248,113,113,0.1); text-decoration: line-through; }
+
+/* ---- pick comparison grid ---- */
+.pg-wrap { border: 0.5px solid var(--c-border); border-radius: var(--radius-md); overflow: auto; max-height: 560px; -webkit-overflow-scrolling: touch; }
+.pg-table { border-collapse: collapse; font-size: var(--text-sm); width: 100%; }
+.pg-table th, .pg-table td { padding: 8px var(--space-3); text-align: center; white-space: nowrap; border-bottom: 0.5px solid var(--c-border); }
+.pg-table thead th { position: sticky; top: 0; background: var(--c-surface); font-size: var(--text-xs); font-weight: var(--weight-bold);
+                      letter-spacing: 0.05em; color: var(--c-text-muted); text-transform: uppercase; z-index: 3; border-bottom: 0.5px solid var(--c-border-strong); }
+.pg-table th.pg-col--me, .pg-table td.pg-col--me { background: var(--c-accent-dim); }
+.pg-table thead th.pg-col--me { background: var(--c-surface-2); color: var(--c-accent); z-index: 4; }
+.pg-matchup-th, .pg-matchup-cell { position: sticky; left: 0; z-index: 2; background: var(--c-surface); text-align: left; min-width: 190px; white-space: normal; }
+.pg-table thead .pg-matchup-th { z-index: 5; }
+.pg-round-row td { background: var(--c-surface-2); color: var(--c-text-muted); font-size: var(--text-xs); text-transform: uppercase;
+                    letter-spacing: 0.08em; text-align: left; font-weight: var(--weight-bold); position: sticky; left: 0; }
+.pg-matchup-cell .mline { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: 2px; }
+.pg-matchup-cell .mteams { font-size: var(--text-sm); color: var(--c-text-primary); }
+.pg-matchup-cell .mscore { font-size: var(--text-xs); color: var(--c-accent); font-family: var(--font-mono); margin-top: 4px;
+                            display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; }
+.pg-pick { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; padding: 3px 8px; border-radius: var(--radius-sm);
+           font-family: var(--font-mono); font-size: var(--text-xs); font-weight: var(--weight-bold); border: 0.5px solid var(--c-border); color: var(--c-text-secondary); }
+.pg-pick--pending { background: var(--c-surface-2); }
+.pg-pick--hit { background: var(--c-accent-dim); border-color: var(--c-accent-border); color: var(--c-accent); }
+.pg-pick--miss { background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.25); color: var(--c-danger); text-decoration: line-through; }
+.pg-pick .pconf { font-size: 9px; opacity: 0.75; text-decoration: none; }
+.pg-th-stack { display: flex; flex-direction: column; gap: 1px; align-items: center; }
+.pg-th-team { color: var(--c-text-primary); font-size: var(--text-xs); font-weight: var(--weight-bold); text-transform: none; letter-spacing: normal; }

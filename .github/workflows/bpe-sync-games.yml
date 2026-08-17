@@ -1,0 +1,42 @@
+name: CFB Bowl Season Pick 'Em — Game Sync
+
+# Runs every 15 minutes, but the job exits immediately unless today falls
+# within the bowl season window (Selection Sunday through a buffer day
+# after the National Championship). Update SEASON / BOWL_SEASON_START /
+# BOWL_SEASON_END each year.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+env:
+  SEASON: "2026"
+  BOWL_SEASON_START: "2026-12-06"
+  BOWL_SEASON_END: "2027-01-26"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check bowl season window
+        id: window
+        run: |
+          today=$(date -u +%Y-%m-%d)
+          if [[ "$today" < "$BOWL_SEASON_START" || "$today" > "$BOWL_SEASON_END" ]]; then
+            echo "Outside bowl season window ($BOWL_SEASON_START to $BOWL_SEASON_END) — skipping."
+            echo "in_window=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "in_window=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Call bpe-sync-games Edge Function
+        if: steps.window.outputs.in_window == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          curl -sS -X POST "${SUPABASE_URL}/functions/v1/bpe-sync-games?season=${SEASON}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --fail-with-body
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

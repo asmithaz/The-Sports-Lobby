@@ -366,6 +366,15 @@
                 return;
             }
 
+            if (league?.game_type === 'cfb-bowl-season-pick-em') {
+                if (!confirm(`Start a new Bowl Season Pick 'Em season? Last season's picks and standings will be saved to Season History — everyone keeps the same invite link and picks fresh once this year's bowl schedule syncs.`)) return;
+                const { error } = await supabase.rpc('bpe_start_new_season', { p_league_id: leagueId });
+                if (error) { alert(error.message); return; }
+                league.status = 'active';
+                applyFilters();
+                return;
+            }
+
             const { error } = await supabase.rpc('reactivate_league', { p_league_id: leagueId });
             if (error) { alert(error.message); return; }
             if (league) league.status = 'active';
