@@ -43,6 +43,18 @@ CREATE TABLE IF NOT EXISTS golfers (
 ALTER TABLE golfers ADD COLUMN IF NOT EXISTS season int NOT NULL
   DEFAULT extract(year from now())::int;
 
+-- Whether this golfer has been cut from the FedEx Cup Playoffs field
+-- (70 -> 50 after St. Jude, 50 -> 30 after BMW). This is independent of
+-- fedex_rank/tier above, which stays fixed at its preseason draft value
+-- forever - elimination is a plain in/out flag layered on top, not a
+-- re-rank, so the "1-30 A" / "31-50 B" / etc. tier-group labels already
+-- shown on drafted rosters never change after the draft happens. There's
+-- no live feed for this (PGA Tour doesn't publish it as machine-readable
+-- data), so it's set manually via
+-- golf/fedex-playoffs/scripts/Mark-GolfersRemaining.ps1 after each cut.
+ALTER TABLE golfers ADD COLUMN IF NOT EXISTS eliminated boolean NOT NULL DEFAULT false;
+ALTER TABLE golfers ADD COLUMN IF NOT EXISTS eliminated_after_event text;
+
 
 -- ------------------------------------------------------------
 -- 2. FCP LEAGUES
@@ -457,6 +469,53 @@ CREATE TRIGGER fcp_draft_order_on_league_full
   AFTER INSERT ON league_members
   FOR EACH ROW
   EXECUTE FUNCTION fcp_maybe_generate_draft_order_on_join();
+
+-- Block joins once this league's current-season draft has started or
+-- finished. enforce_league_capacity_on_join (world-cup-bracket-challenge
+-- schema) only stops the league from *overfilling* — a commissioner can
+-- set max_players higher than roster_size, or the draft can start with
+-- an open seat still unclaimed, so a late invite-code use could otherwise
+-- still slip a member into an in-progress or completed draft.
+-- Runs on every league_members insert; a no-op for non-fedex leagues
+-- since it only fires when a fcp_leagues row exists for the league.
+CREATE OR REPLACE FUNCTION fcp_block_join_after_draft_start()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_season       int;
+  v_draft_status text;
+BEGIN
+  -- BEFORE INSERT fires even when ON CONFLICT DO NOTHING will no-op the
+  -- row, so skip the check entirely for an already-existing member
+  -- (e.g. re-clicking an invite link) rather than blocking their re-join.
+  IF EXISTS (
+    SELECT 1 FROM league_members
+    WHERE league_id = NEW.league_id AND user_id = NEW.user_id
+  ) THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT current_season INTO v_season FROM leagues WHERE id = NEW.league_id;
+
+  SELECT draft_status INTO v_draft_status
+  FROM fcp_leagues WHERE league_id = NEW.league_id AND season = v_season;
+
+  IF v_draft_status IN ('active', 'completed') THEN
+    RAISE EXCEPTION 'This league''s draft has already started — new members cannot join';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS fcp_block_join_after_draft_start ON league_members;
+CREATE TRIGGER fcp_block_join_after_draft_start
+  BEFORE INSERT ON league_members
+  FOR EACH ROW
+  EXECUTE FUNCTION fcp_block_join_after_draft_start();
 
 
 -- Let the commissioner reorder drafters any time before the draft starts.

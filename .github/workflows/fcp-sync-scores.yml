@@ -11,7 +11,7 @@ on:
 
 env:
   PLAYOFFS_START: "2026-08-06"
-  PLAYOFFS_END: "2026-08-25"
+  PLAYOFFS_END: "2026-08-31"
 
 jobs:
   sync:

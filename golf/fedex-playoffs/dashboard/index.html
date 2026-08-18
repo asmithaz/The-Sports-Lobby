@@ -512,7 +512,7 @@
         // Other members' guesses stay hidden (your own is always visible to
         // you) until tiebreakerLockFor(currentSeason) passes, so nobody can
         // see a rival's number and sandbag their own guess before submitting.
-        function renderStandings(members, scores, isCommissioner, league, tiebreakers, championStrokes) {
+        function renderStandings(members, scores, isCommissioner, league, tiebreakers, championStrokes, rosterCounts) {
             const scoreMap = {};
             (scores ?? []).forEach(s => { scoreMap[s.user_id] = s.total_points; });
 
@@ -546,12 +546,26 @@
                             ? String(guess)
                             : `${guess} (Δ${Math.abs(guess - championStrokes)})`;
 
+                const rc = rosterCounts?.[m.user_id];
+                const remainingCell = rc && rc.total > 0 ? `${rc.alive}/${rc.total}` : '—';
+
+                const isMe = m.user_id === currentUserId;
+                const youPill = isMe ? ' <span class="pill pill--muted">You</span>' : '';
+                const teamCell = m.team_name
+                    ? `<span class="name-stack">
+                            <span class="team-name">${escapeHtml(m.team_name)}${youPill}</span>
+                            <span class="owner-name">${escapeHtml(m.display_name)}</span>
+                        </span>`
+                    : `<span class="name-stack">
+                            <span class="team-name">${escapeHtml(m.display_name)}${youPill}</span>
+                        </span>`;
+
                 return `
                     <tr class="${rankCls}${selectedCls} clickable-row" data-user-id="${escapeHtml(m.user_id)}" data-user-name="${escapeHtml(m.display_name)}">
                         <td class="col-rank">${i + 1}</td>
-                        <td class="col-name">${nameCell(m)}</td>
-                        <td class="col-name">${escapeHtml(m.team_name || '—')}</td>
+                        <td class="col-name">${teamCell}</td>
                         <td class="col-points">${pts}</td>
+                        <td class="td-center">${remainingCell}</td>
                         <td class="col-points">${guessCell}</td>
                     </tr>`;
             }).join('');
@@ -564,10 +578,10 @@
                             <thead>
                                 <tr>
                                     <th class="th-rank">#</th>
-                                    <th>Name</th>
-                                    <th class="th-center">Team</th>
+                                    <th>Team</th>
                                     <th class="th-center th-points">Points</th>
-                                    <th class="th-center th-points">Tiebreak Guess</th>
+                                    <th class="th-center">Remaining</th>
+                                    <th class="th-center th-points th-wrap">Tiebreak Guess</th>
                                 </tr>
                             </thead>
                             <tbody>${rows}</tbody>
@@ -710,7 +724,13 @@
                 const subBtn = (isCommissioner && golferId)
                     ? `<br><button type="button" class="btn-text sub-btn" data-golfer-id="${escapeHtml(golferId)}" data-golfer-name="${escapeHtml(golferName)}" data-tier="${p.golfers?.tier ?? ''}">🔁 Sub</button>`
                     : '';
-                return `<td class="pick-col">${escapeHtml(golferName)}${subBtn}</td>`;
+                let eliminatedBadge = '';
+                if (p.golfers?.eliminated) {
+                    const afterLabel = EVENTS.find(e => e.key === p.golfers?.eliminated_after_event)?.label;
+                    const title = afterLabel ? ` title="Eliminated after ${escapeHtml(afterLabel)}"` : '';
+                    eliminatedBadge = `<br><span class="pill pill--danger"${title}>Eliminated</span>`;
+                }
+                return `<td class="pick-col">${escapeHtml(golferName)}${eliminatedBadge}${subBtn}</td>`;
             }).join('');
             const totalCells = totals.map(t => `<td class="pick-col">${t}</td>`).join('');
 
@@ -755,7 +775,7 @@
 
             const [picksRes, resultsRes] = await Promise.all([
                 supabase.from('fcp_picks')
-                    .select('tier_slot, golfers(id, name, tier)')
+                    .select('tier_slot, golfers(id, name, tier, eliminated, eliminated_after_event)')
                     .eq('league_id', leagueId)
                     .eq('season', currentSeason)
                     .eq('user_id', userId),
@@ -807,7 +827,7 @@
             panel.innerHTML = '<p class="live-scoring-note">Loading available golfers…</p>';
 
             const [{ data: seasonGolfers }, { data: leaguePicks }] = await Promise.all([
-                supabase.from('golfers').select('id, name, tier').eq('season', currentSeason).order('fedex_rank'),
+                supabase.from('golfers').select('id, name, tier').eq('season', currentSeason).eq('eliminated', false).order('fedex_rank'),
                 supabase.from('fcp_picks').select('golfer_id').eq('league_id', leagueId).eq('season', currentSeason)
             ]);
 
@@ -861,14 +881,24 @@
         }
 
         async function loadAndRenderStandings(leagueId) {
-            const [membersRes, scoresRes, leagueRes, tiebreakersRes, championRes] = await Promise.all([
+            const [membersRes, scoresRes, leagueRes, tiebreakersRes, championRes, picksAliveRes] = await Promise.all([
                 supabase.from('league_members').select('user_id, joined_at, team_name').eq('league_id', leagueId),
                 supabase.from('fcp_scores').select('user_id, total_points').eq('league_id', leagueId).eq('season', currentSeason),
                 supabase.from('leagues').select('id, commissioner_id').eq('id', leagueId).single(),
                 supabase.from('fcp_tiebreakers').select('user_id, guess_strokes').eq('league_id', leagueId).eq('season', currentSeason),
                 supabase.from('fcp_event_results').select('total_strokes')
-                    .eq('season', currentSeason).eq('event', 'tour_championship').eq('finish_position', 1).maybeSingle()
+                    .eq('season', currentSeason).eq('event', 'tour_championship').eq('finish_position', 1).maybeSingle(),
+                supabase.from('fcp_picks').select('user_id, golfers(eliminated)')
+                    .eq('league_id', leagueId).eq('season', currentSeason)
             ]);
+
+            // user_id -> { alive, total } — drives the Standings "Remaining" column.
+            const rosterCounts = {};
+            (picksAliveRes.data ?? []).forEach(p => {
+                const c = rosterCounts[p.user_id] ?? (rosterCounts[p.user_id] = { alive: 0, total: 0 });
+                c.total++;
+                if (!p.golfers?.eliminated) c.alive++;
+            });
 
             const memberRows = membersRes.data ?? [];
             const ids = memberRows.map(m => m.user_id);
@@ -886,7 +916,7 @@
             const championStrokes = championRes.data?.total_strokes ?? null;
 
             const standingsChanged = setHtmlIfChanged('main-content',
-                renderStandings(members, scoresRes.data, isCommissioner, leagueRes.data, tiebreakersRes.data, championStrokes));
+                renderStandings(members, scoresRes.data, isCommissioner, leagueRes.data, tiebreakersRes.data, championStrokes, rosterCounts));
 
             setHtmlIfChanged('live-scoring-inline', renderLiveScoringPanel(isCommissioner, leagueRes.data));
 

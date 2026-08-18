@@ -28,9 +28,34 @@ h1 {
 .standings-row {
     display: flex;
     gap: var(--space-5);
-    align-items: flex-start;
+    align-items: stretch;
     flex-wrap: wrap;
     width: 100%;
+}
+
+/* align-items:stretch above makes each column match the row's height (i.e.
+   the taller sibling's), and these three rules make that height actually
+   reach the bottom of each column's content instead of just padding empty
+   space below a shorter table: .section stretches to fill the column,
+   .table-scroll grows to fill the section, and standings-note (below)
+   rides down via margin-top:auto to sit flush with the leaderboard's
+   bottom edge regardless of how many standings rows there are. */
+.standings-row-main,
+.live-leaderboard {
+    display: flex;
+    flex-direction: column;
+}
+
+.standings-row-main .section,
+.live-leaderboard .section {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.standings-row-main .table-scroll,
+.live-leaderboard .table-scroll {
+    flex: 1;
 }
 
 .standings-row-main {
@@ -243,6 +268,16 @@ h1 {
     white-space: nowrap;
 }
 
+/* Lets a long header label (e.g. "Tiebreak Guess") wrap onto two lines
+   instead of forcing white-space:nowrap's min-content width onto the whole
+   column — that nowrap was the actual cause of the standings table needing
+   horizontal scroll, since it pushed the column wider than its th-points
+   width hint. */
+.data-table thead th.th-wrap {
+    white-space: normal;
+    line-height: 1.25;
+}
+
 .data-table thead th.th-rank,
 .data-table thead th.th-center,
 .data-table thead th.pick-col {
@@ -295,6 +330,32 @@ h1 {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
+}
+
+/* ── Standings "Team" column: team name + owner stacked in one cell
+   instead of two separate columns (same pattern as
+   cfb/bowl-season-pick-em/dashboard/styles.css) ── */
+.name-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    text-align: left;
+}
+
+.team-name {
+    color: var(--c-text-primary);
+    font-weight: var(--weight-bold);
+    font-size: var(--text-sm);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.owner-name {
+    color: var(--c-text-secondary);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-normal);
 }
 
 .member-avatar {
@@ -470,6 +531,8 @@ h1 {
 
 .standings-note {
     margin: var(--space-3) 0 0 0;
+    margin-top: auto;
+    padding-top: var(--space-3);
 }
 
 /* ── Commissioner panel ── */
