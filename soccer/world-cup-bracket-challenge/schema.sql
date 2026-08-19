@@ -322,6 +322,47 @@ CREATE POLICY "Members can view their memberships"
 CREATE POLICY "Authenticated users can join leagues"
   ON league_members FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+-- Enforce leagues.max_players regardless of entry point (the RPC above,
+-- or a direct insert under the "Authenticated users can join leagues"
+-- policy). RLS WITH CHECK can't see other rows' counts cheaply/atomically
+-- across concurrent inserts, so this is done as a trigger instead.
+CREATE OR REPLACE FUNCTION enforce_league_capacity()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_max_players int;
+BEGIN
+  -- BEFORE INSERT fires even when ON CONFLICT DO NOTHING will no-op the
+  -- row, so skip the check entirely for an already-existing member
+  -- (e.g. re-clicking an invite link) rather than blocking their re-join.
+  IF EXISTS (
+    SELECT 1 FROM league_members
+    WHERE league_id = NEW.league_id AND user_id = NEW.user_id
+  ) THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT max_players INTO v_max_players FROM leagues WHERE id = NEW.league_id;
+
+  IF v_max_players IS NOT NULL
+     AND (SELECT count(*) FROM league_members WHERE league_id = NEW.league_id) >= v_max_players
+  THEN
+    RAISE EXCEPTION 'This league is full';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS enforce_league_capacity_on_join ON league_members;
+CREATE TRIGGER enforce_league_capacity_on_join
+  BEFORE INSERT ON league_members
+  FOR EACH ROW
+  EXECUTE FUNCTION enforce_league_capacity();
+
 -- wc_teams / wc_matches — public read-only
 DROP POLICY IF EXISTS "Teams readable by all"   ON wc_teams;
 DROP POLICY IF EXISTS "Matches readable by all" ON wc_matches;
@@ -824,6 +865,10 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Invalid invite code';
     END IF;
+
+    -- Capacity (max_players) is enforced by the enforce_league_capacity
+    -- trigger on league_members below, so it also covers the direct
+    -- "Authenticated users can join leagues" INSERT policy, not just this RPC.
 
     -- Idempotent insert — safe to call even if already a member
     INSERT INTO public.league_members (league_id, user_id)

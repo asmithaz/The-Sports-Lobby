@@ -5,6 +5,8 @@
 
 .dash-header .sub { color: var(--c-text-muted); font-size: var(--text-sm); margin-top: 2px; }
 
+#sync-status-bar { margin-bottom: var(--space-5); }
+
 .section-title { font-size: var(--text-md); font-weight: var(--weight-bold); margin-bottom: 2px; }
 .section-sub { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: var(--space-3); }
 .section-block { margin-bottom: var(--space-8); }

@@ -47,7 +47,7 @@
         </div>
 
         <div class="tabs">
-            <button class="tab active" data-tab="standings">Standings</button>
+            <span class="tab active" data-tab="standings">Standings</span>
             <a href="/cfb/bowl-season-pick-em/picks/" id="picks-tab-link" class="tab" style="text-decoration:none;">My Picks</a>
         </div>
 
@@ -195,11 +195,19 @@
                 return;
             }
 
+            const userIds = rows.map(row => row.user_id);
+            const profileMap = {};
+            if (userIds.length) {
+                const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', userIds);
+                (profiles || []).forEach(p => { profileMap[p.id] = p; });
+            }
+
             tbody.innerHTML = '';
             rows.forEach((row, i) => {
                 const rank = i + 1;
                 const record = `${row.wins}–${row.losses}`;
                 const isMe = row.user_id === currentUserId;
+                const ownerName = profileMap[row.user_id]?.display_name;
 
                 const tr = document.createElement('tr');
                 tr.className = isMe ? 'row--me' : '';
@@ -207,7 +215,7 @@
                   <td class="rank-cell ${rank === 1 ? 'rank-cell--top' : ''}">${rank}</td>
                   <td><div class="name-cell"><span class="caret">▸</span><div class="name-stack">
                         <span class="team-name">${escapeHtml(row.team_name || 'Unnamed Team')}${isMe ? ' <span class="pill pill--muted">You</span>' : ''}</span>
-                        <span class="owner-name"></span>
+                        <span class="owner-name">${ownerName ? escapeHtml(ownerName) : ''}</span>
                       </div></div></td>
                   <td class="num">${record}</td>
                   <td class="num num--score">${row.total_points}</td>

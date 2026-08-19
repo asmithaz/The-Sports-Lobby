@@ -110,7 +110,8 @@
         const GAME_LABELS = {
             'world-cup-bracket-challenge': 'World Cup Bracket Challenge',
             'world-cup-draft':             'World Cup Country Draft',
-            'fedex-playoffs':              'FedEx Cup Playoffs'
+            'fedex-playoffs':              'FedEx Cup Playoffs',
+            'cfb-bowl-season-pick-em':     "Bowl Season Pick 'Em"
         };
 
         const TYPE_LABELS = {
@@ -122,18 +123,21 @@
         const GAME_ICONS = {
             'world-cup-bracket-challenge': '⚽',
             'world-cup-draft':              '⚽',
-            'fedex-playoffs':               '⛳'
+            'fedex-playoffs':               '⛳',
+            'cfb-bowl-season-pick-em':      '🏈'
         };
 
         const SPORT_OF_GAME = {
             'world-cup-bracket-challenge': 'soccer',
             'world-cup-draft':              'soccer',
-            'fedex-playoffs':               'golf'
+            'fedex-playoffs':               'golf',
+            'cfb-bowl-season-pick-em':      'cfb'
         };
 
         const SPORT_LABELS = {
             'soccer': '⚽ Soccer',
-            'golf':   '⛳ Golf'
+            'golf':   '⛳ Golf',
+            'cfb':    '🏈 College Football'
         };
 
         let allLeagues = [];
@@ -392,6 +396,8 @@
                 window.location.href = '/soccer/world-cup-draft/dashboard/';
             } else if (gameType === 'fedex-playoffs') {
                 window.location.href = '/golf/fedex-playoffs/dashboard/';
+            } else if (gameType === 'cfb-bowl-season-pick-em') {
+                window.location.href = '/cfb/bowl-season-pick-em/dashboard/';
             } else if (leagueType === 'knockout-only') {
                 window.location.href = '/soccer/world-cup-bracket-challenge/bracket/';
             } else {

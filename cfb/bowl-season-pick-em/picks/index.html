@@ -32,12 +32,15 @@
                 <h1 id="league-name">Loading…</h1>
                 <div class="sub" id="league-sub"></div>
             </div>
-            <a href="#" id="dashboard-link" class="btn btn--ghost">📊 Dashboard</a>
+            <div class="flex gap-2">
+                <a href="/cfb/bowl-season-pick-em/history/" id="history-link" class="btn btn--ghost">📜 History</a>
+                <a href="#" id="settings-link" class="btn btn--ghost">⚙️ Settings</a>
+            </div>
         </div>
 
         <div class="tabs">
             <a href="#" id="standings-tab-link" class="tab" style="text-decoration:none;">Standings</a>
-            <button class="tab active" data-tab="picks">My Picks</button>
+            <span class="tab active" data-tab="picks">My Picks</span>
         </div>
 
         <div id="rounds-container">
@@ -119,8 +122,9 @@
             leagueId = resolveLeagueId();
             if (!leagueId) { window.location.href = '/cfb/index.html'; return; }
 
-            document.getElementById('dashboard-link').href = `/cfb/bowl-season-pick-em/dashboard/?league_id=${leagueId}`;
             document.getElementById('standings-tab-link').href = `/cfb/bowl-season-pick-em/dashboard/?league_id=${leagueId}`;
+            document.getElementById('history-link').href = `/cfb/bowl-season-pick-em/history/?league_id=${leagueId}`;
+            document.getElementById('settings-link').href = `/cfb/bowl-season-pick-em/settings/?league_id=${leagueId}`;
 
             const { data: leagueRow } = await supabase
                 .from('leagues').select('name, current_season').eq('id', leagueId).single();
@@ -138,7 +142,7 @@
                 .from('bpe_leagues').select('pick_mode, scoring_mode').eq('league_id', leagueId).eq('season', currentSeason).single();
             bpeLeague = bpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat' };
             document.getElementById('league-sub').textContent =
-                `${bpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${bpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring`;
+                `College Football Bowl Season Pick 'Em · ${bpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${bpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring`;
 
             await loadAndRender();
         }
