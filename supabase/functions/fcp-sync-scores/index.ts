@@ -46,13 +46,19 @@ function pointsForPosition(position: number | null): number {
   return 0;
 }
 
-function findEventKey(events: any[]): { event: string; competition: any } | null {
+// ESPN's status.type.state is "pre" | "in" | "post" across every sport on
+// this API. Checked at both the event and competition level since golf's
+// scoreboard has been observed to set it on either depending on the event.
+function findEventKey(events: any[]): { event: string; competition: any; started: boolean } | null {
   for (const ev of events ?? []) {
     const name = String(ev?.name ?? ev?.shortName ?? "").toLowerCase();
     for (const [needle, key] of Object.entries(EVENT_NAME_MATCH)) {
       if (name.includes(needle)) {
         const competition = ev?.competitions?.[0];
-        if (competition) return { event: key, competition };
+        if (competition) {
+          const state = competition?.status?.type?.state ?? ev?.status?.type?.state;
+          return { event: key, competition, started: state !== "pre" };
+        }
       }
     }
   }
@@ -112,6 +118,32 @@ function relativeScoreFor(competitor: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// The main scoreboard endpoint (ESPN_SCOREBOARD_URL above) doesn't carry
+// per-golfer tee times — everyone shows tied at even par with no way to
+// tell "hasn't teed off yet" from "actually shooting even par". ESPN's
+// undocumented core API has that per-competitor, one call per golfer:
+// .../events/{id}/competitions/{id}/competitors/{athleteId}/status. It
+// returns both the individual pre/in/post state and, while pre, a
+// `teeTime` ISO timestamp. Best-effort: any failure (rate limit, shape
+// change, network) falls back to null so the caller uses the whole-event
+// `started` flag instead of blocking the sync.
+async function fetchIndividualStatus(
+  competitionId: string,
+  athleteId: string,
+): Promise<{ started: boolean; teeTime: string | null } | null> {
+  try {
+    const url = `https://sports.core.api.espn.com/v2/sports/golf/leagues/pga/events/${competitionId}/competitions/${competitionId}/competitors/${athleteId}/status?lang=en&region=us`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const state = data?.type?.state;
+    if (!state) return null;
+    return { started: state !== "pre", teeTime: state === "pre" ? (data?.teeTime ?? null) : null };
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -136,7 +168,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { event, competition } = matched;
+    const { event, competition, started } = matched;
+    // ESPN's scoreboard always reflects whatever tournament is live right
+    // now, so "season" is simply the current calendar year — matches
+    // fcp_event_results.season in golf/fedex-playoffs/schema.sql.
+    const season = new Date().getFullYear();
+
     const competitors: any[] = competition?.competitors ?? [];
 
     // Map ESPN athlete IDs to our golfer ids.
@@ -151,32 +188,41 @@ Deno.serve(async (req) => {
     }
 
     // First pass: figure out which competitors map to a known golfer, and
-    // pull their status/score. Ranks are computed afterward across this
-    // filtered set so ties are grouped correctly (an unmatched competitor
-    // sitting between two tied golfers must not break the tie).
-    const matchedCompetitors = competitors
-      .map((competitor) => {
-        const espnId = String(competitor?.athlete?.id ?? competitor?.id ?? "");
-        const golferId = espnIdToGolferId.get(espnId);
-        if (!golferId) return null;
-        return {
-          golferId,
-          status: statusFor(competitor),
-          relative: relativeScoreFor(competitor),
-        };
-      })
-      .filter((e): e is { golferId: string; status: ReturnType<typeof statusFor>; relative: number | null } => e != null);
+    // pull their status/score, plus (best-effort) their individual
+    // pre/in/post state and tee time — the main scoreboard only reports
+    // status/score at the whole-tournament level, so a golfer who simply
+    // hasn't teed off yet today shows identically to one actively shooting
+    // even par. Ranks are computed afterward across this filtered set so
+    // ties are grouped correctly (an unmatched competitor sitting between
+    // two tied golfers must not break the tie).
+    const matchedCompetitors = (
+      await Promise.all(
+        competitors.map(async (competitor) => {
+          const espnId = String(competitor?.athlete?.id ?? competitor?.id ?? "");
+          const golferId = espnIdToGolferId.get(espnId);
+          if (!golferId) return null;
+
+          const individual = await fetchIndividualStatus(competition.id, espnId);
+          // Fall back to the whole-event flag when the per-golfer lookup
+          // fails, so a single ESPN hiccup can't scramble the leaderboard.
+          const hasStarted = individual?.started ?? started;
+
+          return {
+            golferId,
+            status: hasStarted ? statusFor(competitor) : "scheduled" as const,
+            relative: hasStarted ? relativeScoreFor(competitor) : null,
+            teeTime: hasStarted ? null : individual?.teeTime ?? null,
+          };
+        }),
+      )
+    ).filter((e): e is { golferId: string; status: ReturnType<typeof statusFor> | "scheduled"; relative: number | null; teeTime: string | null } => e != null);
 
     const ranks = computeRanks(matchedCompetitors.map((e) => e.relative));
 
     const rows: any[] = [];
     const tourChampionWinner = event === "tour_championship";
-    // ESPN's scoreboard always reflects whatever tournament is live right
-    // now, so "season" is simply the current calendar year — matches
-    // fcp_event_results.season in golf/fedex-playoffs/schema.sql.
-    const season = new Date().getFullYear();
 
-    matchedCompetitors.forEach(({ golferId, status, relative }, i) => {
+    matchedCompetitors.forEach(({ golferId, status, relative, teeTime }, i) => {
       const position = ranks[i];
 
       let points = 0;
@@ -202,6 +248,7 @@ Deno.serve(async (req) => {
         points,
         total_strokes: totalStrokes,
         score_to_par: relative,
+        tee_time: teeTime,
         updated_at: new Date().toISOString(),
       });
     });
@@ -221,8 +268,12 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
+    // Supabase errors (PostgrestError etc.) are plain objects, not Error
+    // instances — String(err) collapses them to "[object Object]" with no
+    // way to tell what actually failed.
+    const message = err instanceof Error ? err.message : (err as any)?.message ?? JSON.stringify(err);
     return new Response(
-      JSON.stringify({ ok: false, error: String(err) }),
+      JSON.stringify({ ok: false, error: message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }

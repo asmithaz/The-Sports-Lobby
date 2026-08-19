@@ -55,6 +55,16 @@ ALTER TABLE golfers ADD COLUMN IF NOT EXISTS season int NOT NULL
 ALTER TABLE golfers ADD COLUMN IF NOT EXISTS eliminated boolean NOT NULL DEFAULT false;
 ALTER TABLE golfers ADD COLUMN IF NOT EXISTS eliminated_after_event text;
 
+-- Real-world FedExCup rank as of the most recently completed event (the
+-- "This Week Rank" / Official column on pgatour.com/fedexcup), display-only.
+-- Deliberately separate from fedex_rank above: fedex_rank drives the
+-- GENERATED tier column and must stay frozen at its preseason draft value,
+-- while this one is expected to be refreshed before each playoff event
+-- (St. Jude -> BMW -> TOUR Championship) via
+-- golf/fedex-playoffs/scripts/Update-CurrentFedexRank.ps1. Null until the
+-- first refresh; the dashboard falls back to fedex_rank when null.
+ALTER TABLE golfers ADD COLUMN IF NOT EXISTS fedex_rank_current int;
+
 
 -- ------------------------------------------------------------
 -- 2. FCP LEAGUES
@@ -169,17 +179,28 @@ ALTER TABLE fcp_picks ADD CONSTRAINT fcp_picks_league_id_season_pick_number_key
 -- scoring, including the FedEx Cup Champion bonus when applicable:
 --   Win = 10, Top 3 = 5, Top 10 = 3, Top 30 = 1, else 0
 --   FedEx Cup Champion (tour_championship row only): +5
--- `status` lets the UI render "CUT" instead of a point value.
+-- `status` lets the UI render "CUT" instead of a point value. 'scheduled'
+-- covers the field before an event has teed off (ESPN ties everyone at
+-- even par pre-round, which isn't a real leaderboard) — finish_position
+-- and score_to_par stay null and points stay 0 for those rows; see
+-- supabase/functions/fcp-sync-scores/index.ts.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS fcp_event_results (
   golfer_id       text NOT NULL REFERENCES golfers(id),
   event           text NOT NULL CHECK (event IN ('st_jude', 'bmw', 'tour_championship')),
   finish_position int,
-  status          text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'made_cut', 'cut', 'withdrawn')),
+  status          text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'made_cut', 'cut', 'withdrawn', 'scheduled')),
   points          int  NOT NULL DEFAULT 0,
   updated_at      timestamptz DEFAULT now(),
   PRIMARY KEY (golfer_id, event)
 );
+
+-- Widens the status CHECK for installs that created this table before
+-- 'scheduled' existed. Postgres names an inline CHECK constraint
+-- "<table>_<column>_check" by default.
+ALTER TABLE fcp_event_results DROP CONSTRAINT IF EXISTS fcp_event_results_status_check;
+ALTER TABLE fcp_event_results ADD CONSTRAINT fcp_event_results_status_check
+  CHECK (status IN ('active', 'made_cut', 'cut', 'withdrawn', 'scheduled'));
 
 -- Total strokes across all rounds played so far. Only populated for the
 -- tour_championship event (par 288 at East Lake GC) — that's the only
@@ -193,6 +214,12 @@ ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS total_strokes int;
 -- only exists for tour_championship and feeds the tiebreaker guess game).
 -- See supabase/functions/fcp-sync-scores/index.ts.
 ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS score_to_par int;
+
+-- Only populated while status = 'scheduled' — the golfer's own tee time,
+-- so the dashboard can show "Tee: 8:42 AM" instead of a bare dash for a
+-- golfer who hasn't teed off yet. Cleared once they start (see
+-- fetchIndividualStatus in supabase/functions/fcp-sync-scores/index.ts).
+ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS tee_time timestamptz;
 
 -- Idempotent for installs that ran this schema before seasons existed.
 -- Season-scoping this table is what stops next year's ESPN sync from
@@ -1197,16 +1224,19 @@ BEGIN
   -- see supabase/functions/fcp-sync-scores/index.ts) — auto-complete the
   -- league so it moves to the dashboard's "Completed Leagues" tab. Scoped
   -- to each league's own current_season so a league can never
-  -- auto-complete off a stale prior season's synced results.
+  -- auto-complete off a stale prior season's synced results. Requires at
+  -- least one 'made_cut' row (not just "no 'active'/'scheduled' rows left")
+  -- so a tour_championship field synced as 'scheduled' before tee-off can
+  -- never look "final" simply because nothing is 'active' yet.
   UPDATE leagues AS lg SET status = 'completed'
   WHERE lg.status = 'active' AND lg.game_type = 'fedex-playoffs'
     AND EXISTS (
       SELECT 1 FROM fcp_event_results
-      WHERE event = 'tour_championship' AND season = lg.current_season
+      WHERE event = 'tour_championship' AND season = lg.current_season AND status = 'made_cut'
     )
     AND NOT EXISTS (
       SELECT 1 FROM fcp_event_results
-      WHERE event = 'tour_championship' AND season = lg.current_season AND status = 'active'
+      WHERE event = 'tour_championship' AND season = lg.current_season AND status IN ('active', 'scheduled')
     );
 END;
 $$;

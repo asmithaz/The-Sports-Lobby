@@ -89,6 +89,15 @@
         let currentSeason = null;
         let leagueId = null;
 
+        // Live leaderboard sort state — persists across polls/Realtime ticks so
+        // a user's chosen sort doesn't reset every 20s. lbLastEvent/lbLastResults
+        // cache the last fetch so clicking a header re-sorts locally instead of
+        // re-querying Supabase.
+        let lbSortKey = 'pos';
+        let lbSortDir = 'asc';
+        let lbLastEvent = null;
+        let lbLastResults = null;
+
         // The three FedEx Cup Playoffs events, in order.
         const EVENTS = [
             { key: 'st_jude',          label: 'FedEx St. Jude Championship', date: 'Aug 13' },
@@ -706,6 +715,7 @@
                     const r = resultMap[p.golfers?.id]?.[ev.key];
                     if (!r) return '<td class="pick-col">—</td>';
                     if (r.status === 'cut' || r.status === 'withdrawn') return '<td class="pick-col cell-cut">CUT</td>';
+                    if (r.status === 'scheduled') return '<td class="pick-col">–</td>';
                     return `<td class="pick-col">${r.points ?? 0}</td>`;
                 }).join('');
                 return `<tr><th class="col-event">${escapeHtml(ev.label)} - ${ev.date}</th>${cells}</tr>`;
@@ -935,9 +945,17 @@
 
         // Formats a relative-to-par int as golf convention: "E", "-8", "+2".
         // CUT/WD golfers have no live score to show, regardless of the
-        // last value fcp_event_results happened to record for them.
-        function formatToPar(scoreToPar, status) {
+        // last value fcp_event_results happened to record for them. A
+        // golfer who hasn't teed off yet shows their tee time instead, when
+        // ESPN has published one — see fetchIndividualStatus in
+        // supabase/functions/fcp-sync-scores/index.ts.
+        function formatToPar(scoreToPar, status, teeTime) {
             if (status === 'cut' || status === 'withdrawn') return status === 'cut' ? 'CUT' : 'WD';
+            if (status === 'scheduled') {
+                return teeTime
+                    ? new Date(teeTime).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+                    : '—';
+            }
             if (scoreToPar == null) return '—';
             if (scoreToPar === 0) return 'E';
             return scoreToPar > 0 ? `+${scoreToPar}` : String(scoreToPar);
@@ -953,10 +971,8 @@
         async function loadLiveLeaderboard() {
             const { data: allResults } = await supabase
                 .from('fcp_event_results')
-                .select('golfer_id, event, finish_position, status, points, score_to_par, golfers(name)')
+                .select('golfer_id, event, finish_position, status, points, score_to_par, tee_time, golfers(name, fedex_rank, fedex_rank_current)')
                 .eq('season', currentSeason);
-
-            let html = '';
 
             // Show the most recent event (last in EVENTS order) with any synced results.
             let event = null;
@@ -964,14 +980,50 @@
                 if ((allResults ?? []).some(r => r.event === EVENTS[i].key)) { event = EVENTS[i]; break; }
             }
 
-            if (event) {
-                const results = allResults
-                    .filter(r => r.event === event.key)
-                    .sort((a, b) => (a.finish_position ?? 999) - (b.finish_position ?? 999));
+            lbLastEvent = event;
+            lbLastResults = event ? allResults.filter(r => r.event === event.key) : null;
+            renderLiveLeaderboard();
+        }
+
+        // Comparator per sortable column. 'pos' is the sync-order default
+        // (finish_position, then tee time, then name) — everything else falls
+        // back to Infinity for missing values so unscored/unranked golfers
+        // sink to the bottom regardless of sort direction.
+        function compareLeaderboardRows(a, b, key) {
+            switch (key) {
+                case 'name':
+                    return (a.golfers?.name ?? '').localeCompare(b.golfers?.name ?? '');
+                case 'score':
+                    return (a.score_to_par ?? Infinity) - (b.score_to_par ?? Infinity);
+                case 'fecrk':
+                    return (a.golfers?.fedex_rank_current ?? a.golfers?.fedex_rank ?? Infinity)
+                        - (b.golfers?.fedex_rank_current ?? b.golfers?.fedex_rank ?? Infinity);
+                case 'pts':
+                    return (a.points ?? 0) - (b.points ?? 0);
+                case 'pos':
+                default:
+                    return (a.finish_position ?? 999) - (b.finish_position ?? 999)
+                        || (a.tee_time ? new Date(a.tee_time).getTime() : Infinity) - (b.tee_time ? new Date(b.tee_time).getTime() : Infinity)
+                        || (a.golfers?.name ?? '').localeCompare(b.golfers?.name ?? '');
+            }
+        }
+
+        // Re-renders the live leaderboard from the cached last fetch (lbLastEvent/
+        // lbLastResults) using the current lbSortKey/lbSortDir — used both after a
+        // fresh fetch and after a header click (no re-query needed for the latter).
+        function renderLiveLeaderboard() {
+            let html = '';
+
+            if (lbLastEvent) {
+                const results = [...lbLastResults].sort((a, b) => {
+                    const cmp = compareLeaderboardRows(a, b, lbSortKey);
+                    return lbSortDir === 'desc' ? -cmp : cmp;
+                });
 
                 // finish_position groups tied scores under the same rank (see
                 // fcp-sync-scores) — show a "T" prefix whenever more than one
-                // golfer shares a position.
+                // golfer shares a position. Computed from the data regardless of
+                // sort order/column.
                 const posCounts = {};
                 for (const r of results) {
                     if (r.finish_position != null) posCounts[r.finish_position] = (posCounts[r.finish_position] ?? 0) + 1;
@@ -984,21 +1036,33 @@
                 const rows = results.map(r => `<tr>
                         <td class="col-rank">${posLabel(r.finish_position)}</td>
                         <td class="col-name">${escapeHtml(r.golfers?.name ?? 'Unknown')}</td>
-                        <td class="td-center">${escapeHtml(formatToPar(r.score_to_par, r.status))}</td>
-                        <td class="col-points">${r.points}</td>
+                        <td class="td-center">${escapeHtml(formatToPar(r.score_to_par, r.status, r.tee_time))}</td>
+                        <td class="td-center">${r.golfers?.fedex_rank_current ?? r.golfers?.fedex_rank ?? '—'}</td>
+                        <td class="col-points">${r.status === 'scheduled' ? '–' : r.points}</td>
                     </tr>`).join('');
+
+                // Arrow shows on whichever column is currently sorted. Tried
+                // driving this off a CSS ::after overlay/flex row instead (to
+                // avoid the label+arrow needing more width than the label
+                // alone) but display:flex on a <th> pulled it out of the
+                // table row entirely and broke the header layout — plain
+                // appended text it is; the columns are just sized generously
+                // enough (styles.css) to never need to clip it.
+                const arrow = (key) => lbSortKey === key ? (lbSortDir === 'desc' ? ' ▼' : ' ▲') : '';
+                const th = (key, label, cls, title) => `<th class="sortable ${cls}" data-sort-key="${key}"${title ? ` title="${escapeHtml(title)}"` : ''}>${escapeHtml(label)}${arrow(key)}</th>`;
 
                 html = `
                     <div class="section">
-                        <h2>Live: ${escapeHtml(event.label)}</h2>
+                        <h2>Live: ${escapeHtml(lbLastEvent.label)}</h2>
                         <div class="table-scroll">
                             <table class="data-table">
                                 <thead>
                                     <tr>
-                                        <th class="th-rank">Pos</th>
-                                        <th>Player</th>
-                                        <th class="th-center">Score</th>
-                                        <th class="th-points th-center">Pts</th>
+                                        ${th('pos', 'Pos', 'th-rank')}
+                                        ${th('name', 'Player', '')}
+                                        ${th('score', 'Score', 'th-score th-center')}
+                                        ${th('fecrk', 'FEC Rk', 'th-center', 'Official FedEx Cup rank entering this event')}
+                                        ${th('pts', 'Pts', 'th-points th-center')}
                                     </tr>
                                 </thead>
                                 <tbody>${rows}</tbody>
@@ -1009,6 +1073,18 @@
             }
 
             setHtmlIfChanged('live-leaderboard', html);
+        }
+
+        // Delegated click handler for the sortable leaderboard headers — attached
+        // once to the never-replaced #live-leaderboard container in init(), since
+        // its innerHTML is swapped wholesale on every render.
+        function handleLeaderboardHeaderClick(e) {
+            const th = e.target.closest('th[data-sort-key]');
+            if (!th) return;
+            const key = th.dataset.sortKey;
+            lbSortDir = (lbSortKey === key && lbSortDir === 'asc') ? 'desc' : 'asc';
+            lbSortKey = key;
+            renderLiveLeaderboard();
         }
 
         // ── Main ──────────────────────────────────────────────────────────────
@@ -1040,6 +1116,8 @@
 
             leagueId = resolveLeagueId();
             if (!leagueId) { window.location.href = '/golf/index.html'; return; }
+
+            document.getElementById('live-leaderboard').addEventListener('click', handleLeaderboardHeaderClick);
 
             await loadAndRender();
             subscribeRealtime();
