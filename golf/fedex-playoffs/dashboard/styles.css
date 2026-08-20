@@ -58,12 +58,21 @@ h1 {
     flex: 1;
 }
 
-/* 320px basis was too tight for Standings' own 5 columns (#, Team,
-   Points, Remaining, Tiebreak Guess) and forced its own horizontal
-   scrollbar — 440px is back near the ~480px it had before any of this
-   session's shrinking, enough to lay out flat with no scroll. */
 .standings-row-main {
     flex: 1 1 440px;
+    min-width: 0;
+}
+
+/* The actual reason Standings kept scrolling horizontally as this column
+   shrank: /css/components.css's shared .data-table sets a hard
+   min-width:480px floor. The live-leaderboard table below already
+   overrides that (it hit the identical problem first, see its own
+   min-width:0 comment) but the Standings table — being a plain
+   .data-table, not wrapped in .live-leaderboard — never got the same
+   override, so it couldn't shrink below 480px regardless of flex-basis
+   tweaks here. This is the real fix; resizing .standings-row-main above
+   was just band-aiding it. */
+.standings-row-main .data-table {
     min-width: 0;
 }
 
@@ -143,6 +152,15 @@ h1 {
 
 .rank-move-down {
     color: var(--c-danger);
+}
+
+/* Row for a golfer currently projected inside the TOUR Championship's top
+   30 during BMW week — same inset-accent-stripe + dim-background treatment
+   as .selected-row (see the Standings table), reused here for visual
+   consistency rather than inventing a new highlight style. */
+.live-leaderboard .data-table tbody tr.row-advancing {
+    background-color: var(--c-accent-dim);
+    box-shadow: inset 3px 0 0 var(--c-accent);
 }
 
 /* .data-table .col-points / .data-table .col-name (base rules further down
