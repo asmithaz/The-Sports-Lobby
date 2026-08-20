@@ -58,17 +58,17 @@ h1 {
     flex: 1;
 }
 
+/* 320px basis was too tight for Standings' own 5 columns (#, Team,
+   Points, Remaining, Tiebreak Guess) and forced its own horizontal
+   scrollbar — 440px is back near the ~480px it had before any of this
+   session's shrinking, enough to lay out flat with no scroll. */
 .standings-row-main {
-    flex: 1 1 320px;
+    flex: 1 1 440px;
     min-width: 0;
 }
 
-/* One more fixed-width column (Proj Rk) joined Pos/Score/FEC Rk/Pts, so the
-   leaderboard needs more room than an even split gives it — grow:2 vs
-   standings' grow:1 sends it twice the extra space beyond each side's
-   basis, on top of its own larger basis. */
 .live-leaderboard {
-    flex: 2 1 560px;
+    flex: 1 1 580px;
     min-width: 0;
 }
 
