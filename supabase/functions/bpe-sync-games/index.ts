@@ -38,7 +38,13 @@ const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
 
-const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard";
+// site.api.espn.com started returning 403 to non-browser clients on
+// 2026-08-19 (confirmed across unrelated sports/endpoints on that
+// subdomain, so it's an ESPN-side block, not a golf-specific issue —
+// see fcp-sync-scores/index.ts, which hit this first).
+// site.web.api.espn.com — the host ESPN's own site JS calls — serves the
+// identical scoreboard payload shape and isn't blocked.
+const ESPN_BASE = "https://site.web.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard";
 
 function bowlsUrl(season: number) {
   return `${ESPN_BASE}?seasontype=3&week=1&year=${season}`;
