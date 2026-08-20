@@ -1050,13 +1050,13 @@
                         : `${projected} <span class="rank-move rank-move-down">▼</span>`;
                 };
 
-                // Top 30 in FedExCup points after BMW advance to the season's
-                // last event, the TOUR Championship — highlight golfers
-                // currently projected there. Scoped to BMW specifically: during
-                // St. Jude the real cut is top 50 (not 30), and by the TOUR
-                // Championship the field already *is* the top 30, so the
-                // highlight would be meaningless either way.
-                const advancingCutoff = lbLastEvent.key === 'bmw' ? 30 : null;
+                // Each event has its own "advances to the next one" cutline —
+                // top 50 in FedExCup points survive St. Jude into BMW, top 30
+                // survive BMW into the TOUR Championship. No entry for
+                // tour_championship: the field there already *is* the top 30,
+                // so a highlight would be meaningless.
+                const ADVANCING_CUTOFF = { st_jude: 50, bmw: 30 };
+                const advancingCutoff = ADVANCING_CUTOFF[lbLastEvent.key] ?? null;
                 const isAdvancing = (golfer) => advancingCutoff != null && (golfer?.fedex_rank_projected ?? Infinity) <= advancingCutoff;
 
                 const rows = results.map(r => `<tr class="${isAdvancing(r.golfers) ? 'row-advancing' : ''}">

@@ -154,10 +154,11 @@ h1 {
     color: var(--c-danger);
 }
 
-/* Row for a golfer currently projected inside the TOUR Championship's top
-   30 during BMW week — same inset-accent-stripe + dim-background treatment
-   as .selected-row (see the Standings table), reused here for visual
-   consistency rather than inventing a new highlight style. */
+/* Row for a golfer currently projected to survive this event's cutline —
+   top 50 at St. Jude, top 30 at BMW (see ADVANCING_CUTOFF in index.html).
+   Same inset-accent-stripe + dim-background treatment as .selected-row
+   (see the Standings table), reused here for visual consistency rather
+   than inventing a new highlight style. */
 .live-leaderboard .data-table tbody tr.row-advancing {
     background-color: var(--c-accent-dim);
     box-shadow: inset 3px 0 0 var(--c-accent);
