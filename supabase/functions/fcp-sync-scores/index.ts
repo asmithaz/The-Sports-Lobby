@@ -25,8 +25,13 @@ const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// site.api.espn.com started returning 403 to non-browser clients on
+// 2026-08-19 (confirmed across unrelated sports/endpoints on that
+// subdomain, so it's an ESPN-side block, not a golf-specific issue).
+// site.web.api.espn.com — the host ESPN's own site JS calls — serves the
+// identical scoreboard payload shape and isn't blocked.
 const ESPN_SCOREBOARD_URL =
-  "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard";
+  "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard";
 
 // Maps ESPN tournament names (lowercased, substring match) to fcp_event_results.event values.
 const EVENT_NAME_MATCH: Record<string, string> = {
