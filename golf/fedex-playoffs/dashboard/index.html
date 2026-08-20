@@ -1096,6 +1096,9 @@
                                 <tbody>${rows}</tbody>
                             </table>
                         </div>
+                        ${advancingCutoff != null
+                            ? `<p class="comm-note standings-note">Green highlight = currently projected inside the top ${advancingCutoff} in FedEx Cup points, advancing to ${escapeHtml(EVENTS[EVENTS.findIndex(e => e.key === lbLastEvent.key) + 1]?.label ?? 'the next event')}.</p>`
+                            : ''}
                     </div>
                 `;
             }
