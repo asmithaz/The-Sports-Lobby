@@ -971,7 +971,7 @@
         async function loadLiveLeaderboard() {
             const { data: allResults } = await supabase
                 .from('fcp_event_results')
-                .select('golfer_id, event, finish_position, status, points, score_to_par, tee_time, golfers(name, fedex_rank, fedex_rank_current)')
+                .select('golfer_id, event, finish_position, status, points, score_to_par, tee_time, golfers(name, fedex_rank, fedex_rank_current, fedex_rank_projected)')
                 .eq('season', currentSeason);
 
             // Show the most recent event (last in EVENTS order) with any synced results.
@@ -998,6 +998,8 @@
                 case 'fecrk':
                     return (a.golfers?.fedex_rank_current ?? a.golfers?.fedex_rank ?? Infinity)
                         - (b.golfers?.fedex_rank_current ?? b.golfers?.fedex_rank ?? Infinity);
+                case 'projrk':
+                    return (a.golfers?.fedex_rank_projected ?? Infinity) - (b.golfers?.fedex_rank_projected ?? Infinity);
                 case 'pts':
                     return (a.points ?? 0) - (b.points ?? 0);
                 case 'pos':
@@ -1038,6 +1040,7 @@
                         <td class="col-name">${escapeHtml(r.golfers?.name ?? 'Unknown')}</td>
                         <td class="td-center">${escapeHtml(formatToPar(r.score_to_par, r.status, r.tee_time))}</td>
                         <td class="td-center">${r.golfers?.fedex_rank_current ?? r.golfers?.fedex_rank ?? '—'}</td>
+                        <td class="td-center">${r.golfers?.fedex_rank_projected ?? '—'}</td>
                         <td class="col-points">${r.status === 'scheduled' ? '–' : r.points}</td>
                     </tr>`).join('');
 
@@ -1062,6 +1065,7 @@
                                         ${th('name', 'Player', '')}
                                         ${th('score', 'Score', 'th-score th-center')}
                                         ${th('fecrk', 'FEC Rk', 'th-center', 'Official FedEx Cup rank entering this event')}
+                                        ${th('projrk', 'Proj Rk', 'th-center', 'Live projected FedEx Cup rank if this event ended today')}
                                         ${th('pts', 'Pts', 'th-points th-center')}
                                     </tr>
                                 </thead>

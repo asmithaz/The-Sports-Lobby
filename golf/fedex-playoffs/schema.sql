@@ -65,6 +65,36 @@ ALTER TABLE golfers ADD COLUMN IF NOT EXISTS eliminated_after_event text;
 -- first refresh; the dashboard falls back to fedex_rank when null.
 ALTER TABLE golfers ADD COLUMN IF NOT EXISTS fedex_rank_current int;
 
+-- Live "Proj." FedExCup rank pgatour.com projects for the golfer if the
+-- current playoff event ended today, based on how they're actually
+-- playing this week. Distinct from fedex_rank_current (the "Official"
+-- rank entering the event, static until the next event starts) — this one
+-- moves in real time during play. Populated by the fcp-sync-projected-rank
+-- Edge Function on the same cron cadence as fcp-sync-scores (see
+-- .github/workflows/fcp-sync-projected-rank.yml). Null until the first
+-- sync; the dashboard falls back to fedex_rank_current, then fedex_rank.
+ALTER TABLE golfers ADD COLUMN IF NOT EXISTS fedex_rank_projected int;
+
+-- Bulk-updates fedex_rank_projected from pgatour.com's projected-standings
+-- JSON, matched by name. A single UPDATE...FROM instead of the row-per-PATCH
+-- pattern the manual CSV scripts use, since this runs unattended every 10
+-- minutes during an event (~220 players) rather than a few times a season by
+-- hand. Scoped to the current season so a stale golfer row from a prior year
+-- can never be touched. p_updates is a jsonb array of {"name": text, "rank": int}.
+CREATE OR REPLACE FUNCTION fcp_update_projected_ranks(p_updates jsonb)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE golfers AS g
+  SET fedex_rank_projected = u.rank
+  FROM jsonb_to_recordset(p_updates) AS u(name text, rank int)
+  WHERE g.name = u.name
+    AND g.season = extract(year from now())::int;
+END;
+$$;
+
 
 -- ------------------------------------------------------------
 -- 2. FCP LEAGUES

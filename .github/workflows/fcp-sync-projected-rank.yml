@@ -1,0 +1,43 @@
+name: FedEx Cup Playoffs Projected Rank Sync
+
+# Runs every 10 minutes, but the job exits immediately unless today falls
+# within the FedEx Cup Playoffs window (St. Jude Championship through the
+# TOUR Championship + a buffer day). Update PLAYOFFS_START / PLAYOFFS_END
+# each season. Same window as fcp-sync-scores.yml — kept as a separate
+# workflow/function so a pgatour.com shape change can't take down the
+# ESPN score sync too (see supabase/functions/fcp-sync-projected-rank).
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+env:
+  PLAYOFFS_START: "2026-08-06"
+  PLAYOFFS_END: "2026-08-31"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check playoff window
+        id: window
+        run: |
+          today=$(date -u +%Y-%m-%d)
+          if [[ "$today" < "$PLAYOFFS_START" || "$today" > "$PLAYOFFS_END" ]]; then
+            echo "Outside FedEx Cup Playoffs window ($PLAYOFFS_START to $PLAYOFFS_END) — skipping."
+            echo "in_window=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "in_window=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Call fcp-sync-projected-rank Edge Function
+        if: steps.window.outputs.in_window == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          curl -sS -X POST "${SUPABASE_URL}/functions/v1/fcp-sync-projected-rank" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --fail-with-body
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

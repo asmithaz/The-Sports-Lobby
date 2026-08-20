@@ -59,12 +59,16 @@ h1 {
 }
 
 .standings-row-main {
-    flex: 1 1 360px;
+    flex: 1 1 320px;
     min-width: 0;
 }
 
+/* One more fixed-width column (Proj Rk) joined Pos/Score/FEC Rk/Pts, so the
+   leaderboard needs more room than an even split gives it — grow:2 vs
+   standings' grow:1 sends it twice the extra space beyond each side's
+   basis, on top of its own larger basis. */
 .live-leaderboard {
-    flex: 1 1 480px;
+    flex: 2 1 560px;
     min-width: 0;
 }
 
