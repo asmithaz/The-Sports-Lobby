@@ -129,6 +129,22 @@ h1 {
     width: 92px;
 }
 
+/* Proj Rk movement arrow — reuses the same green/red already used for
+   scores (--c-accent) and errors (--c-danger) elsewhere rather than
+   introducing new colors. See projRankCell() in index.html. */
+.rank-move {
+    font-size: 9px;
+    margin-left: 2px;
+}
+
+.rank-move-up {
+    color: var(--c-accent);
+}
+
+.rank-move-down {
+    color: var(--c-danger);
+}
+
 /* .data-table .col-points / .data-table .col-name (base rules further down
    this file) are the exact same specificity as a plain .live-leaderboard
    .col-* override and win on source order, silently no-op'ing it — same

@@ -1035,12 +1035,27 @@
                     return posCounts[pos] > 1 ? `T${pos}` : `${pos}`;
                 };
 
+                // Proj Rk vs. the rank they entered this event with (FEC Rk) —
+                // a lower rank number is better, so projected < baseline means
+                // they're trending up the standings this week (green ▲) and
+                // projected > baseline means trending down (red ▼). No arrow
+                // when either side is missing or they're unchanged.
+                const projRankCell = (golfer) => {
+                    const projected = golfer?.fedex_rank_projected;
+                    const baseline = golfer?.fedex_rank_current ?? golfer?.fedex_rank;
+                    if (projected == null) return '—';
+                    if (baseline == null || projected === baseline) return `${projected}`;
+                    return projected < baseline
+                        ? `${projected} <span class="rank-move rank-move-up">▲</span>`
+                        : `${projected} <span class="rank-move rank-move-down">▼</span>`;
+                };
+
                 const rows = results.map(r => `<tr>
                         <td class="col-rank">${posLabel(r.finish_position)}</td>
                         <td class="col-name">${escapeHtml(r.golfers?.name ?? 'Unknown')}</td>
                         <td class="td-center">${escapeHtml(formatToPar(r.score_to_par, r.status, r.tee_time))}</td>
                         <td class="td-center">${r.golfers?.fedex_rank_current ?? r.golfers?.fedex_rank ?? '—'}</td>
-                        <td class="td-center">${r.golfers?.fedex_rank_projected ?? '—'}</td>
+                        <td class="td-center">${projRankCell(r.golfers)}</td>
                         <td class="col-points">${r.status === 'scheduled' ? '–' : r.points}</td>
                     </tr>`).join('');
 
