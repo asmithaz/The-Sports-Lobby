@@ -123,6 +123,19 @@ function relativeScoreFor(competitor: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// A round a golfer hasn't played yet shows up in `linescores` as a bare
+// { period: N } with no value/displayValue — any entry that does have one
+// means at least one hole from that round is on the books. Used to tell
+// "genuinely hasn't teed off in this tournament at all" (their real first
+// tee time — show it) apart from "finished an earlier round and is simply
+// waiting on today's" (their cumulative score is real and current — keep
+// showing it, don't blank it out just because today hasn't started).
+function hasRecordedAnyScore(competitor: any): boolean {
+  const linescores = competitor?.linescores;
+  if (!Array.isArray(linescores)) return false;
+  return linescores.some((ls: any) => ls?.value != null || ls?.displayValue != null);
+}
+
 // The main scoreboard endpoint (ESPN_SCOREBOARD_URL above) doesn't carry
 // per-golfer tee times — everyone shows tied at even par with no way to
 // tell "hasn't teed off yet" from "actually shooting even par". ESPN's
@@ -208,9 +221,17 @@ Deno.serve(async (req) => {
           if (!golferId) return null;
 
           const individual = await fetchIndividualStatus(competition.id, espnId);
-          // Fall back to the whole-event flag when the per-golfer lookup
-          // fails, so a single ESPN hiccup can't scramble the leaderboard.
-          const hasStarted = individual?.started ?? started;
+          // hasRecordedAnyScore wins whenever it's true: a golfer who's
+          // already played at least one hole this tournament keeps their
+          // real cumulative score/position showing through the gap before
+          // their next round, instead of it blanking out the moment ESPN's
+          // per-golfer status flips back to "pre" for that round. Only a
+          // golfer with zero recorded holes anywhere in the tournament (a
+          // genuine not-yet-teed-off-at-all case) falls through to the
+          // individual lookup — which falls back to the whole-event flag if
+          // that lookup itself fails, so a single ESPN hiccup can't
+          // scramble the leaderboard.
+          const hasStarted = hasRecordedAnyScore(competitor) || (individual?.started ?? started);
 
           return {
             golferId,
