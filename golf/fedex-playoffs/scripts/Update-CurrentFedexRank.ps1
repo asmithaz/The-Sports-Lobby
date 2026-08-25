@@ -53,9 +53,6 @@ $existing = Invoke-RestMethod -Uri "$SupabaseUrl/rest/v1/golfers?select=id,name"
 $idByName = @{}
 foreach ($g in $existing) { $idByName[$g.name] = $g.id }
 
-Add-Type -AssemblyName System.Net.Http
-$httpClient = [System.Net.Http.HttpClient]::new()
-
 $updated = 0
 $missing = @()
 
@@ -70,19 +67,19 @@ foreach ($row in $rows) {
   }
 
   $body = @{ fedex_rank_current = $rankCurrent } | ConvertTo-Json
-  $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Patch, "$SupabaseUrl/rest/v1/golfers?id=eq.$golferId")
-  $request.Headers.Add("apikey", $ServiceRoleKey)
-  $request.Headers.Add("Authorization", "Bearer $ServiceRoleKey")
-  $request.Headers.UserAgent.ParseAdd("The-Sports-Lobby-Update-CurrentFedexRank/1.0")
-  $request.Content = [System.Net.Http.StringContent]::new($body, [System.Text.Encoding]::UTF8, "application/json")
-
-  $response = $httpClient.SendAsync($request).GetAwaiter().GetResult()
-  if (-not $response.IsSuccessStatusCode) {
-    $responseBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    Write-Warning "Failed to update '$name': $($response.StatusCode) $responseBody"
-    continue
+  $headers = @{
+    apikey        = $ServiceRoleKey
+    Authorization = "Bearer $ServiceRoleKey"
+    "Content-Type" = "application/json"
   }
-  $updated++
+
+  try {
+    Invoke-RestMethod -Method Patch -Uri "$SupabaseUrl/rest/v1/golfers?id=eq.$golferId" `
+      -Headers $headers -Body $body -UserAgent "The-Sports-Lobby-Update-CurrentFedexRank/1.0" -ErrorAction Stop | Out-Null
+    $updated++
+  } catch {
+    Write-Warning "Failed to update '$name': $($_.Exception.Message)"
+  }
 }
 
 Write-Host "Updated fedex_rank_current for $updated golfers."

@@ -581,7 +581,9 @@
 
             return `
                 <div class="section">
-                    <h2>Standings</h2>
+                    <div class="section-header-row">
+                        <h2>Standings</h2>
+                    </div>
                     <div class="table-scroll">
                         <table class="data-table standings-table">
                             <thead>
@@ -1081,12 +1083,19 @@
                 const advancingCutoff = ADVANCING_CUTOFF[event.key] ?? null;
                 const isAdvancing = (golfer) => advancingCutoff != null && (golfer?.fedex_rank_projected ?? Infinity) <= advancingCutoff;
 
+                // Proj Rk exists to show whether a golfer is trending toward the
+                // next event's cutline — there is no next event after the TOUR
+                // Championship, so the column (and its own comparator/arrow) is
+                // dropped there and FEC Rk (which by then reflects the live
+                // in-tournament standings) stands alone.
+                const showProjRank = advancingCutoff != null;
+
                 const rows = results.map(r => `<tr class="${isAdvancing(r.golfers) ? 'row-advancing' : ''}">
                         <td class="col-rank">${posLabel(r.finish_position)}</td>
                         <td class="col-name">${escapeHtml(r.golfers?.name ?? 'Unknown')}</td>
                         <td class="td-center">${scoreCell(r.score_to_par, r.status, r.tee_time)}</td>
                         <td class="td-center">${r.golfers?.fedex_rank_current ?? r.golfers?.fedex_rank ?? '—'}</td>
-                        <td class="td-center">${projRankCell(r.golfers)}</td>
+                        ${showProjRank ? `<td class="td-center">${projRankCell(r.golfers)}</td>` : ''}
                         <td class="col-points">${r.status === 'scheduled' ? '–' : r.points}</td>
                     </tr>`).join('');
 
@@ -1124,7 +1133,7 @@
                                         ${th('name', 'Player', '')}
                                         ${th('score', 'Score', 'th-score th-center')}
                                         ${th('fecrk', 'FEC Rk', 'th-center', 'Official FedEx Cup rank entering this event')}
-                                        ${th('projrk', 'Proj Rk', 'th-center', 'Live projected FedEx Cup rank if this event ended today')}
+                                        ${showProjRank ? th('projrk', 'Proj Rk', 'th-center', 'Live projected FedEx Cup rank if this event ended today') : ''}
                                         ${th('pts', 'Pts', 'th-points th-center')}
                                     </tr>
                                 </thead>

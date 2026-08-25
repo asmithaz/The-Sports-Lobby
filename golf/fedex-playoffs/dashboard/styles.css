@@ -299,12 +299,18 @@ h1 {
     gap: var(--space-2);
 }
 
+/* min-height matches the rendered height of .lb-event-select (the dropdown
+   is taller than the bare h2 text) so this row is the same height whether
+   or not a select is present — otherwise the Standings header (no select)
+   sits shorter than the leaderboard header (with select), throwing off
+   both the heading centering and the table top edges below them. */
 .section-header-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
     margin-bottom: var(--space-2);
+    min-height: 40px;
 }
 
 .section-header-row h2 {
