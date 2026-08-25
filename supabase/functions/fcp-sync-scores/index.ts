@@ -70,6 +70,44 @@ function findEventKey(events: any[]): { event: string; competition: any; started
   return null;
 }
 
+// The scoreboard's `events` array only carries whichever tournament is
+// currently live or was most recently completed — a not-yet-started event
+// (e.g. the TOUR Championship in the days after tee times are announced but
+// before ESPN adds it to the live scoreboard) doesn't appear there at all,
+// even though ESPN's core API already has the full field and real tee
+// times. `leagues[0].calendar` lists every event on the season schedule,
+// including future ones, each with a stable event ID — used here as a
+// fallback so tee times don't have to wait for the scoreboard to catch up.
+// Only entries matching a known EVENT_NAME_MATCH key are eligible (so this
+// can't wander off into an unrelated regular-season event), and among those
+// the soonest one that hasn't ended yet wins — the next playoff event.
+async function findUpcomingEventFromCalendar(
+  espnData: any,
+): Promise<{ event: string; competitionId: string } | null> {
+  const calendar: any[] = espnData?.leagues?.[0]?.calendar ?? [];
+  const now = Date.now();
+
+  let best: { event: string; competitionId: string; startTime: number } | null = null;
+  for (const entry of calendar) {
+    const label = String(entry?.label ?? "").toLowerCase();
+    const key = Object.entries(EVENT_NAME_MATCH).find(([needle]) => label.includes(needle))?.[1];
+    if (!key) continue;
+
+    const endTime = Date.parse(entry?.endDate ?? "");
+    if (!Number.isFinite(endTime) || endTime <= now) continue; // already over
+
+    const ref = String(entry?.event?.$ref ?? "");
+    const idMatch = ref.match(/\/events\/(\d+)/);
+    if (!idMatch) continue;
+
+    const startTime = Date.parse(entry?.startDate ?? "");
+    if (!best || startTime < best.startTime) {
+      best = { event: key, competitionId: idMatch[1], startTime };
+    }
+  }
+  return best ? { event: best.event, competitionId: best.competitionId } : null;
+}
+
 // Normalizes ESPN's per-competitor status into our fcp_event_results.status enum.
 function statusFor(competitor: any): "active" | "made_cut" | "cut" | "withdrawn" {
   const typeName = String(competitor?.status?.type?.name ?? "").toUpperCase();
@@ -179,20 +217,60 @@ Deno.serve(async (req) => {
     const espnData = await espnRes.json();
 
     const matched = findEventKey(espnData?.events ?? []);
-    if (!matched) {
-      return new Response(
-        JSON.stringify({ ok: true, message: "No active FedEx Cup Playoffs event found", updated: 0 }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    // The live scoreboard doesn't drop an event from `events[]` the moment
+    // it ends — BMW was still coming back with status "post" two days after
+    // it finished, so `matched` alone can't be trusted to mean "this is the
+    // current event." The calendar's soonest-not-yet-ended known event is
+    // the authoritative answer to "which of the 3 playoff events is current
+    // right now"; it's only worth ignoring in favor of `matched` when the
+    // two agree, in which case the live match has richer embedded
+    // score/competitor data than a second round of core-API calls would.
+    const upcoming = await findUpcomingEventFromCalendar(espnData);
+
+    let event: string;
+    let competitionId: string;
+    let started: boolean;
+    let competitors: any[];
+
+    if (matched && (!upcoming || matched.event === upcoming.event)) {
+      event = matched.event;
+      competitionId = String(matched.competition?.id ?? "");
+      started = matched.started;
+      competitors = matched.competition?.competitors ?? [];
+    } else {
+      if (!upcoming) {
+        return new Response(
+          JSON.stringify({ ok: true, message: "No active FedEx Cup Playoffs event found", updated: 0 }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      // Core API's competitors list is $ref pointers, not the scoreboard's
+      // embedded objects — but each item's top-level `id` is already the
+      // athlete ID (same field the scoreboard-based path reads via
+      // `competitor?.athlete?.id ?? competitor?.id`), and every other field
+      // this function reads off a competitor (score, status, linescores) is
+      // only touched once fetchIndividualStatus says the golfer has
+      // started — which, for an event the live scoreboard hasn't picked up
+      // yet, is never. So the sparse core-API shape is enough as-is.
+      const compsRes = await fetch(
+        `https://sports.core.api.espn.com/v2/sports/golf/leagues/pga/events/${upcoming.competitionId}/competitions/${upcoming.competitionId}/competitors?lang=en&region=us&limit=50`,
       );
+      if (!compsRes.ok) {
+        throw new Error(`ESPN core API competitors request failed: ${compsRes.status}`);
+      }
+      const compsData = await compsRes.json();
+
+      event = upcoming.event;
+      competitionId = upcoming.competitionId;
+      started = false;
+      competitors = compsData?.items ?? [];
     }
 
-    const { event, competition, started } = matched;
     // ESPN's scoreboard always reflects whatever tournament is live right
     // now, so "season" is simply the current calendar year — matches
     // fcp_event_results.season in golf/fedex-playoffs/schema.sql.
     const season = new Date().getFullYear();
-
-    const competitors: any[] = competition?.competitors ?? [];
 
     // Map ESPN athlete IDs to our golfer ids.
     const { data: golfers, error: golfersErr } = await supabase
@@ -220,24 +298,32 @@ Deno.serve(async (req) => {
           const golferId = espnIdToGolferId.get(espnId);
           if (!golferId) return null;
 
-          const individual = await fetchIndividualStatus(competition.id, espnId);
-          // hasRecordedAnyScore wins whenever it's true: a golfer who's
-          // already played at least one hole this tournament keeps their
-          // real cumulative score/position showing through the gap before
-          // their next round, instead of it blanking out the moment ESPN's
-          // per-golfer status flips back to "pre" for that round. Only a
-          // golfer with zero recorded holes anywhere in the tournament (a
-          // genuine not-yet-teed-off-at-all case) falls through to the
-          // individual lookup — which falls back to the whole-event flag if
-          // that lookup itself fails, so a single ESPN hiccup can't
-          // scramble the leaderboard.
-          const hasStarted = hasRecordedAnyScore(competitor) || (individual?.started ?? started);
+          const individual = await fetchIndividualStatus(competitionId, espnId);
+          // individualStarted tracks today's round specifically — it flips
+          // back to false (ESPN's per-golfer state going "pre" again) the
+          // moment a round ends, even for someone who already played
+          // earlier rounds. teeTime is keyed off that alone, so it's
+          // available regardless of whether the golfer has a real score
+          // on the board.
+          //
+          // status/relative use a separate, wider flag: hasRecordedAnyScore
+          // wins whenever true, so a golfer who's already played at least
+          // one hole this tournament keeps their real cumulative
+          // score/position showing through the gap before their next
+          // round, instead of it blanking out the moment individualStarted
+          // flips false. Only a golfer with zero recorded holes anywhere in
+          // the tournament (a genuine not-yet-teed-off-at-all case) falls
+          // through to individualStarted — which falls back to the
+          // whole-event flag if the individual lookup itself fails, so a
+          // single ESPN hiccup can't scramble the leaderboard.
+          const individualStarted = individual?.started ?? started;
+          const hasStarted = hasRecordedAnyScore(competitor) || individualStarted;
 
           return {
             golferId,
             status: hasStarted ? statusFor(competitor) : "scheduled" as const,
             relative: hasStarted ? relativeScoreFor(competitor) : null,
-            teeTime: hasStarted ? null : individual?.teeTime ?? null,
+            teeTime: individualStarted ? null : individual?.teeTime ?? null,
           };
         }),
       )
