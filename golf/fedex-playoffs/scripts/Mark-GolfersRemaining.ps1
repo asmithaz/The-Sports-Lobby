@@ -110,7 +110,8 @@ $body = @{ eliminated = $true; eliminated_after_event = $EliminatedAfterEvent } 
 # directly, same as Populate-Golfers.ps1.
 Add-Type -AssemblyName System.Net.Http
 $httpClient = [System.Net.Http.HttpClient]::new()
-$request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Patch, "$SupabaseUrl/rest/v1/golfers?id=in.($idList)")
+$patchMethod = [System.Net.Http.HttpMethod]::new("PATCH")
+$request = [System.Net.Http.HttpRequestMessage]::new($patchMethod, "$SupabaseUrl/rest/v1/golfers?id=in.($idList)")
 $request.Headers.Add("apikey", $ServiceRoleKey)
 $request.Headers.Add("Authorization", "Bearer $ServiceRoleKey")
 $request.Headers.UserAgent.ParseAdd("The-Sports-Lobby-Mark-GolfersRemaining/1.0")

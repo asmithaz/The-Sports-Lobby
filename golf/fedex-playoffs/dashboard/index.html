@@ -90,13 +90,13 @@
         let leagueId = null;
 
         // Live leaderboard sort state — persists across polls/Realtime ticks so
-        // a user's chosen sort doesn't reset every 20s. lbLastEvent/lbLastResults
-        // cache the last fetch so clicking a header re-sorts locally instead of
-        // re-querying Supabase.
+        // a user's chosen sort doesn't reset every 20s. lbAllResults caches the
+        // last fetch (all 3 events at once) so clicking a header, or switching
+        // the event dropdown, re-renders locally instead of re-querying Supabase.
         let lbSortKey = 'pos';
         let lbSortDir = 'asc';
-        let lbLastEvent = null;
-        let lbLastResults = null;
+        let lbAllResults = null;
+        let lbSelectedEventKey = null;
 
         // The three FedEx Cup Playoffs events, in order.
         const EVENTS = [
@@ -943,6 +943,10 @@
             loadLiveLeaderboard();
         }
 
+        function formatTeeTime(teeTime) {
+            return new Date(teeTime).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        }
+
         // Formats a relative-to-par int as golf convention: "E", "-8", "+2".
         // CUT/WD golfers have no live score to show, regardless of the
         // last value fcp_event_results happened to record for them. A
@@ -951,14 +955,24 @@
         // supabase/functions/fcp-sync-scores/index.ts.
         function formatToPar(scoreToPar, status, teeTime) {
             if (status === 'cut' || status === 'withdrawn') return status === 'cut' ? 'CUT' : 'WD';
-            if (status === 'scheduled') {
-                return teeTime
-                    ? new Date(teeTime).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-                    : '—';
-            }
+            if (status === 'scheduled') return teeTime ? formatTeeTime(teeTime) : '—';
             if (scoreToPar == null) return '—';
             if (scoreToPar === 0) return 'E';
             return scoreToPar > 0 ? `+${scoreToPar}` : String(scoreToPar);
+        }
+
+        // Builds the SCORE cell's full HTML. Usually just formatToPar's
+        // text, but a golfer who already has a real score on the board (so
+        // formatToPar is showing e.g. "-12", not their tee time) and hasn't
+        // teed off in the *current* round yet gets a small muted tee-time
+        // line underneath — same tee_time value fetchIndividualStatus keeps
+        // populating for them, just no longer swallowed by their earlier
+        // rounds' score. See fcp-sync-scores/index.ts for how status vs.
+        // tee_time are now tracked independently.
+        function scoreCell(scoreToPar, status, teeTime) {
+            const main = escapeHtml(formatToPar(scoreToPar, status, teeTime));
+            if (status === 'scheduled' || status === 'cut' || status === 'withdrawn' || !teeTime) return main;
+            return `${main}<span class="tee-time-sub">${escapeHtml(formatTeeTime(teeTime))}</span>`;
         }
 
         // ── Render: live leaderboard (position/score/points from the most
@@ -974,14 +988,18 @@
                 .select('golfer_id, event, finish_position, status, points, score_to_par, tee_time, golfers(name, fedex_rank, fedex_rank_current, fedex_rank_projected)')
                 .eq('season', currentSeason);
 
-            // Show the most recent event (last in EVENTS order) with any synced results.
-            let event = null;
-            for (let i = EVENTS.length - 1; i >= 0; i--) {
-                if ((allResults ?? []).some(r => r.event === EVENTS[i].key)) { event = EVENTS[i]; break; }
+            lbAllResults = allResults ?? [];
+
+            // Default the dropdown to the most recent event with any synced
+            // results — but only on first load, or if whatever was previously
+            // selected no longer has data. Otherwise a commissioner browsing
+            // an earlier week's results would get yanked back to "Live" on
+            // the next 20s poll.
+            const eventsWithData = EVENTS.filter(e => lbAllResults.some(r => r.event === e.key));
+            if (!eventsWithData.some(e => e.key === lbSelectedEventKey)) {
+                lbSelectedEventKey = eventsWithData[eventsWithData.length - 1]?.key ?? null;
             }
 
-            lbLastEvent = event;
-            lbLastResults = event ? allResults.filter(r => r.event === event.key) : null;
             renderLiveLeaderboard();
         }
 
@@ -1010,14 +1028,18 @@
             }
         }
 
-        // Re-renders the live leaderboard from the cached last fetch (lbLastEvent/
-        // lbLastResults) using the current lbSortKey/lbSortDir — used both after a
-        // fresh fetch and after a header click (no re-query needed for the latter).
+        // Re-renders the leaderboard from the cached last fetch (lbAllResults)
+        // for whichever event is selected in the dropdown, using the current
+        // lbSortKey/lbSortDir — used after a fresh fetch, a header click, or an
+        // event dropdown change (none of which need a re-query).
         function renderLiveLeaderboard() {
             let html = '';
 
-            if (lbLastEvent) {
-                const results = [...lbLastResults].sort((a, b) => {
+            const eventsWithData = EVENTS.filter(e => (lbAllResults ?? []).some(r => r.event === e.key));
+            const event = EVENTS.find(e => e.key === lbSelectedEventKey);
+
+            if (event) {
+                const results = [...lbAllResults.filter(r => r.event === event.key)].sort((a, b) => {
                     const cmp = compareLeaderboardRows(a, b, lbSortKey);
                     return lbSortDir === 'desc' ? -cmp : cmp;
                 });
@@ -1056,13 +1078,13 @@
                 // tour_championship: the field there already *is* the top 30,
                 // so a highlight would be meaningless.
                 const ADVANCING_CUTOFF = { st_jude: 50, bmw: 30 };
-                const advancingCutoff = ADVANCING_CUTOFF[lbLastEvent.key] ?? null;
+                const advancingCutoff = ADVANCING_CUTOFF[event.key] ?? null;
                 const isAdvancing = (golfer) => advancingCutoff != null && (golfer?.fedex_rank_projected ?? Infinity) <= advancingCutoff;
 
                 const rows = results.map(r => `<tr class="${isAdvancing(r.golfers) ? 'row-advancing' : ''}">
                         <td class="col-rank">${posLabel(r.finish_position)}</td>
                         <td class="col-name">${escapeHtml(r.golfers?.name ?? 'Unknown')}</td>
-                        <td class="td-center">${escapeHtml(formatToPar(r.score_to_par, r.status, r.tee_time))}</td>
+                        <td class="td-center">${scoreCell(r.score_to_par, r.status, r.tee_time)}</td>
                         <td class="td-center">${r.golfers?.fedex_rank_current ?? r.golfers?.fedex_rank ?? '—'}</td>
                         <td class="td-center">${projRankCell(r.golfers)}</td>
                         <td class="col-points">${r.status === 'scheduled' ? '–' : r.points}</td>
@@ -1078,9 +1100,22 @@
                 const arrow = (key) => lbSortKey === key ? (lbSortDir === 'desc' ? ' ▼' : ' ▲') : '';
                 const th = (key, label, cls, title) => `<th class="sortable ${cls}" data-sort-key="${key}"${title ? ` title="${escapeHtml(title)}"` : ''}>${escapeHtml(label)}${arrow(key)}</th>`;
 
+                // "Live:" only applies to the most recent event with any synced
+                // data — anything earlier in the dropdown is a completed week's
+                // final results, not a live sync.
+                const isLive = eventsWithData[eventsWithData.length - 1]?.key === event.key;
+                const eventSelect = eventsWithData.length > 1
+                    ? `<select id="lb-event-select" class="input lb-event-select" aria-label="Select tournament">
+                        ${eventsWithData.map(e => `<option value="${escapeHtml(e.key)}"${e.key === event.key ? ' selected' : ''}>${escapeHtml(e.label)}</option>`).join('')}
+                       </select>`
+                    : '';
+
                 html = `
                     <div class="section">
-                        <h2>Live: ${escapeHtml(lbLastEvent.label)}</h2>
+                        <div class="section-header-row">
+                            <h2>${isLive ? 'Live: ' : ''}${escapeHtml(event.label)}</h2>
+                            ${eventSelect}
+                        </div>
                         <div class="table-scroll">
                             <table class="data-table">
                                 <thead>
@@ -1097,7 +1132,7 @@
                             </table>
                         </div>
                         ${advancingCutoff != null
-                            ? `<p class="comm-note standings-note">Green highlight = currently projected inside the top ${advancingCutoff} in FedEx Cup points, advancing to ${escapeHtml(EVENTS[EVENTS.findIndex(e => e.key === lbLastEvent.key) + 1]?.label ?? 'the next event')}.</p>`
+                            ? `<p class="comm-note standings-note">Green highlight = ${isLive ? 'currently projected' : 'was projected'} inside the top ${advancingCutoff} in FedEx Cup points, advancing to ${escapeHtml(EVENTS[EVENTS.findIndex(e => e.key === event.key) + 1]?.label ?? 'the next event')}.</p>`
                             : ''}
                     </div>
                 `;
@@ -1115,6 +1150,14 @@
             const key = th.dataset.sortKey;
             lbSortDir = (lbSortKey === key && lbSortDir === 'asc') ? 'desc' : 'asc';
             lbSortKey = key;
+            renderLiveLeaderboard();
+        }
+
+        // Delegated change handler for the event dropdown — same rationale as
+        // handleLeaderboardHeaderClick, the <select> is recreated on every render.
+        function handleLeaderboardEventChange(e) {
+            if (e.target.id !== 'lb-event-select') return;
+            lbSelectedEventKey = e.target.value;
             renderLiveLeaderboard();
         }
 
@@ -1149,6 +1192,7 @@
             if (!leagueId) { window.location.href = '/golf/index.html'; return; }
 
             document.getElementById('live-leaderboard').addEventListener('click', handleLeaderboardHeaderClick);
+            document.getElementById('live-leaderboard').addEventListener('change', handleLeaderboardEventChange);
 
             await loadAndRender();
             subscribeRealtime();

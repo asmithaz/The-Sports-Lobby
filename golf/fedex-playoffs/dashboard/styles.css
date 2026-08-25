@@ -106,7 +106,10 @@ h1 {
    Pts stay pinned to their set widths instead of table-layout:auto handing
    their leftover space to Player and blowing out the container — that's
    what caused the horizontal scroll even after the first size pass. Player
-   gets whatever's left and wraps instead of forcing extra width. */
+   gets whatever's left; on a viewport too narrow to fit its min-width (see
+   .col-name below) the table overflows and .table-scroll's overflow-x
+   scrolls it, same as the rest of the site's tables — word-break:break-word
+   was tried instead but at near-zero width it wrapped one letter per line. */
 .live-leaderboard .data-table {
     table-layout: fixed;
     /* /css/components.css's shared .data-table sets min-width:480px — a
@@ -154,6 +157,16 @@ h1 {
     color: var(--c-danger);
 }
 
+/* Second line under a live SCORE value for a golfer who has a real
+   cumulative score but hasn't teed off in the current round yet — see
+   scoreCell() in index.html. */
+.tee-time-sub {
+    display: block;
+    font-size: 10px;
+    line-height: 1.3;
+    color: var(--c-text-muted);
+}
+
 /* Row for a golfer currently projected to survive this event's cutline —
    top 50 at St. Jude, top 30 at BMW (see ADVANCING_CUTOFF in index.html).
    Same inset-accent-stripe + dim-background treatment as .selected-row
@@ -175,8 +188,8 @@ h1 {
 }
 
 .live-leaderboard .data-table .col-name {
-    white-space: normal;
-    word-break: break-word;
+    white-space: nowrap;
+    min-width: 110px;
 }
 
 /* display:flex on a <th> was tried here to lay out label+arrow as a
@@ -284,6 +297,23 @@ h1 {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+}
+
+.section-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
+}
+
+.section-header-row h2 {
+    margin-bottom: 0;
+}
+
+.lb-event-select {
+    width: auto;
+    flex-shrink: 0;
 }
 
 .count {
