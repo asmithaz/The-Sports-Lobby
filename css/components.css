@@ -1412,6 +1412,13 @@ body {
   margin-bottom: var(--space-5);
 }
 
+.entity-empty-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 
 /* ============================================================
    MOBILE — shared component adjustments

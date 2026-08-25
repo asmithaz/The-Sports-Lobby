@@ -15,6 +15,7 @@
     <script src="/js/error-logging.js"></script>
     <script src="/js/feedback.js"></script>
     <script src="/js/auth.js"></script>
+    <script src="/js/email-templates.js"></script>
 </head>
 <body>
 
@@ -33,6 +34,7 @@
                 <div class="sub" id="league-sub"></div>
             </div>
             <div class="flex gap-2">
+                <button type="button" id="invite-btn" class="btn btn--ghost">✉️ Invite</button>
                 <a href="/cfb/bowl-season-pick-em/history/" id="history-link" class="btn btn--ghost">📜 History</a>
                 <a href="#" id="settings-link" class="btn btn--ghost">⚙️ Settings</a>
             </div>
@@ -78,6 +80,36 @@
         </div>
 
     </main>
+
+    <div class="join-overlay" id="invite-overlay" style="display:none;">
+        <div class="join-panel">
+            <h3>Invite to League</h3>
+            <p class="text-secondary">Share this link, or send email invites directly.</p>
+
+            <div class="field">
+                <label class="label">Invite Link</label>
+                <div class="link-row">
+                    <input type="text" id="invite-link" class="input" readonly />
+                    <button type="button" class="btn btn--ghost" id="copy-invite-btn">Copy</button>
+                </div>
+            </div>
+
+            <div class="field" style="margin-top:var(--space-4);">
+                <label class="label">Or Send Email Invites</label>
+                <div class="email-tag-container" id="invite-email-tag-container">
+                    <input type="text" id="invite-email-input" placeholder="Enter email and press Enter or comma" />
+                </div>
+                <span class="hint">Press Enter or , to add each address</span>
+            </div>
+
+            <p class="join-error" id="invite-error" style="display:none;"></p>
+
+            <div class="join-actions">
+                <button type="button" class="btn btn--ghost" id="invite-close-btn">Close</button>
+                <button type="button" class="btn btn--primary" id="send-invite-btn">Send Invites</button>
+            </div>
+        </div>
+    </div>
 
     <footer class="site-footer">
         <span>2026 The Sports Lobby. All rights reserved.</span>
@@ -126,6 +158,96 @@
             return sessionStorage.getItem('league_id');
         }
 
+        function setupInviteModal(leagueRow) {
+            const inviteLink = window.location.origin + '/join/?code=bpe-' + (leagueRow?.invite_code || '').toLowerCase();
+            document.getElementById('invite-link').value = inviteLink;
+
+            const overlay = document.getElementById('invite-overlay');
+            const emailInput = document.getElementById('invite-email-input');
+            const emailContainer = document.getElementById('invite-email-tag-container');
+            const errorEl = document.getElementById('invite-error');
+
+            document.getElementById('invite-btn').addEventListener('click', () => {
+                errorEl.style.display = 'none';
+                overlay.style.display = 'flex';
+            });
+            document.getElementById('invite-close-btn').addEventListener('click', () => {
+                overlay.style.display = 'none';
+            });
+            overlay.addEventListener('click', e => {
+                if (e.target === overlay) overlay.style.display = 'none';
+            });
+
+            document.getElementById('copy-invite-btn').addEventListener('click', () => {
+                navigator.clipboard.writeText(inviteLink).then(() => {
+                    const btn = document.getElementById('copy-invite-btn');
+                    btn.textContent = 'Copied!';
+                    setTimeout(() => btn.textContent = 'Copy', 2000);
+                });
+            });
+
+            emailContainer.addEventListener('click', () => emailInput.focus());
+            emailInput.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    addInviteEmailTag(emailInput.value.trim().replace(/,$/, ''));
+                }
+            });
+
+            function addInviteEmailTag(email) {
+                if (!email) return;
+                const tag = document.createElement('span');
+                tag.className = 'email-tag';
+                tag.dataset.email = email;
+                tag.innerHTML = `${escapeHtml(email)} <button type="button" aria-label="Remove">&times;</button>`;
+                tag.querySelector('button').addEventListener('click', () => tag.remove());
+                emailContainer.insertBefore(tag, emailInput);
+                emailInput.value = '';
+            }
+
+            document.getElementById('send-invite-btn').addEventListener('click', async () => {
+                if (emailInput.value.trim()) {
+                    addInviteEmailTag(emailInput.value.trim().replace(/,$/, ''));
+                }
+                const emails = [...emailContainer.querySelectorAll('.email-tag')].map(t => t.dataset.email);
+                if (!emails.length) {
+                    errorEl.textContent = 'Add at least one email address, or use the Copy link above.';
+                    errorEl.style.display = 'block';
+                    return;
+                }
+                errorEl.style.display = 'none';
+
+                const btn = document.getElementById('send-invite-btn');
+                btn.disabled = true;
+                btn.textContent = 'Sending…';
+
+                const subject = `You're invited to join ${leagueRow?.name || 'a league'} on The Sports Lobby`;
+                const body = `
+                    <p>You've been invited to join <strong>${escapeHtml(leagueRow?.name || 'a league')}</strong>, a College Football Bowl Season Pick 'Em league on The Sports Lobby.</p>
+                    ${emailButton(inviteLink, 'Join League')}
+                    <p style="margin-top:16px;font-size:12px;">Or copy this link: ${escapeHtml(inviteLink)}</p>
+                `;
+                const html = wrapEmail("You're invited!", body);
+
+                const results = await Promise.allSettled(emails.map(to =>
+                    supabase.functions.invoke('send-email', { body: { to, subject, html } })
+                ));
+                const failed = results.some(r => r.status === 'rejected' || r.value?.error);
+
+                btn.disabled = false;
+                if (failed) {
+                    btn.textContent = 'Send Invites';
+                    errorEl.textContent = 'Some invites failed to send. Please try again.';
+                    errorEl.style.display = 'block';
+                    console.error('Invite send results:', results);
+                } else {
+                    emailContainer.querySelectorAll('.email-tag').forEach(t => t.remove());
+                    btn.textContent = 'Sent!';
+                    setTimeout(() => { btn.textContent = 'Send Invites'; overlay.style.display = 'none'; }, 1200);
+                }
+            });
+        }
+
         async function init() {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) { window.location.href = '/login/index.html'; return; }
@@ -139,9 +261,10 @@
             document.getElementById('picks-tab-link').href = `/cfb/bowl-season-pick-em/picks/?league_id=${leagueId}`;
 
             const { data: leagueRow } = await supabase
-                .from('leagues').select('name, current_season').eq('id', leagueId).single();
+                .from('leagues').select('name, current_season, invite_code').eq('id', leagueId).single();
             currentSeason = leagueRow?.current_season;
             document.getElementById('league-name').textContent = leagueRow?.name ?? 'League';
+            setupInviteModal(leagueRow);
 
             const { data: memberRow } = await supabase
                 .from('league_members').select('team_name').eq('league_id', leagueId).eq('user_id', currentUserId).single();
@@ -156,7 +279,18 @@
             document.getElementById('league-sub').textContent =
                 `College Football Bowl Season Pick 'Em · ${bpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${bpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring`;
 
-            await Promise.all([loadSyncStatus(), loadStandings(), loadPickComparison()]);
+            await Promise.all([loadSyncStatus(), loadStandings(), loadPickComparison(), updateInviteVisibility()]);
+        }
+
+        async function updateInviteVisibility() {
+            // Non-draft league: invites close once the first bowl kicks off, same spirit
+            // as draft-type leagues hiding invites once the draft starts.
+            const { data: firstGame } = await supabase
+                .from('bpe_games').select('kickoff_at').eq('season', currentSeason)
+                .not('kickoff_at', 'is', null).order('kickoff_at', { ascending: true }).limit(1).maybeSingle();
+            if (firstGame?.kickoff_at && new Date(firstGame.kickoff_at) <= new Date()) {
+                document.getElementById('invite-btn').style.display = 'none';
+            }
         }
 
         async function loadSyncStatus() {

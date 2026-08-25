@@ -412,8 +412,15 @@
                    </div>`
                 : `<div class="entity-empty">
                     <p class="entity-empty-text">You haven't joined any leagues yet.</p>
-                    <a href="/dashboard/new-league/" class="btn btn--primary">Create Your First League</a>
+                    <div class="entity-empty-actions">
+                        <a href="/dashboard/new-league/" class="btn btn--primary">Create Your First League</a>
+                        <button type="button" class="btn btn--ghost" id="empty-join-league-btn">Join Your First League</button>
+                    </div>
                    </div>`;
+
+            if (!hasOtherLeagues) {
+                document.getElementById('empty-join-league-btn').addEventListener('click', openJoinModal);
+            }
         }
 
         init();

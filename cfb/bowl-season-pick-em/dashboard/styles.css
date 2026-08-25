@@ -5,6 +5,16 @@
 
 .dash-header .sub { color: var(--c-text-muted); font-size: var(--text-sm); margin-top: 2px; }
 
+/* ---- invite modal ---- */
+.join-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center;
+                 justify-content: center; z-index: 1000; padding: var(--space-4); }
+.join-panel { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-lg);
+              padding: var(--space-6); width: 100%; max-width: 440px; }
+.join-panel h3 { margin: 0 0 var(--space-2); font-size: var(--text-lg); font-weight: var(--weight-bold); color: var(--c-text-primary); }
+.join-panel p.text-secondary { margin: 0 0 var(--space-4); }
+.join-error { color: var(--c-danger); font-size: var(--text-sm); margin: var(--space-2) 0 0; }
+.join-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-5); }
+
 #sync-status-bar { margin-bottom: var(--space-5); }
 
 .section-title { font-size: var(--text-md); font-weight: var(--weight-bold); margin-bottom: 2px; }
