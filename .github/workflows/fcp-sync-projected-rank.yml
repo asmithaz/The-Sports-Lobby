@@ -2,10 +2,20 @@ name: FedEx Cup Playoffs Projected Rank Sync
 
 # Runs every 10 minutes, but the job exits immediately unless today falls
 # within the FedEx Cup Playoffs window (St. Jude Championship through the
-# TOUR Championship + a buffer day). Update PLAYOFFS_START / PLAYOFFS_END
-# each season. Same window as fcp-sync-scores.yml — kept as a separate
-# workflow/function so a pgatour.com shape change can't take down the
-# ESPN score sync too (see supabase/functions/fcp-sync-projected-rank).
+# end of BMW). Update PLAYOFFS_START / PLAYOFFS_END each season.
+#
+# Unlike fcp-sync-scores.yml, this window stops BEFORE the TOUR
+# Championship: pgatour.com/fedexcup/projected-standings drops its live
+# "projected" data once the BMW Championship ends — confirmed 2026-08-25,
+# the page now just shows the final post-BMW standings plus TC tee times,
+# with no projectedPlayers data for the scraper to find. That's expected,
+# not a bug — at TC the field is fixed at the top 30 and, since the 2023
+# format change, it's decided by straight stroke play (no staggered
+# scoring start from FedEx Cup points anymore), so a "projected FedEx
+# rank" isn't a meaningful concept there. Kept as a separate
+# workflow/function (rather than folded into fcp-sync-scores) so a
+# pgatour.com shape change can't take down the ESPN score sync too (see
+# supabase/functions/fcp-sync-projected-rank).
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -13,7 +23,7 @@ on:
 
 env:
   PLAYOFFS_START: "2026-08-06"
-  PLAYOFFS_END: "2026-08-31"
+  PLAYOFFS_END: "2026-08-26"
 
 jobs:
   sync:
