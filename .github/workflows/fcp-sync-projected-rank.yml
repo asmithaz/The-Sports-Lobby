@@ -1,8 +1,11 @@
 name: FedEx Cup Playoffs Projected Rank Sync
 
-# Runs every 10 minutes, but the job exits immediately unless today falls
-# within the FedEx Cup Playoffs window (St. Jude Championship through the
-# end of BMW). Update PLAYOFFS_START / PLAYOFFS_END each season.
+# Runs every 10 minutes, but only during August — the trigger itself is
+# month-gated so GitHub Actions minutes aren't burned 11 months a year for
+# nothing (each run is billed regardless of the early-exit below). The
+# internal window check still does the exact day-level gating. If the
+# playoffs ever fall outside August, update the cron month field (currently
+# "8") to match. Update PLAYOFFS_START / PLAYOFFS_END each season.
 #
 # Unlike fcp-sync-scores.yml, this window stops BEFORE the TOUR
 # Championship: pgatour.com/fedexcup/projected-standings drops its live
@@ -18,7 +21,7 @@ name: FedEx Cup Playoffs Projected Rank Sync
 # supabase/functions/fcp-sync-projected-rank).
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/10 * * 8 *"
   workflow_dispatch: {}
 
 env:
