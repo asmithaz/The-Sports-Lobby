@@ -1,0 +1,23 @@
+# Secrets / environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*.json
+
+# Supabase local dev
+.branches
+.temp
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Dependencies / build output
+node_modules/
+dist/
+build/
