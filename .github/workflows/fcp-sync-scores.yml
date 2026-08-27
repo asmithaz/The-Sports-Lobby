@@ -1,14 +1,13 @@
 name: FedEx Cup Playoffs Score Sync
 
-# Runs every 10 minutes, but only during August — the trigger itself is
-# month-gated so GitHub Actions minutes aren't burned 11 months a year for
-# nothing (each run is billed regardless of the early-exit below). The
-# internal window check still does the exact day-level gating. If the
-# playoffs ever fall outside August, update the cron month field (currently
-# "8") to match. Update PLAYOFFS_START / PLAYOFFS_END each season.
+# The `schedule:` trigger was removed 2026-08-27 — GitHub documents scheduled
+# workflows as best-effort with no timing SLA at any interval, and this one
+# went fully silent for 5+ hours during the live TOUR Championship despite a
+# nominal */10 schedule. The recurring sync now runs as a pg_cron + pg_net
+# job inside Postgres itself (golf/fedex-playoffs/schema.sql SECTION 13),
+# same pattern as the draft auto-start/autopick jobs in SECTION 12.
+# workflow_dispatch is kept as a manual fallback / for local testing.
 on:
-  schedule:
-    - cron: "*/10 * * 8 *"
   workflow_dispatch: {}
 
 env:

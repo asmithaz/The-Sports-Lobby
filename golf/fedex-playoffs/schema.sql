@@ -1497,3 +1497,84 @@ SELECT cron.schedule(
   '15 seconds',
   $$ SELECT fcp_autopick_catchup(); $$
 );
+
+
+-- ============================================================
+-- SECTION 13 — LIVE SCORE SYNC (pg_cron + pg_net)
+-- GitHub Actions' scheduled-workflow trigger is documented as
+-- best-effort with no timing SLA at any interval, and in practice went
+-- fully silent for 5+ hours during the 2026 TOUR Championship (last
+-- fire 2026-08-27T12:00:55Z, nothing before or after in a ~16-hour
+-- window) despite a nominal */10 schedule — see
+-- .github/workflows/fcp-sync-scores.yml and
+-- .github/workflows/fcp-sync-projected-rank.yml, whose `schedule:`
+-- triggers were removed in favor of the two jobs below
+-- (workflow_dispatch kept on both for manual runs). Moved onto
+-- pg_cron, same as SECTION 12, so there's no external scheduler in the
+-- loop. pg_net is required in addition to pg_cron here because these
+-- jobs need an outbound HTTPS call to their Edge Functions (which
+-- themselves call ESPN/pgatour.com) — pg_cron alone only runs SQL.
+-- Confirmed both extensions are available at no extra cost on the
+-- Free plan (tested directly against this project, 2026-08-27).
+--
+-- Both Edge Functions need this project's URL/service role key to
+-- authenticate the call and to write their results — stored once in
+-- Supabase Vault (already enabled on this project) as
+-- 'fcp_service_role_key' rather than inlined here, so the key never
+-- lands in this file or git history. One-time setup (already done for
+-- this project, keep for future re-installs):
+--   select vault.create_secret(
+--     '<service role key from Project Settings > API>',
+--     'fcp_service_role_key',
+--     'Service role key for fcp-sync-scores/fcp-sync-projected-rank pg_cron+pg_net jobs'
+--   );
+--
+-- Each job's date window mirrors its old GitHub Actions
+-- PLAYOFFS_START/PLAYOFFS_END — update both each season (they differ:
+-- fcp-sync-scores runs through the TOUR Championship, fcp-sync-
+-- projected-rank stops before it, see that job's comment below). Both
+-- Edge Functions are idempotent and already no-op safely when there's
+-- nothing to sync, so this date guard exists only to skip the outbound
+-- HTTP round trip off-season, matching the old workflows' behavior.
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
+
+SELECT cron.schedule(
+  'fcp-sync-scores-cron',
+  '*/10 * * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://rjtlolzdwmrhctdatekj.supabase.co/functions/v1/fcp-sync-scores',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'fcp_service_role_key')
+    ),
+    body := '{}'::jsonb
+  )
+  WHERE current_date BETWEEN DATE '2026-08-06' AND DATE '2026-08-31';
+  $$
+);
+
+-- Same as above, for the projected-rank sync — see
+-- .github/workflows/fcp-sync-projected-rank.yml (schedule trigger
+-- likewise removed in favor of this job). Window ends before the TOUR
+-- Championship (2026-08-24, not 2026-08-31 like fcp-sync-scores above)
+-- because pgatour.com's projected-standings page drops its live
+-- projectedPlayers data once the BMW Championship ends — see that
+-- workflow file's comment for why this is a separate job/function
+-- rather than folded into fcp-sync-scores.
+SELECT cron.schedule(
+  'fcp-sync-projected-rank-cron',
+  '*/10 * * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://rjtlolzdwmrhctdatekj.supabase.co/functions/v1/fcp-sync-projected-rank',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'fcp_service_role_key')
+    ),
+    body := '{}'::jsonb
+  )
+  WHERE current_date BETWEEN DATE '2026-08-06' AND DATE '2026-08-24';
+  $$
+);

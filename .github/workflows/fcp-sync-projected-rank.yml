@@ -1,13 +1,15 @@
 name: FedEx Cup Playoffs Projected Rank Sync
 
-# Runs every 10 minutes, but only during August — the trigger itself is
-# month-gated so GitHub Actions minutes aren't burned 11 months a year for
-# nothing (each run is billed regardless of the early-exit below). The
-# internal window check still does the exact day-level gating. If the
-# playoffs ever fall outside August, update the cron month field (currently
-# "8") to match. Update PLAYOFFS_START / PLAYOFFS_END each season.
+# The `schedule:` trigger was removed 2026-08-27 — GitHub documents scheduled
+# workflows as best-effort with no timing SLA at any interval, and
+# fcp-sync-scores.yml's identical schedule went fully silent for 5+ hours
+# during the live TOUR Championship despite a nominal */10 cadence. The
+# recurring sync now runs as a pg_cron + pg_net job inside Postgres itself
+# (golf/fedex-playoffs/schema.sql SECTION 13), same pattern as the draft
+# auto-start/autopick jobs in SECTION 12. workflow_dispatch is kept as a
+# manual fallback / for local testing.
 #
-# Unlike fcp-sync-scores.yml, this window stops BEFORE the TOUR
+# Unlike fcp-sync-scores, this window stops BEFORE the TOUR
 # Championship: pgatour.com/fedexcup/projected-standings drops its live
 # "projected" data once the BMW Championship ends — confirmed 2026-08-25,
 # the page now just shows the final post-BMW standings plus TC tee times,
@@ -20,8 +22,6 @@ name: FedEx Cup Playoffs Projected Rank Sync
 # pgatour.com shape change can't take down the ESPN score sync too (see
 # supabase/functions/fcp-sync-projected-rank).
 on:
-  schedule:
-    - cron: "*/10 * * 8 *"
   workflow_dispatch: {}
 
 env:
