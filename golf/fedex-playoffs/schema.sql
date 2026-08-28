@@ -251,6 +251,15 @@ ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS score_to_par int;
 -- fetchIndividualStatus in supabase/functions/fcp-sync-scores/index.ts).
 ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS tee_time timestamptz;
 
+-- Holes completed in the golfer's *current* round (1-18), null when they
+-- haven't teed off today or the tournament hasn't started. 18 means today's
+-- round is finished, not necessarily the whole tournament — the dashboard
+-- shows "F" at that point. Sourced from the same per-golfer ESPN core API
+-- call as tee_time (fetchIndividualStatus in
+-- supabase/functions/fcp-sync-scores/index.ts), which is the only ESPN
+-- endpoint that reports it — the main scoreboard payload doesn't.
+ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS thru int;
+
 -- Idempotent for installs that ran this schema before seasons existed.
 -- Season-scoping this table is what stops next year's ESPN sync from
 -- silently overwriting this year's finished results in place — see

@@ -551,9 +551,7 @@
                     ? '🔒'
                     : guess == null
                         ? '—'
-                        : championStrokes == null
-                            ? String(guess)
-                            : `${guess} (Δ${Math.abs(guess - championStrokes)})`;
+                        : String(guess);
 
                 const rc = rosterCounts?.[m.user_id];
                 const remainingCell = rc && rc.total > 0 ? `${rc.alive}/${rc.total}` : '—';
@@ -977,6 +975,21 @@
             return `${main}<span class="tee-time-sub">${escapeHtml(formatTeeTime(teeTime))}</span>`;
         }
 
+        // THRU column: holes completed in the golfer's current round. 18
+        // means today's round is done (shown as "F", matching ESPN's own
+        // convention) — not necessarily the whole tournament. Blank for
+        // anyone not currently mid-round (scheduled, cut, withdrawn, or
+        // between rounds — see the `thru` column comment in schema.sql).
+        // For a past (non-live) event the tournament is fully over but its
+        // rows never got a real thru value recorded, so every finished
+        // golfer reads "F" outright instead of a stray blank dash.
+        function thruCell(thru, status, isLive) {
+            if (status === 'scheduled' || status === 'cut' || status === 'withdrawn') return '—';
+            if (!isLive) return 'F';
+            if (thru == null) return '—';
+            return thru >= 18 ? 'F' : String(thru);
+        }
+
         // ── Render: live leaderboard (position/score/points from the most
         // recently synced event) ───────────────────────────────────────────
         // Builds the full HTML (or '' if there's nothing to show yet) before
@@ -987,7 +1000,7 @@
         async function loadLiveLeaderboard() {
             const { data: allResults } = await supabase
                 .from('fcp_event_results')
-                .select('golfer_id, event, finish_position, status, points, score_to_par, tee_time, golfers(name, fedex_rank, fedex_rank_current, fedex_rank_projected)')
+                .select('golfer_id, event, finish_position, status, points, score_to_par, tee_time, thru, golfers(name, fedex_rank, fedex_rank_current, fedex_rank_projected)')
                 .eq('season', currentSeason);
 
             lbAllResults = allResults ?? [];
@@ -1015,6 +1028,8 @@
                     return (a.golfers?.name ?? '').localeCompare(b.golfers?.name ?? '');
                 case 'score':
                     return (a.score_to_par ?? Infinity) - (b.score_to_par ?? Infinity);
+                case 'thru':
+                    return (a.thru ?? -1) - (b.thru ?? -1);
                 case 'fecrk':
                     return (a.golfers?.fedex_rank_current ?? a.golfers?.fedex_rank ?? Infinity)
                         - (b.golfers?.fedex_rank_current ?? b.golfers?.fedex_rank ?? Infinity);
@@ -1090,10 +1105,22 @@
                 // in-tournament standings) stands alone.
                 const showProjRank = advancingCutoff != null;
 
+                // "Live:" only applies to the most recent event with any synced
+                // data — anything earlier in the dropdown is a completed week's
+                // final results, not a live sync. Also drives thruCell below:
+                // a non-live (past) event was fully played out, but its rows'
+                // thru column was never populated (thru tracking only exists
+                // going forward from when this feature shipped, and even the
+                // live sync stops calling ESPN for an event once it's no
+                // longer current) — so every finished golfer there should
+                // read "F" rather than a misleading blank dash.
+                const isLive = eventsWithData[eventsWithData.length - 1]?.key === event.key;
+
                 const rows = results.map(r => `<tr class="${isAdvancing(r.golfers) ? 'row-advancing' : ''}">
                         <td class="col-rank">${posLabel(r.finish_position)}</td>
                         <td class="col-name">${escapeHtml(r.golfers?.name ?? 'Unknown')}</td>
                         <td class="td-center">${scoreCell(r.score_to_par, r.status, r.tee_time)}</td>
+                        <td class="td-center">${thruCell(r.thru, r.status, isLive)}</td>
                         <td class="td-center">${r.golfers?.fedex_rank_current ?? r.golfers?.fedex_rank ?? '—'}</td>
                         ${showProjRank ? `<td class="td-center">${projRankCell(r.golfers)}</td>` : ''}
                         <td class="col-points">${r.status === 'scheduled' ? '–' : r.points}</td>
@@ -1109,10 +1136,6 @@
                 const arrow = (key) => lbSortKey === key ? (lbSortDir === 'desc' ? ' ▼' : ' ▲') : '';
                 const th = (key, label, cls, title) => `<th class="sortable ${cls}" data-sort-key="${key}"${title ? ` title="${escapeHtml(title)}"` : ''}>${escapeHtml(label)}${arrow(key)}</th>`;
 
-                // "Live:" only applies to the most recent event with any synced
-                // data — anything earlier in the dropdown is a completed week's
-                // final results, not a live sync.
-                const isLive = eventsWithData[eventsWithData.length - 1]?.key === event.key;
                 const eventSelect = eventsWithData.length > 1
                     ? `<select id="lb-event-select" class="input lb-event-select" aria-label="Select tournament">
                         ${eventsWithData.map(e => `<option value="${escapeHtml(e.key)}"${e.key === event.key ? ' selected' : ''}>${escapeHtml(e.label)}</option>`).join('')}
@@ -1132,6 +1155,7 @@
                                         ${th('pos', 'Pos', 'th-rank')}
                                         ${th('name', 'Player', '')}
                                         ${th('score', 'Score', 'th-score th-center')}
+                                        ${th('thru', 'Thru', 'th-center', 'Holes completed in the current round')}
                                         ${th('fecrk', 'FEC Rk', 'th-center', 'Official FedEx Cup rank entering this event')}
                                         ${showProjRank ? th('projrk', 'Proj Rk', 'th-center', 'Live projected FedEx Cup rank if this event ended today') : ''}
                                         ${th('pts', 'Pts', 'th-points th-center')}

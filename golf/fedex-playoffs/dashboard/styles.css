@@ -130,15 +130,15 @@ h1 {
     padding-right: var(--space-2);
 }
 
+/* Score/Thru/FEC Rk/Proj Rk/Pts all share this width so that span reads as
+   one consistent grid. Their actual cell content never exceeds a couple
+   digits (a signed score like "-17", a hole count, or a small rank/points
+   number) — "Proj Rk ▲", the longest header label in this set, is what
+   sets the floor here, not the values underneath it. */
+.live-leaderboard .th-score,
 .live-leaderboard .th-points,
 .live-leaderboard .th-center {
-    width: 92px;
-}
-
-/* Wider than the shared .th-center default so a tee time ("10:03 AM") fits
-   on one line instead of wrapping — see formatToPar() in index.html. */
-.live-leaderboard .th-score {
-    width: 92px;
+    width: 68px;
 }
 
 /* Proj Rk movement arrow — reuses the same green/red already used for
@@ -185,6 +185,17 @@ h1 {
    wins regardless of where it sits in the file. */
 .live-leaderboard .data-table .col-points {
     min-width: 0;
+}
+
+/* Pos is always the row's first cell, so /css/components.css's
+   .data-table td:first-child (1 class + 1 pseudo-class + 1 element) beats
+   the base .col-rank rule's text-align:center (2 classes, further up this
+   file) on specificity alone and forces it back to that rule's left align —
+   same trap as .col-points/.col-name above, just with an extra pseudo-class
+   in the competing selector. 3 classes here (.live-leaderboard .data-table
+   .col-rank) outranks it regardless of source order. */
+.live-leaderboard .data-table .col-rank {
+    text-align: center;
 }
 
 .live-leaderboard .data-table .col-name {

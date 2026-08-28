@@ -180,13 +180,15 @@ function hasRecordedAnyScore(competitor: any): boolean {
 // undocumented core API has that per-competitor, one call per golfer:
 // .../events/{id}/competitions/{id}/competitors/{athleteId}/status. It
 // returns both the individual pre/in/post state and, while pre, a
-// `teeTime` ISO timestamp. Best-effort: any failure (rate limit, shape
-// change, network) falls back to null so the caller uses the whole-event
-// `started` flag instead of blocking the sync.
+// `teeTime` ISO timestamp. It's also the only ESPN endpoint that reports
+// holes-through (`thru`, 1-18) for today's round — the main scoreboard
+// payload doesn't carry it at all. Best-effort: any failure (rate limit,
+// shape change, network) falls back to null so the caller uses the
+// whole-event `started` flag instead of blocking the sync.
 async function fetchIndividualStatus(
   competitionId: string,
   athleteId: string,
-): Promise<{ started: boolean; teeTime: string | null } | null> {
+): Promise<{ started: boolean; teeTime: string | null; thru: number | null } | null> {
   try {
     const url = `https://sports.core.api.espn.com/v2/sports/golf/leagues/pga/events/${competitionId}/competitions/${competitionId}/competitors/${athleteId}/status?lang=en&region=us`;
     const res = await fetch(url);
@@ -194,7 +196,11 @@ async function fetchIndividualStatus(
     const data = await res.json();
     const state = data?.type?.state;
     if (!state) return null;
-    return { started: state !== "pre", teeTime: state === "pre" ? (data?.teeTime ?? null) : null };
+    return {
+      started: state !== "pre",
+      teeTime: state === "pre" ? (data?.teeTime ?? null) : null,
+      thru: typeof data?.thru === "number" ? data.thru : null,
+    };
   } catch {
     return null;
   }
@@ -324,17 +330,22 @@ Deno.serve(async (req) => {
             status: hasStarted ? statusFor(competitor) : "scheduled" as const,
             relative: hasStarted ? relativeScoreFor(competitor) : null,
             teeTime: individualStarted ? null : individual?.teeTime ?? null,
+            // Only meaningful for the round in progress right now — a golfer
+            // between rounds (finished earlier, next round's tee time not
+            // reached yet) has individualStarted false, so this stays null
+            // rather than showing yesterday's leftover "F".
+            thru: individualStarted ? (individual?.thru ?? null) : null,
           };
         }),
       )
-    ).filter((e): e is { golferId: string; status: ReturnType<typeof statusFor> | "scheduled"; relative: number | null; teeTime: string | null } => e != null);
+    ).filter((e): e is { golferId: string; status: ReturnType<typeof statusFor> | "scheduled"; relative: number | null; teeTime: string | null; thru: number | null } => e != null);
 
     const ranks = computeRanks(matchedCompetitors.map((e) => e.relative));
 
     const rows: any[] = [];
     const tourChampionWinner = event === "tour_championship";
 
-    matchedCompetitors.forEach(({ golferId, status, relative, teeTime }, i) => {
+    matchedCompetitors.forEach(({ golferId, status, relative, teeTime, thru }, i) => {
       const position = ranks[i];
 
       let points = 0;
@@ -361,6 +372,7 @@ Deno.serve(async (req) => {
         total_strokes: totalStrokes,
         score_to_par: relative,
         tee_time: teeTime,
+        thru,
         updated_at: new Date().toISOString(),
       });
     });
