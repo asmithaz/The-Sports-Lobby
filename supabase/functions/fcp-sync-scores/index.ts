@@ -161,6 +161,22 @@ function relativeScoreFor(competitor: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Score relative to par for a single round (ESPN's linescores[] carries one
+// entry per round, each with its own already-par-relative displayValue —
+// e.g. "-8", "+2", "E", or "-" for a round with no holes recorded yet).
+// Same string shape as relativeScoreFor's `score.displayValue`, just scoped
+// to one period instead of the whole-tournament total.
+function relativeRoundScoreFor(competitor: any, period: number): number | null {
+  const entry = (competitor?.linescores ?? []).find((ls: any) => ls?.period === period);
+  const raw = entry?.displayValue;
+  if (raw == null) return null;
+  const s = String(raw).trim().toUpperCase();
+  if (s === "-" || s === "") return null;
+  if (s === "E") return 0;
+  const n = parseInt(s.replace(/^\+/, ""), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
 // A round a golfer hasn't played yet shows up in `linescores` as a bare
 // { period: N } with no value/displayValue — any entry that does have one
 // means at least one hole from that round is on the books. Used to tell
@@ -237,12 +253,18 @@ Deno.serve(async (req) => {
     let competitionId: string;
     let started: boolean;
     let competitors: any[];
+    // Which round is "today" — only meaningful (and only available) off the
+    // live scoreboard's own competition.status.period. The calendar/core-API
+    // branch below is for an event that hasn't teed off yet at all, so there
+    // is no "today" round to report and this stays null there.
+    let currentRoundPeriod: number | null = null;
 
     if (matched && (!upcoming || matched.event === upcoming.event)) {
       event = matched.event;
       competitionId = String(matched.competition?.id ?? "");
       started = matched.started;
       competitors = matched.competition?.competitors ?? [];
+      currentRoundPeriod = matched.competition?.status?.period ?? null;
     } else {
       if (!upcoming) {
         return new Response(
@@ -335,17 +357,23 @@ Deno.serve(async (req) => {
             // reached yet) has individualStarted false, so this stays null
             // rather than showing yesterday's leftover "F".
             thru: individualStarted ? (individual?.thru ?? null) : null,
+            // Independent of hasStarted/individualStarted above — those track
+            // whether this golfer has a *cumulative* score worth showing at
+            // all, while today_to_par only cares about currentRoundPeriod.
+            // relativeRoundScoreFor already returns null on its own when
+            // that round has no recorded holes for this golfer yet.
+            todayToPar: currentRoundPeriod != null ? relativeRoundScoreFor(competitor, currentRoundPeriod) : null,
           };
         }),
       )
-    ).filter((e): e is { golferId: string; status: ReturnType<typeof statusFor> | "scheduled"; relative: number | null; teeTime: string | null; thru: number | null } => e != null);
+    ).filter((e): e is { golferId: string; status: ReturnType<typeof statusFor> | "scheduled"; relative: number | null; teeTime: string | null; thru: number | null; todayToPar: number | null } => e != null);
 
     const ranks = computeRanks(matchedCompetitors.map((e) => e.relative));
 
     const rows: any[] = [];
     const tourChampionWinner = event === "tour_championship";
 
-    matchedCompetitors.forEach(({ golferId, status, relative, teeTime, thru }, i) => {
+    matchedCompetitors.forEach(({ golferId, status, relative, teeTime, thru, todayToPar }, i) => {
       const position = ranks[i];
 
       let points = 0;
@@ -373,6 +401,7 @@ Deno.serve(async (req) => {
         score_to_par: relative,
         tee_time: teeTime,
         thru,
+        today_to_par: todayToPar,
         updated_at: new Date().toISOString(),
       });
     });

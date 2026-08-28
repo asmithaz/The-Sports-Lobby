@@ -260,6 +260,17 @@ ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS tee_time timestamptz;
 -- endpoint that reports it — the main scoreboard payload doesn't.
 ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS thru int;
 
+-- Score relative to par for just the round currently in progress (the
+-- "Today" column on the dashboard's live leaderboard) — distinct from
+-- score_to_par above, which is cumulative across the whole tournament.
+-- Sourced from the main ESPN scoreboard payload itself: each competitor's
+-- linescores[] already carries a per-round displayValue, and
+-- competition.status.period says which round is "today". Null whenever
+-- there's no round in progress (event hasn't started, is between rounds,
+-- or already finished) or this golfer hasn't recorded a hole in today's
+-- round yet. See supabase/functions/fcp-sync-scores/index.ts.
+ALTER TABLE fcp_event_results ADD COLUMN IF NOT EXISTS today_to_par int;
+
 -- Idempotent for installs that ran this schema before seasons existed.
 -- Season-scoping this table is what stops next year's ESPN sync from
 -- silently overwriting this year's finished results in place — see

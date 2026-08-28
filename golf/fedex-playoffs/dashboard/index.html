@@ -98,6 +98,15 @@
         let lbAllResults = null;
         let lbSelectedEventKey = null;
 
+        // Which player's row (if any) is expanded to show their team +
+        // per-event points — persists across polls/re-renders same as the
+        // sort state above. lbPicksByGolferId/lbMembersById back that detail
+        // panel: golfer_id -> owning user_id, and user_id -> team/display
+        // name, both refreshed alongside the leaderboard data itself.
+        let lbExpandedGolferId = null;
+        let lbPicksByGolferId = {};
+        let lbMembersById = {};
+
         // The three FedEx Cup Playoffs events, in order.
         const EVENTS = [
             { key: 'st_jude',          label: 'FedEx St. Jude Championship', date: 'Aug 13' },
@@ -940,6 +949,9 @@
                 if (me) loadAndRenderBreakdown(leagueId, me.user_id, me.display_name, isCommissioner);
             }
 
+            lbMembersById = {};
+            members.forEach(m => { lbMembersById[m.user_id] = m; });
+
             loadLiveLeaderboard();
         }
 
@@ -975,6 +987,20 @@
             return `${main}<span class="tee-time-sub">${escapeHtml(formatTeeTime(teeTime))}</span>`;
         }
 
+        // TODAY column: score relative to par for just the round currently
+        // in progress, distinct from the (cumulative) SCORE column — same
+        // "not applicable" cases as thruCell (scheduled/cut/withdrawn, and
+        // a past non-live event has no "today" at all), plus an en-dash for
+        // a live golfer who's between rounds or hasn't started today's yet
+        // (today_to_par null). See today_to_par in schema.sql/fcp-sync-scores.
+        function todayCell(todayToPar, status, isLive) {
+            if (status === 'scheduled' || status === 'cut' || status === 'withdrawn') return '—';
+            if (!isLive) return '—';
+            if (todayToPar == null) return '–';
+            if (todayToPar === 0) return 'E';
+            return todayToPar > 0 ? `+${todayToPar}` : String(todayToPar);
+        }
+
         // THRU column: holes completed in the golfer's current round. 18
         // means today's round is done (shown as "F", matching ESPN's own
         // convention) — not necessarily the whole tournament. Blank for
@@ -998,12 +1024,32 @@
         // via :empty) and reappear on every poll/Realtime tick, even when
         // the leaderboard hadn't changed.
         async function loadLiveLeaderboard() {
-            const { data: allResults } = await supabase
-                .from('fcp_event_results')
-                .select('golfer_id, event, finish_position, status, points, score_to_par, tee_time, thru, golfers(name, fedex_rank, fedex_rank_current, fedex_rank_projected)')
-                .eq('season', currentSeason);
+            const [{ data: allResults, error: resultsErr }, { data: picks }] = await Promise.all([
+                supabase
+                    .from('fcp_event_results')
+                    .select('golfer_id, event, finish_position, status, points, score_to_par, today_to_par, tee_time, thru, golfers(name, fedex_rank, fedex_rank_current, fedex_rank_projected)')
+                    .eq('season', currentSeason),
+                supabase
+                    .from('fcp_picks')
+                    .select('golfer_id, user_id')
+                    .eq('league_id', leagueId)
+                    .eq('season', currentSeason)
+            ]);
+
+            // A bad/missing column (e.g. a schema.sql change not yet applied
+            // to the live database) would otherwise fail silently here —
+            // allResults comes back undefined, lbAllResults defaults to [],
+            // and the whole panel just quietly collapses via :empty with no
+            // indication why. Surface it instead of guessing.
+            if (resultsErr) {
+                setHtmlIfChanged('live-leaderboard', `<p class="error">Failed to load leaderboard: ${escapeHtml(resultsErr.message)}</p>`);
+                return;
+            }
 
             lbAllResults = allResults ?? [];
+
+            lbPicksByGolferId = {};
+            (picks ?? []).forEach(p => { lbPicksByGolferId[p.golfer_id] = p.user_id; });
 
             // Default the dropdown to the most recent event with any synced
             // results — but only on first load, or if whatever was previously
@@ -1028,6 +1074,8 @@
                     return (a.golfers?.name ?? '').localeCompare(b.golfers?.name ?? '');
                 case 'score':
                     return (a.score_to_par ?? Infinity) - (b.score_to_par ?? Infinity);
+                case 'today':
+                    return (a.today_to_par ?? Infinity) - (b.today_to_par ?? Infinity);
                 case 'thru':
                     return (a.thru ?? -1) - (b.thru ?? -1);
                 case 'fecrk':
@@ -1045,11 +1093,66 @@
             }
         }
 
+        // Expanded detail row for a clicked player — which team drafted them
+        // (from lbPicksByGolferId/lbMembersById) and their points in every
+        // event synced so far this season (from lbAllResults, not just the
+        // currently selected event), so switching the dropdown isn't needed
+        // to see a player's full-season line.
+        function leaderboardDetailHtml(golferId, colspan) {
+            const ownerId = lbPicksByGolferId[golferId];
+            const owner = ownerId ? lbMembersById[ownerId] : null;
+            const ownerLabel = owner
+                ? escapeHtml(owner.team_name || owner.display_name)
+                : 'Undrafted';
+
+            let totalPoints = 0;
+            const eventCells = EVENTS.map(ev => {
+                const r = lbAllResults.find(x => x.golfer_id === golferId && x.event === ev.key);
+                let val = '—';
+                if (r) {
+                    totalPoints += r.points ?? 0;
+                    if (r.status === 'cut' || r.status === 'withdrawn') val = r.status === 'cut' ? 'CUT' : 'WD';
+                    else if (r.status === 'scheduled') val = '–';
+                    else val = String(r.points ?? 0);
+                }
+                return `<div class="lb-detail-event">
+                    <span class="lb-detail-event-label">${escapeHtml(ev.label)}</span>
+                    <span class="lb-detail-event-pts">${val}</span>
+                </div>`;
+            }).join('');
+            const totalCell = `<div class="lb-detail-event lb-detail-event--total">
+                <span class="lb-detail-event-label">Total</span>
+                <span class="lb-detail-event-pts">${totalPoints}</span>
+            </div>`;
+
+            return `
+                <tr class="lb-detail-row">
+                    <td colspan="${colspan}">
+                        <div class="lb-detail">
+                            <div class="lb-detail-owner"><span class="lb-detail-owner-label">Team</span>${ownerLabel}</div>
+                            <div class="lb-detail-events">${eventCells}${totalCell}</div>
+                        </div>
+                    </td>
+                </tr>`;
+        }
+
         // Re-renders the leaderboard from the cached last fetch (lbAllResults)
         // for whichever event is selected in the dropdown, using the current
         // lbSortKey/lbSortDir — used after a fresh fetch, a header click, or an
         // event dropdown change (none of which need a re-query).
         function renderLiveLeaderboard() {
+            // setHtmlIfChanged below replaces the whole panel's innerHTML
+            // whenever anything changed, which tears down and recreates
+            // .table-scroll — resetting its scroll position to the top.
+            // That's the fallback poll's problem too, but it's most visible
+            // on a row click: expanding a player's detail scrolled halfway
+            // down the list snaps the view back to Pos #1 even though the
+            // click itself didn't change anything about the scroll target.
+            // Capture the old scroll offset here and reapply it below once
+            // the new DOM exists.
+            const prevScrollEl = document.querySelector('#live-leaderboard .table-scroll');
+            const prevScrollTop = prevScrollEl ? prevScrollEl.scrollTop : 0;
+
             let html = '';
 
             const eventsWithData = EVENTS.filter(e => (lbAllResults ?? []).some(r => r.event === e.key));
@@ -1116,15 +1219,21 @@
                 // read "F" rather than a misleading blank dash.
                 const isLive = eventsWithData[eventsWithData.length - 1]?.key === event.key;
 
-                const rows = results.map(r => `<tr class="${isAdvancing(r.golfers) ? 'row-advancing' : ''}">
+                const detailColspan = showProjRank ? 8 : 7;
+                const rows = results.map(r => {
+                    const expanded = lbExpandedGolferId === r.golfer_id;
+                    const mainRow = `<tr class="lb-row-clickable${isAdvancing(r.golfers) ? ' row-advancing' : ''}${expanded ? ' lb-row-expanded' : ''}" data-golfer-id="${escapeHtml(r.golfer_id)}">
                         <td class="col-rank">${posLabel(r.finish_position)}</td>
                         <td class="col-name">${escapeHtml(r.golfers?.name ?? 'Unknown')}</td>
                         <td class="td-center">${scoreCell(r.score_to_par, r.status, r.tee_time)}</td>
+                        <td class="td-center">${todayCell(r.today_to_par, r.status, isLive)}</td>
                         <td class="td-center">${thruCell(r.thru, r.status, isLive)}</td>
                         <td class="td-center">${r.golfers?.fedex_rank_current ?? r.golfers?.fedex_rank ?? '—'}</td>
                         ${showProjRank ? `<td class="td-center">${projRankCell(r.golfers)}</td>` : ''}
                         <td class="col-points">${r.status === 'scheduled' ? '–' : r.points}</td>
-                    </tr>`).join('');
+                    </tr>`;
+                    return expanded ? mainRow + leaderboardDetailHtml(r.golfer_id, detailColspan) : mainRow;
+                }).join('');
 
                 // Arrow shows on whichever column is currently sorted. Tried
                 // driving this off a CSS ::after overlay/flex row instead (to
@@ -1155,6 +1264,7 @@
                                         ${th('pos', 'Pos', 'th-rank')}
                                         ${th('name', 'Player', '')}
                                         ${th('score', 'Score', 'th-score th-center')}
+                                        ${th('today', 'Today', 'th-center', 'Score relative to par for the round in progress')}
                                         ${th('thru', 'Thru', 'th-center', 'Holes completed in the current round')}
                                         ${th('fecrk', 'FEC Rk', 'th-center', 'Official FedEx Cup rank entering this event')}
                                         ${showProjRank ? th('projrk', 'Proj Rk', 'th-center', 'Live projected FedEx Cup rank if this event ended today') : ''}
@@ -1171,7 +1281,11 @@
                 `;
             }
 
-            setHtmlIfChanged('live-leaderboard', html);
+            const rendered = setHtmlIfChanged('live-leaderboard', html);
+            if (rendered && prevScrollTop) {
+                const newScrollEl = document.querySelector('#live-leaderboard .table-scroll');
+                if (newScrollEl) newScrollEl.scrollTop = prevScrollTop;
+            }
         }
 
         // Delegated click handler for the sortable leaderboard headers — attached
@@ -1191,6 +1305,17 @@
         function handleLeaderboardEventChange(e) {
             if (e.target.id !== 'lb-event-select') return;
             lbSelectedEventKey = e.target.value;
+            renderLiveLeaderboard();
+        }
+
+        // Delegated click handler for a player row — toggles the expanded
+        // detail row (team + per-event points) below it. Ignores clicks on
+        // sortable headers, which handleLeaderboardHeaderClick already owns.
+        function handleLeaderboardRowClick(e) {
+            const row = e.target.closest('tr[data-golfer-id]');
+            if (!row) return;
+            const golferId = row.dataset.golferId;
+            lbExpandedGolferId = lbExpandedGolferId === golferId ? null : golferId;
             renderLiveLeaderboard();
         }
 
@@ -1225,6 +1350,7 @@
             if (!leagueId) { window.location.href = '/golf/index.html'; return; }
 
             document.getElementById('live-leaderboard').addEventListener('click', handleLeaderboardHeaderClick);
+            document.getElementById('live-leaderboard').addEventListener('click', handleLeaderboardRowClick);
             document.getElementById('live-leaderboard').addEventListener('change', handleLeaderboardEventChange);
 
             await loadAndRender();
