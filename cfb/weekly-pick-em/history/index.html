@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Weekly Pick 'Em — Season History</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/cfb/weekly-pick-em/dashboard/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">The Sports Lobby</a>
+        <div class="nav-links">
+            <a href="/cfb/index.html" class="nav-link">CFB</a>
+        </div>
+    </nav>
+
+    <main class="page-wrapper">
+        <div class="dash-header">
+            <div>
+                <h1 id="league-name">Loading…</h1>
+                <div class="sub">Season History</div>
+            </div>
+            <a href="#" id="dashboard-link" class="btn btn--ghost">← Back to Dashboard</a>
+        </div>
+
+        <div id="season-picker" class="league-filters hidden">
+            <div class="pill-toggle" id="season-toggle"></div>
+        </div>
+
+        <div id="history-content"><p class="text-muted" style="padding:var(--space-4);">Loading…</p></div>
+    </main>
+
+    <footer class="site-footer">
+        <span>2026 The Sports Lobby. All rights reserved.</span>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/terms.html" class="footer-link">Terms</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
+    </footer>
+
+    <script>
+        let leagueId = null;
+        let currentUserId = null;
+        let seasons = [];
+
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.appendChild(document.createTextNode(str ?? ''));
+            return d.innerHTML;
+        }
+
+        function resolveLeagueId() {
+            const fromUrl = new URLSearchParams(window.location.search).get('league_id');
+            if (fromUrl) { sessionStorage.setItem('league_id', fromUrl); return fromUrl; }
+            return sessionStorage.getItem('league_id');
+        }
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { window.location.href = '/login/index.html'; return; }
+            currentUserId = session.user.id;
+
+            leagueId = resolveLeagueId();
+            if (!leagueId) { window.location.href = '/cfb/index.html'; return; }
+            document.getElementById('dashboard-link').href = `/cfb/weekly-pick-em/dashboard/?league_id=${leagueId}`;
+
+            const { data: leagueRow, error } = await supabase
+                .from('leagues').select('name, current_season').eq('id', leagueId).single();
+            if (error) {
+                document.getElementById('history-content').innerHTML = `<p class="text-danger">Failed to load league: ${error.message}</p>`;
+                return;
+            }
+            document.getElementById('league-name').textContent = leagueRow.name;
+
+            const { data: wpeRows } = await supabase
+                .from('wpe_leagues').select('season').eq('league_id', leagueId)
+                .lt('season', leagueRow.current_season).order('season', { ascending: false });
+
+            seasons = (wpeRows ?? []).map(r => r.season);
+            if (!seasons.length) {
+                document.getElementById('history-content').innerHTML = '<p class="text-muted">No past seasons yet.</p>';
+                return;
+            }
+
+            document.getElementById('season-picker').classList.remove('hidden');
+            renderSeasonPicker();
+            await loadSeason(seasons[0]);
+        }
+
+        function renderSeasonPicker() {
+            const toggle = document.getElementById('season-toggle');
+            toggle.innerHTML = seasons.map((s, i) =>
+                `<button class="pill ${i === 0 ? 'pill--green' : 'pill--muted'}" data-season="${s}">${s}</button>`
+            ).join('');
+            toggle.addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-season]');
+                if (!btn) return;
+                toggle.querySelectorAll('button').forEach(b => {
+                    b.classList.toggle('pill--green', b === btn);
+                    b.classList.toggle('pill--muted', b !== btn);
+                });
+                loadSeason(parseInt(btn.dataset.season, 10));
+            });
+        }
+
+        async function loadSeason(season) {
+            document.getElementById('history-content').innerHTML = '<p class="text-muted" style="padding:var(--space-4);">Loading…</p>';
+
+            const { data: rows, error } = await supabase.rpc('wpe_get_standings', { p_league_id: leagueId, p_season: season });
+            if (error || !rows) {
+                document.getElementById('history-content').innerHTML = `<p class="text-danger">Failed to load ${season} standings.</p>`;
+                console.error(error);
+                return;
+            }
+
+            document.getElementById('history-content').innerHTML = `
+                <div class="section-block">
+                    <div class="section-title">${season} Final Standings</div>
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead><tr><th>#</th><th>Team Name</th><th>Record</th><th>Points</th><th>Tiebreak</th></tr></thead>
+                            <tbody id="history-standings-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            const tbody = document.getElementById('history-standings-body');
+            rows.forEach((row, i) => {
+                const rank = i + 1;
+                const isMe = row.user_id === currentUserId;
+                const tr = document.createElement('tr');
+                tr.className = isMe ? 'row--me' : '';
+                tr.innerHTML = `
+                  <td class="rank-cell ${rank === 1 ? 'rank-cell--top' : ''}">${rank}</td>
+                  <td><div class="name-stack">
+                        <span class="team-name">${escapeHtml(row.team_name || 'Unnamed Team')}${isMe ? ' <span class="pill pill--muted">You</span>' : ''}</span>
+                      </div></td>
+                  <td class="num">${row.wins}–${row.losses}</td>
+                  <td class="num num--score">${row.total_points}</td>
+                  <td class="num">${row.tiebreak_error != null ? Number(row.tiebreak_error).toFixed(1) : '—'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            if (!rows.length) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-muted" style="padding:var(--space-4);">No scores recorded for this season.</td></tr>`;
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

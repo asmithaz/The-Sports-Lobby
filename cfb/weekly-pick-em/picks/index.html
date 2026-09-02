@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Weekly Pick 'Em — My Picks</title>
+    <link rel="icon" href="/favicon.ico" />
+
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="styles.css" />
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">The Sports Lobby</a>
+        <div class="nav-links">
+            <a href="/cfb/index.html" class="nav-link">CFB</a>
+        </div>
+    </nav>
+
+    <main class="page-wrapper">
+
+        <div class="dash-header">
+            <div>
+                <h1 id="league-name">Loading…</h1>
+                <div class="sub" id="league-sub"></div>
+            </div>
+            <div class="flex gap-2">
+                <a href="/cfb/weekly-pick-em/history/" id="history-link" class="btn btn--ghost">📜 History</a>
+                <a href="#" id="settings-link" class="btn btn--ghost">⚙️ Settings</a>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <a href="#" id="standings-tab-link" class="tab" style="text-decoration:none;">Standings</a>
+            <span class="tab active" data-tab="picks">My Picks</span>
+        </div>
+
+        <p class="matchup-legend">The home team is always listed second. A highlighted row is your pick — green for correct, red for incorrect, amber while the game is live.</p>
+
+        <div id="rounds-container">
+            <p class="text-muted" style="padding:var(--space-4);">Loading…</p>
+        </div>
+
+    </main>
+
+    <footer class="site-footer">
+        <span>2026 The Sports Lobby. All rights reserved.</span>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/terms.html" class="footer-link">Terms</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
+    </footer>
+
+    <script>
+        let currentUserId = null;
+        let leagueId = null;
+        let currentSeason = null;
+        let currentWeekNum = null;
+        let wpeLeague = null; // { pick_mode, scoring_mode, scope_mode }
+
+        // pending[gameId] = { picked_team, confidence_points } — local edit
+        // state, seeded from existing picks. Auto-saved to the server as
+        // soon as a game's pick is complete (see autoSaveGame).
+        const pending = {};
+        // sortState[week] = { key: 'matchup'|'date'|'conf'|'result', dir: 'asc'|'desc' }.
+        const sortState = {};
+        function getSortState(week) {
+            return sortState[week] || (sortState[week] = { key: 'date', dir: 'asc' });
+        }
+        let allGames = [];
+        let gamesById = {};
+        // tbGamesByWeek[week] = { tb1_game_id, tb2_game_id } — this league's
+        // frozen tiebreaker assignment for that week (see wpe_get_tiebreaker_games).
+        const tbGamesByWeek = {};
+        // tbGuessByWeek[week] = { tb1_guess, tb2_guess } — this user's own guesses.
+        const tbGuessByWeek = {};
+
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.appendChild(document.createTextNode(str ?? ''));
+            return d.innerHTML;
+        }
+        function fmtKickoff(iso) {
+            if (!iso) return null;
+            return new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+        }
+        function isLocked(game) {
+            if (game.status === 'final') return true;
+            if (!game.kickoff_at) return false;
+            return new Date() >= new Date(new Date(game.kickoff_at).getTime() - 5 * 60 * 1000);
+        }
+        function isCorrect(pick, game) {
+            if (!pick || game.status !== 'final') return null;
+            if (wpeLeague.pick_mode === 'spread') {
+                if (game.ats_winner_team == null) return null;
+                return pick.picked_team === game.ats_winner_team;
+            }
+            return pick.picked_team === game.winner_team;
+        }
+
+        function resolveLeagueId() {
+            const fromUrl = new URLSearchParams(window.location.search).get('league_id');
+            if (fromUrl) { sessionStorage.setItem('league_id', fromUrl); return fromUrl; }
+            return sessionStorage.getItem('league_id');
+        }
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { window.location.href = '/login/index.html'; return; }
+            currentUserId = session.user.id;
+
+            leagueId = resolveLeagueId();
+            if (!leagueId) { window.location.href = '/cfb/index.html'; return; }
+
+            document.getElementById('standings-tab-link').href = `/cfb/weekly-pick-em/dashboard/?league_id=${leagueId}`;
+            document.getElementById('history-link').href = `/cfb/weekly-pick-em/history/?league_id=${leagueId}`;
+            document.getElementById('settings-link').href = `/cfb/weekly-pick-em/settings/?league_id=${leagueId}`;
+
+            const { data: leagueRow } = await supabase
+                .from('leagues').select('name, current_season').eq('id', leagueId).single();
+            currentSeason = leagueRow?.current_season;
+            document.getElementById('league-name').textContent = leagueRow?.name ?? 'League';
+
+            const { data: memberRow } = await supabase
+                .from('league_members').select('team_name').eq('league_id', leagueId).eq('user_id', currentUserId).single();
+            if (!memberRow?.team_name) {
+                window.location.href = `/cfb/weekly-pick-em/settings/?league_id=${leagueId}&require=team_name&next=/cfb/weekly-pick-em/picks/`;
+                return;
+            }
+
+            const { data: wpeLeagueRow } = await supabase
+                .from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode').eq('league_id', leagueId).eq('season', currentSeason).single();
+            wpeLeague = wpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat', scope_mode: 'sports_lobby_choice' };
+            document.getElementById('league-sub').textContent =
+                `College Football Weekly Pick 'Em · ${wpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${wpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring`;
+
+            await loadAndRender();
+        }
+
+        async function loadAndRender() {
+            const [{ data: games }, { data: myPicks }, { data: stateRow }] = await Promise.all([
+                supabase.rpc('wpe_get_slate', { p_league_id: leagueId, p_season: currentSeason }),
+                supabase.from('wpe_picks').select('*').eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', currentUserId),
+                supabase.from('wpe_season_state').select('current_week').eq('season', currentSeason).maybeSingle()
+            ]);
+
+            allGames = games || [];
+            gamesById = Object.fromEntries(allGames.map(g => [g.id, g]));
+            currentWeekNum = stateRow?.current_week ?? null;
+
+            for (const key in pending) delete pending[key];
+            (myPicks || []).forEach(p => { pending[p.game_id] = { picked_team: p.picked_team, confidence_points: p.confidence_points }; });
+
+            const weeks = [...new Set(allGames.map(g => g.week))].sort((a, b) => a - b);
+            const container = document.getElementById('rounds-container');
+            container.innerHTML = '';
+
+            if (!weeks.length) {
+                container.innerHTML = `<p class="text-muted" style="padding:var(--space-4);">No games in your league's weekly slate yet — check back once this week's games are posted.</p>`;
+                return;
+            }
+
+            // Tiebreakers: one lazy-assign call per week that's actually open
+            // (current or past — see isFutureWeek) — no reason to freeze a
+            // random tiebreaker game for a week nobody can pick yet.
+            const openWeeksForTiebreak = weeks.filter(w => !isFutureWeek(w));
+            await Promise.all(openWeeksForTiebreak.map(async (w) => {
+                const { data } = await supabase.rpc('wpe_get_tiebreaker_games', { p_league_id: leagueId, p_season: currentSeason, p_week: w });
+                tbGamesByWeek[w] = data;
+            }));
+            const { data: myGuesses } = await supabase
+                .from('wpe_tiebreaker_guesses').select('*')
+                .eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', currentUserId);
+            for (const key in tbGuessByWeek) delete tbGuessByWeek[key];
+            (myGuesses || []).forEach(g => { tbGuessByWeek[g.week] = g; });
+
+            const defaultOpenWeek = weeks.includes(currentWeekNum) ? currentWeekNum : weeks[weeks.length - 1];
+            weeks.forEach(w => container.appendChild(renderWeek(w, w !== defaultOpenWeek)));
+        }
+
+        function weekGames(week) {
+            return allGames.filter(g => g.week === week);
+        }
+
+        // A week beyond the current one is shown as a bare "TBD" header —
+        // no matchups, no picking — until it becomes the current week.
+        // Matchups/spreads can be synced ahead of time, but showing them
+        // early read as broken/incomplete rather than "early."
+        function isFutureWeek(week) {
+            return currentWeekNum != null && week > currentWeekNum;
+        }
+
+        function renderWeek(week, startCollapsed) {
+            const games = weekGames(week);
+
+            if (isFutureWeek(week)) {
+                const block = document.createElement('div');
+                block.className = 'round-block round-block--tbd' + (wpeLeague.scoring_mode !== 'confidence' ? ' round-block--compact' : '');
+                block.dataset.week = week;
+                block.innerHTML = `
+                  <div class="round-head">
+                    <h2>Week ${week} <span class="pill pill--muted">TBD</span></h2>
+                  </div>`;
+                return block;
+            }
+
+            const block = document.createElement('div');
+            block.className = 'round-block' + (wpeLeague.scoring_mode !== 'confidence' ? ' round-block--compact' : '');
+            block.dataset.week = week;
+            if (startCollapsed) block.classList.add('collapsed');
+
+            const openGames = games.filter(g => !isLocked(g));
+            const confMax = games.length;
+            const showConf = wpeLeague.scoring_mode === 'confidence';
+
+            const hint = showConf
+                ? `Rank every pick's confidence from 1 (least sure) to ${confMax} (most sure) — each number can only be used once. Picks save automatically as soon as both a team and a rank are set.`
+                : 'Pick a winner for every game this week — picks save automatically as soon as you click a team.';
+
+            const sortTh = (key, label, extraCls) => `<th class="sortable${extraCls ? ' ' + extraCls : ''}" data-sort-key="${key}" data-label="${label}">${label}</th>`;
+
+            block.innerHTML = `
+              <div class="round-head" id="week-${week}-toggle">
+                <h2><span class="round-caret">▾</span>Week ${week}${week === currentWeekNum ? ' <span class="pill pill--muted">Current</span>' : ''}</h2>
+                <span class="round-count">${games.length} game${games.length === 1 ? '' : 's'}</span>
+              </div>
+              <div class="round-panel" id="week-${week}-panel">
+                <div class="round-hint">${hint}</div>
+                ${openGames.length > 0 ? `
+                  <div class="quick-fill-row">
+                    <span class="quick-fill-label">Quick fill:</span>
+                    <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="favorites">Select All Favorites</button>
+                    <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="underdogs">Select All Underdogs</button>
+                  </div>` : ''}
+                ${showConf ? `
+                  <div class="conf-tracker-box">
+                    <div class="conf-tracker-label">
+                      <span>Your confidence numbers</span>
+                      <div class="conf-legend">
+                        <span><i style="background:transparent; border:1px dashed var(--c-text-secondary);"></i>Available</span>
+                        <span><i style="background:var(--c-accent-dim); border:1px solid var(--c-accent-border);"></i>Assigned</span>
+                        <span><i style="background:var(--c-surface-2); border:1px solid var(--c-border-strong);"></i>Locked/live</span>
+                        <span><i style="background:var(--c-accent);"></i>Correct</span>
+                        <span><i style="background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.25);"></i>Incorrect</span>
+                      </div>
+                    </div>
+                    <div class="conf-tracker" id="week-${week}-tracker"></div>
+                  </div>` : ''}
+                <div class="table-wrap">
+                  <table class="picks-table${showConf ? '' : ' picks-table--no-conf'}">
+                    <colgroup><col class="c-matchup"><col class="c-kick">${showConf ? '<col class="c-conf">' : ''}<col class="c-result"></colgroup>
+                    <thead><tr>
+                      ${sortTh('matchup', 'Matchup')}
+                      ${sortTh('date', 'Kickoff', 'col-kick')}
+                      ${showConf ? sortTh('conf', 'Conf.') : ''}
+                      ${sortTh('result', 'Result', 'col-result')}
+                    </tr></thead>
+                    <tbody id="week-${week}-body"></tbody>
+                  </table>
+                </div>
+                ${openGames.length > 0 ? `
+                  <div class="save-bar">
+                    <span class="save-bar__msg" id="week-${week}-save-msg"></span>
+                  </div>` : ''}
+                ${renderTiebreakerCard(week)}
+              </div>
+            `;
+
+            const tbody = block.querySelector(`#week-${week}-body`);
+            games.forEach(g => tbody.appendChild(renderGameRow(g, confMax)));
+
+            const toggle = block.querySelector(`#week-${week}-toggle`);
+            if (toggle) toggle.addEventListener('click', () => block.classList.toggle('collapsed'));
+
+            wireWeekInteractions(week, block, confMax);
+            wireTiebreakerCard(week, block);
+            if (showConf) refreshConfTracker(week, block, confMax);
+            refreshSaveState(week, block);
+
+            return block;
+        }
+
+        // Two guesses toward season-long tie-breaking (not regular points).
+        // Which specific game backs each slot (random vs. last-of-week) is
+        // deliberately not surfaced in the UI — just the matchup itself,
+        // which is what you actually need to submit a guess. Both lock
+        // independently at their own game's kickoff-minus-5-minutes.
+        function renderTiebreakerCard(week) {
+            const tg = tbGamesByWeek[week];
+            const guess = tbGuessByWeek[week];
+            if (!tg || (!tg.tb1_game_id && !tg.tb2_game_id)) return '';
+
+            function slotHtml(slot, gameId, guessVal) {
+                const game = gamesById[gameId];
+                if (!game) return '';
+                const locked = isLocked(game);
+                const matchup = `${game.away_team} @ ${game.home_team}`;
+                const actualTotal = game.status === 'final' ? (game.home_score ?? 0) + (game.away_score ?? 0) : null;
+                const saved = !locked && guessVal != null;
+                const statusText = locked
+                    ? (actualTotal != null ? `Final total: ${actualTotal}` : 'Locked')
+                    : (guessVal != null ? `✓ Saved: ${guessVal}` : 'Not submitted');
+                return `
+                  <div class="tiebreak-row" data-slot="${slot}">
+                    <div class="tiebreak-info">
+                      <span class="tiebreak-label">Tiebreaker ${slot}</span>
+                      <span class="tiebreak-matchup">${escapeHtml(matchup)}</span>
+                    </div>
+                    <input type="number" class="input tiebreak-input" min="0" max="150"
+                           value="${guessVal ?? ''}" placeholder="Combined total" ${locked ? 'disabled' : ''} />
+                    <button type="button" class="btn btn--primary btn--sm tiebreak-save" ${locked ? 'disabled' : ''}>Save</button>
+                    <span class="tiebreak-status${saved ? ' tiebreak-status--saved' : ''}">${statusText}</span>
+                  </div>`;
+            }
+
+            return `
+              <div class="tiebreak-card">
+                <div class="tiebreak-card-title">Weekly Tiebreakers</div>
+                <div class="tiebreak-card-hint">Guess the combined total points scored (both teams added together) in each game below. Two guesses per week, toward season-long tie-breaking only — they don't add to your regular points. Closest cumulative guess across the whole season wins ties.</div>
+                ${slotHtml(1, tg.tb1_game_id, guess?.tb1_guess)}
+                ${slotHtml(2, tg.tb2_game_id, guess?.tb2_guess)}
+              </div>`;
+        }
+
+        function wireTiebreakerCard(week, block) {
+            block.querySelectorAll('.tiebreak-row').forEach(row => {
+                const slot = parseInt(row.dataset.slot, 10);
+                const input = row.querySelector('.tiebreak-input');
+                const btn = row.querySelector('.tiebreak-save');
+                const statusEl = row.querySelector('.tiebreak-status');
+                if (!btn) return;
+                btn.addEventListener('click', async () => {
+                    const val = parseInt(input.value, 10);
+                    if (!Number.isFinite(val)) { statusEl.textContent = 'Enter a guess first'; statusEl.classList.remove('tiebreak-status--saved'); return; }
+                    btn.disabled = true;
+                    const { error } = await supabase.rpc('wpe_submit_tiebreaker_guess', {
+                        p_league_id: leagueId, p_week: week, p_slot: slot, p_guess: val
+                    });
+                    btn.disabled = false;
+                    if (error) { statusEl.textContent = error.message; statusEl.classList.remove('tiebreak-status--saved'); return; }
+                    tbGuessByWeek[week] = { ...(tbGuessByWeek[week] || {}), [slot === 1 ? 'tb1_guess' : 'tb2_guess']: val };
+                    statusEl.textContent = `✓ Saved: ${val}`;
+                    statusEl.classList.add('tiebreak-status--saved');
+                });
+            });
+        }
+
+        function renderGameRow(g, confMax) {
+            const tr = document.createElement('tr');
+            const locked = isLocked(g);
+            const pick = pending[g.id];
+            tr.dataset.gameId = g.id;
+            tr.dataset.date = g.kickoff_at || '9999-12-31';
+            tr.dataset.matchup = `${g.away_team} @ ${g.home_team}`;
+            tr.dataset.state = g.status === 'final' ? 'final' : locked ? 'live' : 'open';
+            // Result sort rank: correct picks first, then pushes, then incorrect/no-pick, then still-undecided.
+            tr.dataset.result = g.status !== 'final' ? '3'
+                : !pick ? '2'
+                : isCorrect(pick, g) === null ? '1'
+                : isCorrect(pick, g) ? '0' : '2';
+
+            // Spread is shown regardless of pick_mode — informational in
+            // straight-up leagues, the actual line in spread leagues.
+            const favIsHome = g.favorite_team === g.home_team;
+            const awayTag = g.spread != null ? (favIsHome ? `+${g.spread}` : `−${g.spread}`) : null;
+            const homeTag = g.spread != null ? (favIsHome ? `−${g.spread}` : `+${g.spread}`) : null;
+
+            function teamRow(team, isHome, tagText, logoUrl, rank) {
+                const logoHtml = logoUrl ? `<img class="team-logo" src="${escapeHtml(logoUrl)}" alt="" />` : '';
+                const rankHtml = rank != null ? `<span class="t-rank">#${rank}</span>` : '';
+                if (g.status === 'scheduled' && !locked) {
+                    const selected = pick?.picked_team === team ? ' selected' : '';
+                    return `<div class="mu-team-row selectable${selected}" data-team="${escapeHtml(team)}">
+                        ${logoHtml}<span class="t-name">${rankHtml}<span class="t-name-label">${escapeHtml(team)}</span></span>
+                        <span class="t-right">${tagText != null ? `<span class="t-spread">${tagText}</span>` : ''}</span>
+                      </div>`;
+                }
+                const isPicked = pick?.picked_team === team;
+                const correct = isCorrect(pick, g);
+                let cls = 'plain';
+                if (isPicked) cls = g.status === 'live' ? 'picked-live' : correct === true ? 'picked-hit' : correct === false ? 'picked-miss' : 'picked-pending';
+                const score = isHome ? g.home_score : g.away_score;
+                return `<div class="mu-team-row ${cls}">
+                    ${logoHtml}<span class="t-name">${rankHtml}<span class="t-name-label">${escapeHtml(team)}</span></span>
+                    <span class="t-right">${score != null ? `<span class="t-score">${score}</span>` : ''}</span>
+                  </div>`;
+            }
+
+            // On initial render, `pending` is exactly what's in the DB (just
+            // seeded from the picks query), so it's safe to show "saved"
+            // immediately here. Live interactions clear this and only set
+            // it again once the server confirms — see setSavedIndicator.
+            const needsConf = wpeLeague.scoring_mode === 'confidence';
+            const alreadySaved = g.status !== 'final' && !!pick?.picked_team && (!needsConf || pick?.confidence_points != null);
+            const confLine = [g.away_conference, g.home_conference].filter(Boolean).join(' at ');
+            const matchupHtml = `
+              <div class="mu-head">
+                <span>${escapeHtml(confLine)}</span>
+                <span class="mu-saved" id="mu-foot-${g.id}">${alreadySaved ? '<span class="save-check">✓ Pick saved</span>' : ''}</span>
+              </div>
+              ${teamRow(g.away_team, false, awayTag, g.away_team_logo, g.away_rank)}
+              ${teamRow(g.home_team, true, homeTag, g.home_team_logo, g.home_rank)}
+            `;
+
+            let kickHtml, confHtml, resultHtml;
+
+            if (g.status === 'final') {
+                kickHtml = `<div class="kline kline--final">Final</div>`;
+            } else if (locked) {
+                kickHtml = `<div class="kline kline--live"><span class="status-dot"></span>Live${g.home_score != null ? ` · ${g.away_score}–${g.home_score}` : ''}</div>`;
+            } else {
+                kickHtml = `<div class="kline kline--muted">${fmtKickoff(g.kickoff_at) || 'Kickoff TBD'}</div>`;
+            }
+
+            if (wpeLeague.scoring_mode === 'confidence') {
+                if (g.status === 'final' || locked) {
+                    confHtml = pick?.confidence_points != null
+                        ? `<span class="conf-fixed" ${isCorrect(pick, g) === false ? 'style="color:var(--c-text-muted); text-decoration:line-through;"' : ''}>${pick.confidence_points}</span>`
+                        : `<span class="text-muted">—</span>`;
+                } else {
+                    const options = Array.from({ length: confMax }, (_, i) => i + 1);
+                    confHtml = `<select class="conf-select" data-game-id="${g.id}">
+                        <option value="">Rank…</option>
+                        ${options.map(n => `<option value="${n}" ${pick?.confidence_points === n ? 'selected' : ''}>${n}</option>`).join('')}
+                      </select>`;
+                }
+            }
+
+            if (g.status === 'final') {
+                const correct = isCorrect(pick, g);
+                if (!pick) {
+                    resultHtml = `<span class="text-muted">No pick</span>`;
+                } else if (correct === null) {
+                    resultHtml = `<span class="pill pill--muted">Push</span>`;
+                } else if (correct) {
+                    const pts = wpeLeague.scoring_mode === 'confidence' ? (pick.confidence_points ?? 0) : 1;
+                    resultHtml = `<span class="pill pill--green">✓ Correct +${pts}</span>`;
+                } else {
+                    resultHtml = `<span class="pill pill--danger">✗ Incorrect +0</span>`;
+                }
+            } else {
+                resultHtml = `<span class="text-muted">—</span>`;
+            }
+
+            tr.innerHTML = `<td>${matchupHtml}</td><td class="kick-block">${kickHtml}</td>${wpeLeague.scoring_mode === 'confidence' ? `<td>${confHtml}</td>` : ''}<td class="col-result">${resultHtml}</td>`;
+            return tr;
+        }
+
+        // "Pick saved" lives in the matchup cell itself (not the Result
+        // column, which is reserved for the game's actual outcome) with an
+        // explicit label so it's unambiguous. Deliberately NOT set the
+        // instant you click — set(gameId, block, false) clears it right
+        // away so the row goes quiet, then autoSaveGame calls
+        // set(gameId, block, true) only once the server confirms the save,
+        // giving a short, honest delay instead of a premature checkmark.
+        function setSavedIndicator(gameId, block, saved) {
+            const el = block.querySelector(`#mu-foot-${gameId}`);
+            if (!el) return;
+            el.innerHTML = saved ? '<span class="save-check">✓ Pick saved</span>' : '';
+        }
+
+        function wireWeekInteractions(week, block, confMax) {
+            const tbody = block.querySelector(`#week-${week}-body`);
+
+            tbody.querySelectorAll('tr[data-state="open"]').forEach(row => {
+                const gameId = row.dataset.gameId;
+                row.querySelectorAll('.mu-team-row.selectable').forEach(el => {
+                    el.addEventListener('click', () => {
+                        row.querySelectorAll('.mu-team-row.selectable').forEach(x => x.classList.remove('selected'));
+                        el.classList.add('selected');
+                        pending[gameId] = { ...(pending[gameId] || {}), picked_team: el.dataset.team };
+                        setSavedIndicator(gameId, block, false);
+                        autoSaveGame(gameId, week, block);
+                    });
+                });
+            });
+
+            tbody.querySelectorAll('.conf-select').forEach(sel => {
+                sel.addEventListener('change', () => {
+                    const gameId = sel.dataset.gameId;
+                    const val = sel.value ? parseInt(sel.value, 10) : null;
+                    pending[gameId] = { ...(pending[gameId] || {}), confidence_points: val };
+                    refreshConfAvailability(week, block);
+                    refreshConfTracker(week, block, confMax);
+                    setSavedIndicator(gameId, block, false);
+                    autoSaveGame(gameId, week, block);
+                });
+            });
+            refreshConfAvailability(week, block);
+
+            block.querySelectorAll('[data-fill-mode]').forEach(btn => {
+                btn.addEventListener('click', () => applyBulkFill(week, btn.dataset.fillMode, block));
+            });
+
+            block.querySelectorAll('th[data-sort-key]').forEach(th => {
+                th.addEventListener('click', () => {
+                    const state = getSortState(week);
+                    const key = th.dataset.sortKey;
+                    state.dir = (state.key === key && state.dir === 'asc') ? 'desc' : 'asc';
+                    state.key = key;
+                    sortWeekRows(week, block);
+                    updateSortHeaders(week, block);
+                });
+            });
+            updateSortHeaders(week, block);
+            refreshSaveState(week, block);
+        }
+
+        // Picks save the instant they're complete — no separate "Save"
+        // button. Flat mode: as soon as a team is clicked. Confidence mode:
+        // once BOTH a team and a confidence rank are set (the RPC requires
+        // a confidence value in that scoring mode, so there's nothing valid
+        // to persist until then — the UI just reflects the pending
+        // selection locally in the meantime).
+        async function autoSaveGame(gameId, week, block) {
+            const g = gamesById[gameId];
+            if (!g || isLocked(g)) return;
+            const p = pending[gameId];
+            if (!p?.picked_team) return;
+            if (wpeLeague.scoring_mode === 'confidence' && p.confidence_points == null) {
+                refreshSaveState(week, block);
+                return;
+            }
+
+            const { error } = await supabase.rpc('wpe_submit_pick', {
+                p_league_id: leagueId,
+                p_game_id: gameId,
+                p_picked_team: p.picked_team,
+                p_confidence_points: p.confidence_points ?? null
+            });
+
+            if (error) {
+                console.error(error);
+                refreshSaveState(week, block, error.message);
+                return;
+            }
+            setSavedIndicator(gameId, block, true);
+            refreshSaveState(week, block);
+        }
+
+        // Bulk-fills every open (unlocked) game this week with either the
+        // spread favorite or the underdog, overwriting any existing pending
+        // pick — games with no line yet (pick'em/TBD) are left untouched since
+        // there's no favorite to select. Pure client-side edit of `pending`,
+        // same Save-then-persist flow as a manual pick.
+        function applyBulkFill(week, mode, block) {
+            const games = weekGames(week).filter(g => !isLocked(g));
+            games.forEach(g => {
+                if (!g.favorite_team) return;
+                const team = mode === 'favorites' ? g.favorite_team : (g.favorite_team === g.home_team ? g.away_team : g.home_team);
+                pending[g.id] = { ...(pending[g.id] || {}), picked_team: team };
+                const row = block.querySelector(`tr[data-game-id="${g.id}"]`);
+                if (row) {
+                    row.querySelectorAll('.mu-team-row.selectable').forEach(el => {
+                        el.classList.toggle('selected', el.dataset.team === team);
+                    });
+                }
+                setSavedIndicator(g.id, block, false);
+                autoSaveGame(g.id, week, block);
+            });
+        }
+
+        function refreshConfAvailability(week, block) {
+            if (wpeLeague.scoring_mode !== 'confidence') return;
+            const selects = Array.from(block.querySelectorAll('.conf-select'));
+            const taken = new Set();
+            weekGames(week).forEach(g => {
+                const p = pending[g.id];
+                if (p?.confidence_points != null) taken.add(p.confidence_points);
+            });
+            selects.forEach(sel => {
+                const myVal = sel.value ? parseInt(sel.value, 10) : null;
+                Array.from(sel.options).forEach(opt => {
+                    if (opt.value === '') return;
+                    const n = parseInt(opt.value, 10);
+                    opt.disabled = taken.has(n) && n !== myVal;
+                });
+            });
+        }
+
+        function refreshConfTracker(week, root, confMax) {
+            const tracker = root.querySelector(`#week-${week}-tracker`);
+            if (!tracker) return;
+            tracker.innerHTML = '';
+            const numToState = {};
+            weekGames(week).forEach(g => {
+                const p = pending[g.id];
+                if (p?.confidence_points == null) return;
+                if (g.status === 'final') {
+                    numToState[p.confidence_points] = isCorrect(p, g) ? 'hit' : 'miss';
+                } else if (isLocked(g)) {
+                    numToState[p.confidence_points] = 'live';
+                } else {
+                    numToState[p.confidence_points] = 'pending';
+                }
+            });
+            for (let n = 1; n <= confMax; n++) {
+                const chip = document.createElement('div');
+                chip.className = 'conf-chip';
+                chip.textContent = n;
+                const state = numToState[n];
+                if (state) chip.classList.add(`conf-chip--${state}`);
+                tracker.appendChild(chip);
+            }
+        }
+
+        // Purely informational now — picks save themselves (see
+        // autoSaveGame), so this just reflects a running count, never
+        // gates an action.
+        function refreshSaveState(week, root, errorMsg) {
+            const msg = root.querySelector(`#week-${week}-save-msg`);
+            if (!msg) return;
+
+            if (errorMsg) {
+                msg.classList.remove('complete');
+                msg.textContent = `Failed to save: ${errorMsg}`;
+                return;
+            }
+
+            const openGames = weekGames(week).filter(g => !isLocked(g));
+            if (!openGames.length) {
+                msg.textContent = '';
+                msg.classList.remove('complete');
+                return;
+            }
+
+            const needsConf = wpeLeague.scoring_mode === 'confidence';
+            const savedCount = openGames.filter(g => {
+                const p = pending[g.id];
+                return !!p?.picked_team && (!needsConf || p.confidence_points != null);
+            }).length;
+            const remaining = openGames.length - savedCount;
+
+            msg.textContent = remaining === 0
+                ? `${savedCount}/${openGames.length} games saved ✓`
+                : `${savedCount}/${openGames.length} games saved — ${remaining} remaining to save`;
+            msg.classList.toggle('complete', remaining === 0);
+        }
+
+        function sortWeekRows(week, block) {
+            const { key, dir } = getSortState(week);
+            const mult = dir === 'asc' ? 1 : -1;
+            const confOf = row => pending[row.dataset.gameId]?.confidence_points ?? -1;
+            const tbody = block.querySelector(`#week-${week}-body`);
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort((a, b) => {
+                let cmp;
+                if (key === 'matchup') cmp = a.dataset.matchup.localeCompare(b.dataset.matchup);
+                else if (key === 'conf') cmp = confOf(a) - confOf(b);
+                else if (key === 'result') cmp = Number(a.dataset.result) - Number(b.dataset.result);
+                else cmp = a.dataset.date.localeCompare(b.dataset.date);
+                return cmp * mult;
+            });
+            rows.forEach(r => tbody.appendChild(r));
+        }
+
+        function updateSortHeaders(week, block) {
+            const { key, dir } = getSortState(week);
+            block.querySelectorAll('th[data-sort-key]').forEach(th => {
+                const active = th.dataset.sortKey === key;
+                th.classList.toggle('sort-active', active);
+                th.textContent = th.dataset.label + (active ? (dir === 'desc' ? ' ▼' : ' ▲') : '');
+            });
+        }
+
+        init();
+    </script>
+</body>
+</html>

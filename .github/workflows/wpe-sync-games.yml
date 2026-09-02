@@ -1,0 +1,25 @@
+name: CFB Weekly Pick 'Em Game Sync
+
+# No `schedule:` trigger — the recurring sync runs as a pg_cron + pg_net
+# job inside Postgres itself from day one (cfb/weekly-pick-em/schema.sql
+# SECTION 8), per the lesson learned from fcp-sync-scores' GitHub Actions
+# `schedule:` going silent for 5+ hours during a live event on 2026-08-27
+# (see .github/workflows/fcp-sync-scores.yml). workflow_dispatch is kept
+# as a manual fallback / for local testing.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call wpe-sync-games Edge Function
+        run: |
+          curl -sS -X POST "${SUPABASE_URL}/functions/v1/wpe-sync-games" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --fail-with-body
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

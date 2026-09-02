@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Bowl Season Pick 'Em — Dashboard</title>
+    <title>Weekly Pick 'Em — Dashboard</title>
     <link rel="icon" href="/favicon.ico" />
 
     <link rel="stylesheet" href="/css/design-tokens.css" />
@@ -35,32 +35,24 @@
             </div>
             <div class="flex gap-2">
                 <button type="button" id="invite-btn" class="btn btn--ghost">✉️ Invite</button>
-                <a href="/cfb/bowl-season-pick-em/history/" id="history-link" class="btn btn--ghost">📜 History</a>
+                <a href="/cfb/weekly-pick-em/history/" id="history-link" class="btn btn--ghost">📜 History</a>
                 <a href="#" id="settings-link" class="btn btn--ghost">⚙️ Settings</a>
             </div>
         </div>
 
-        <div class="status-bar status-bar--warning hidden" id="sync-status-bar">
-            <div class="status-bar__left">
-                <span class="status-dot status-dot--warning"></span>
-                <span class="status-bar__text" id="sync-status-text"></span>
-            </div>
-            <button class="btn btn--ghost btn--sm" id="notify-btn">Notify me when all bowls are set</button>
-        </div>
-
         <div class="tabs">
             <span class="tab active" data-tab="standings">Standings</span>
-            <a href="/cfb/bowl-season-pick-em/picks/" id="picks-tab-link" class="tab" style="text-decoration:none;">My Picks</a>
+            <a href="/cfb/weekly-pick-em/picks/" id="picks-tab-link" class="tab" style="text-decoration:none;">My Picks</a>
         </div>
 
         <div class="tab-content active" id="tab-standings">
 
             <div class="section-block">
                 <div class="section-title">Overall Standings</div>
-                <div class="section-sub">Click a name for their round-by-round breakdown. Tiebreaker locks at Championship kickoff − 5 min.</div>
+                <div class="section-sub">Click a name for their week-by-week breakdown. Tiebreak = cumulative closeness on the weekly total-score guesses, closer to zero is better.</div>
                 <div class="table-wrap">
                     <table class="data-table">
-                        <thead><tr><th>#</th><th>Team Name</th><th>Record</th><th>Points</th><th>Tiebreaker</th></tr></thead>
+                        <thead><tr><th>#</th><th>Team Name</th><th>Record</th><th>Points</th><th>Tiebreak</th></tr></thead>
                         <tbody id="standings-body"><tr><td colspan="5" class="text-muted" style="padding:var(--space-4);">Loading…</td></tr></tbody>
                     </table>
                 </div>
@@ -68,7 +60,8 @@
 
             <div class="section-block">
                 <div class="section-title">Pick Comparison</div>
-                <div class="section-sub">Everyone's picks are hidden until that game locks — you can always see your own. Listed in kickoff order.</div>
+                <div class="section-sub">Everyone's picks are hidden until that game locks — you can always see your own.</div>
+                <div class="pill-toggle" id="week-toggle" style="margin-bottom:var(--space-3);"></div>
                 <div class="pg-wrap">
                     <table class="pg-table">
                         <thead><tr id="pg-header-row"><th class="pg-matchup-th">Matchup</th></tr></thead>
@@ -127,13 +120,15 @@
         let currentUserId = null;
         let leagueId = null;
         let currentSeason = null;
-        let bpeLeague = null; // { pick_mode, scoring_mode }
+        let wpeLeague = null; // { pick_mode, scoring_mode, scope_mode }
+        let comparisonWeeks = [];
+        let currentComparisonWeek = null;
 
-        const TIER_LABEL = { bowl: 'Bowl', cfp_r1: 'CFP R1', cfp_qf: 'Quarterfinal', cfp_sf: 'Semifinal', cfp_championship: 'Championship' };
-        const WAVE_LABEL = { w1: 'Bowls+R1', w2: 'Quarterfinals', w3: 'Semifinals', w4: 'Championship' };
-        function waveForTier(tier) {
-            return { bowl: 'w1', cfp_r1: 'w1', cfp_qf: 'w2', cfp_sf: 'w3', cfp_championship: 'w4' }[tier];
-        }
+        const SCOPE_LABEL = {
+            power4: 'Power 4', group_of_5: 'Group of 5', all_fbs: 'All FBS',
+            sports_lobby_choice: 'Sports Lobby Choice', custom: 'Custom conferences'
+        };
+
         function abbrev(name) {
             return (name || '').replace(/[^A-Za-z ]/g, '').split(' ').filter(Boolean)
                 .map(w => w[0]).join('').slice(0, 4).toUpperCase() || '—';
@@ -151,7 +146,7 @@
         }
         function isCorrect(pick, game) {
             if (!pick || game.status !== 'final') return null;
-            if (bpeLeague.pick_mode === 'spread') {
+            if (wpeLeague.pick_mode === 'spread') {
                 if (game.ats_winner_team == null) return null; // push
                 return pick.picked_team === game.ats_winner_team;
             }
@@ -165,7 +160,7 @@
         }
 
         function setupInviteModal(leagueRow) {
-            const inviteLink = window.location.origin + '/join/?code=bpe-' + (leagueRow?.invite_code || '').toLowerCase();
+            const inviteLink = window.location.origin + '/join/?code=wpe-' + (leagueRow?.invite_code || '').toLowerCase();
             document.getElementById('invite-link').value = inviteLink;
 
             const overlay = document.getElementById('invite-overlay');
@@ -229,7 +224,7 @@
 
                 const subject = `You're invited to join ${leagueRow?.name || 'a league'} on The Sports Lobby`;
                 const body = `
-                    <p>You've been invited to join <strong>${escapeHtml(leagueRow?.name || 'a league')}</strong>, a College Football Bowl Season Pick 'Em league on The Sports Lobby.</p>
+                    <p>You've been invited to join <strong>${escapeHtml(leagueRow?.name || 'a league')}</strong>, a College Football Weekly Pick 'Em league on The Sports Lobby.</p>
                     ${emailButton(inviteLink, 'Join League')}
                     <p style="margin-top:16px;font-size:12px;">Or copy this link: ${escapeHtml(inviteLink)}</p>
                 `;
@@ -262,9 +257,9 @@
             leagueId = resolveLeagueId();
             if (!leagueId) { window.location.href = '/cfb/index.html'; return; }
 
-            document.getElementById('settings-link').href = `/cfb/bowl-season-pick-em/settings/?league_id=${leagueId}`;
-            document.getElementById('history-link').href = `/cfb/bowl-season-pick-em/history/?league_id=${leagueId}`;
-            document.getElementById('picks-tab-link').href = `/cfb/bowl-season-pick-em/picks/?league_id=${leagueId}`;
+            document.getElementById('settings-link').href = `/cfb/weekly-pick-em/settings/?league_id=${leagueId}`;
+            document.getElementById('history-link').href = `/cfb/weekly-pick-em/history/?league_id=${leagueId}`;
+            document.getElementById('picks-tab-link').href = `/cfb/weekly-pick-em/picks/?league_id=${leagueId}`;
 
             const { data: leagueRow } = await supabase
                 .from('leagues').select('name, current_season, invite_code').eq('id', leagueId).single();
@@ -275,62 +270,21 @@
             const { data: memberRow } = await supabase
                 .from('league_members').select('team_name').eq('league_id', leagueId).eq('user_id', currentUserId).single();
             if (!memberRow?.team_name) {
-                window.location.href = `/cfb/bowl-season-pick-em/settings/?league_id=${leagueId}&require=team_name&next=/cfb/bowl-season-pick-em/dashboard/`;
+                window.location.href = `/cfb/weekly-pick-em/settings/?league_id=${leagueId}&require=team_name&next=/cfb/weekly-pick-em/dashboard/`;
                 return;
             }
 
-            const { data: bpeLeagueRow } = await supabase
-                .from('bpe_leagues').select('pick_mode, scoring_mode').eq('league_id', leagueId).eq('season', currentSeason).single();
-            bpeLeague = bpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat' };
+            const { data: wpeLeagueRow } = await supabase
+                .from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode').eq('league_id', leagueId).eq('season', currentSeason).single();
+            wpeLeague = wpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat', scope_mode: 'sports_lobby_choice' };
             document.getElementById('league-sub').textContent =
-                `College Football Bowl Season Pick 'Em · ${bpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${bpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring`;
+                `College Football Weekly Pick 'Em · ${SCOPE_LABEL[wpeLeague.scope_mode] || 'Custom'} · ${wpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${wpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring`;
 
-            await Promise.all([loadSyncStatus(), loadStandings(), loadPickComparison(), updateInviteVisibility()]);
-        }
-
-        async function updateInviteVisibility() {
-            // Non-draft league: invites close once the first bowl kicks off, same spirit
-            // as draft-type leagues hiding invites once the draft starts.
-            const { data: firstGame } = await supabase
-                .from('bpe_games').select('kickoff_at').eq('season', currentSeason)
-                .not('kickoff_at', 'is', null).order('kickoff_at', { ascending: true }).limit(1).maybeSingle();
-            if (firstGame?.kickoff_at && new Date(firstGame.kickoff_at) <= new Date()) {
-                document.getElementById('invite-btn').style.display = 'none';
-            }
-        }
-
-        async function loadSyncStatus() {
-            const { data: meta } = await supabase
-                .from('bpe_season_meta').select('expected_game_count, all_bowls_set_at').eq('season', currentSeason).maybeSingle();
-            const { count } = await supabase
-                .from('bpe_games').select('id', { count: 'exact', head: true }).eq('season', currentSeason);
-
-            const expected = meta?.expected_game_count ?? 46;
-            const synced = count ?? 0;
-            const bar = document.getElementById('sync-status-bar');
-
-            if (meta?.all_bowls_set_at || synced >= expected) {
-                bar.classList.add('hidden');
-                return;
-            }
-            bar.classList.remove('hidden');
-            document.getElementById('sync-status-text').innerHTML =
-                `<b>${synced} of ${expected}</b> bowl matchups are set so far.`;
-
-            const btn = document.getElementById('notify-btn');
-            btn.addEventListener('click', async () => {
-                btn.disabled = true;
-                const { error } = await supabase.rpc('bpe_opt_in_bowls_set_notification', { p_season: currentSeason });
-                btn.textContent = error ? 'Something went wrong' : "You'll get an email";
-                if (error) { btn.disabled = false; console.error(error); }
-            });
+            await Promise.all([loadStandings(), loadPickComparisonInit()]);
         }
 
         async function loadStandings() {
-            const [{ data: rows, error }, { data: champGame }] = await Promise.all([
-                supabase.rpc('bpe_get_standings', { p_league_id: leagueId }),
-                supabase.from('bpe_games').select('status, kickoff_at').eq('season', currentSeason).eq('tier', 'cfp_championship').maybeSingle()
-            ]);
+            const { data: rows, error } = await supabase.rpc('wpe_get_standings', { p_league_id: leagueId });
             const tbody = document.getElementById('standings-body');
             if (error || !rows) {
                 tbody.innerHTML = `<tr><td colspan="5" class="text-danger" style="padding:var(--space-4);">Failed to load standings.</td></tr>`;
@@ -345,16 +299,12 @@
                 (profiles || []).forEach(p => { profileMap[p.id] = p; });
             }
 
-            const tiebreakerRevealed = isLocked(champGame);
-
             tbody.innerHTML = '';
             rows.forEach((row, i) => {
                 const rank = i + 1;
                 const record = `${row.wins}–${row.losses}`;
                 const isMe = row.user_id === currentUserId;
                 const ownerName = profileMap[row.user_id]?.display_name;
-                const canSeeTiebreaker = tiebreakerRevealed || isMe;
-                const tiebreakerCell = !canSeeTiebreaker ? '🔒' : (row.tiebreaker_guess ?? '—');
 
                 const tr = document.createElement('tr');
                 tr.className = isMe ? 'row--me' : '';
@@ -366,17 +316,15 @@
                       </div></div></td>
                   <td class="num">${record}</td>
                   <td class="num num--score">${row.total_points}</td>
-                  <td class="num">${tiebreakerCell}</td>
+                  <td class="num">${row.tiebreak_error != null ? Number(row.tiebreak_error).toFixed(1) : '—'}</td>
                 `;
 
                 const trB = document.createElement('tr');
                 trB.className = 'breakdown-row';
                 trB.innerHTML = `<td colspan="5"><div class="breakdown">
-                    <div class="breakdown-hint">Click a round to see that round's picks.</div>
-                    <div class="breakdown-waves">
-                      ${['w1','w2','w3','w4'].map(w => `<div class="breakdown-wave ${w==='w1'?'active':''}" data-wave="${w}"><div class="wl">${WAVE_LABEL[w]}</div><div class="wv">${row[({w1:'wave1_points',w2:'wave2_points',w3:'wave3_points',w4:'wave4_points'})[w]]}</div></div>`).join('')}
-                    </div>
-                    <div class="pick-chips" data-loaded="">Loading…</div>
+                    <div class="breakdown-hint">Click a week to see that week's picks.</div>
+                    <div class="breakdown-waves"><span class="text-muted text-xs">Loading…</span></div>
+                    <div class="pick-chips" data-loaded=""></div>
                   </div></td>`;
 
                 tr.querySelector('.name-cell').addEventListener('click', async () => {
@@ -395,60 +343,109 @@
 
         async function renderUserBreakdown(userId, wavesEl, chipsEl) {
             const { data: picks } = await supabase
-                .from('bpe_picks')
-                .select('game_id, picked_team, confidence_points, bpe_games(bowl_name, tier, status, winner_team, ats_winner_team, kickoff_at)')
+                .from('wpe_picks')
+                .select('game_id, week, picked_team, confidence_points, wpe_games(home_team, away_team, status, winner_team, ats_winner_team, kickoff_at)')
                 .eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', userId)
-                .order('bpe_games(kickoff_at)', { ascending: true });
+                .order('week', { ascending: true });
 
-            const byWave = { w1: [], w2: [], w3: [], w4: [] };
+            const byWeek = {};
             (picks || []).forEach(p => {
-                const g = p.bpe_games;
+                const g = p.wpe_games;
                 if (!g) return;
-                const wave = waveForTier(g.tier);
                 const correct = isCorrect(p, g);
-                byWave[wave].push({
-                    label: abbrev(g.bowl_name),
+                (byWeek[p.week] = byWeek[p.week] || []).push({
+                    label: `${abbrev(g.away_team)}@${abbrev(g.home_team)}`,
                     state: correct === null ? 'pending' : correct ? 'hit' : 'miss'
                 });
             });
 
-            let currentWave = 'w1';
+            const weeks = Object.keys(byWeek).map(Number).sort((a, b) => a - b);
+            if (!weeks.length) {
+                wavesEl.innerHTML = `<span class="text-muted text-xs">No picks yet.</span>`;
+                chipsEl.innerHTML = '';
+                return;
+            }
+
+            let currentWeek = weeks[weeks.length - 1];
+
+            function renderWeekBoxes() {
+                wavesEl.innerHTML = weeks.map(w => {
+                    const hits = byWeek[w].filter(c => c.state === 'hit').length;
+                    return `<div class="breakdown-wave ${w === currentWeek ? 'active' : ''}" data-week="${w}"><div class="wl">Week ${w}</div><div class="wv">${hits}/${byWeek[w].length}</div></div>`;
+                }).join('');
+                wavesEl.querySelectorAll('.breakdown-wave').forEach(el => {
+                    el.addEventListener('click', () => {
+                        currentWeek = parseInt(el.dataset.week, 10);
+                        renderWeekBoxes();
+                        renderChips();
+                    });
+                });
+            }
             function renderChips() {
-                const list = byWave[currentWave];
+                const list = byWeek[currentWeek] || [];
                 chipsEl.innerHTML = list.length
                     ? list.map(c => `<span class="pick-chip ${c.state === 'hit' ? 'pick-chip--hit' : c.state === 'miss' ? 'pick-chip--miss' : ''}">${c.label}</span>`).join('')
-                    : `<span class="text-muted text-xs">No visible picks in this round yet.</span>`;
+                    : `<span class="text-muted text-xs">No visible picks this week.</span>`;
 
-                // Left-align the chip strip with whichever wave box is active. Uses
-                // getBoundingClientRect (not offsetLeft, which measures against the
-                // nearest *positioned* ancestor — not necessarily .breakdown-waves,
-                // so it doesn't correspond to .pick-chips' own static-flow origin).
                 const activeWave = wavesEl.querySelector('.breakdown-wave.active');
                 chipsEl.style.marginLeft = activeWave
                     ? `${activeWave.getBoundingClientRect().left - wavesEl.getBoundingClientRect().left}px`
                     : '0';
             }
+            renderWeekBoxes();
             renderChips();
-
-            const waveEls = wavesEl.querySelectorAll('.breakdown-wave');
-            waveEls.forEach(el => {
-                el.addEventListener('click', () => {
-                    waveEls.forEach(w => w.classList.remove('active'));
-                    el.classList.add('active');
-                    currentWave = el.dataset.wave;
-                    renderChips();
-                });
-            });
         }
 
-        async function loadPickComparison() {
-            const [{ data: games }, { data: members }, { data: allPicks }] = await Promise.all([
-                supabase.from('bpe_games').select('*').eq('season', currentSeason).order('kickoff_at', { ascending: true, nullsFirst: false }),
+        async function loadPickComparisonInit() {
+            const [{ data: slate }, { data: stateRow }] = await Promise.all([
+                supabase.rpc('wpe_get_slate', { p_league_id: leagueId, p_season: currentSeason }),
+                supabase.from('wpe_season_state').select('current_week').eq('season', currentSeason).maybeSingle()
+            ]);
+
+            // Future weeks aren't offered here at all — nothing to compare
+            // until a week is actually open for picking (matches the picks
+            // page's "TBD" treatment of weeks beyond the current one).
+            const currentWk = stateRow?.current_week ?? null;
+            comparisonWeeks = [...new Set((slate || []).map(g => g.week))]
+                .filter(w => currentWk == null || w <= currentWk)
+                .sort((a, b) => a - b);
+            if (!comparisonWeeks.length) {
+                document.getElementById('pg-body').innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No games synced yet.</td></tr>`;
+                return;
+            }
+
+            currentComparisonWeek = comparisonWeeks.includes(stateRow?.current_week)
+                ? stateRow.current_week
+                : comparisonWeeks[comparisonWeeks.length - 1];
+
+            renderWeekToggle();
+            await loadPickComparisonGrid();
+        }
+
+        function renderWeekToggle() {
+            const toggle = document.getElementById('week-toggle');
+            toggle.innerHTML = comparisonWeeks.map(w =>
+                `<button class="pill ${w === currentComparisonWeek ? 'pill--green' : 'pill--muted'}" data-week="${w}">Wk ${w}</button>`
+            ).join('');
+            toggle.onclick = (e) => {
+                const btn = e.target.closest('button[data-week]');
+                if (!btn) return;
+                currentComparisonWeek = parseInt(btn.dataset.week, 10);
+                renderWeekToggle();
+                loadPickComparisonGrid();
+            };
+        }
+
+        async function loadPickComparisonGrid() {
+            const [{ data: games }, { data: members }, { data: weekPicks }] = await Promise.all([
+                supabase.rpc('wpe_get_slate', { p_league_id: leagueId, p_season: currentSeason, p_week: currentComparisonWeek }),
                 supabase.from('league_members').select('user_id, team_name').eq('league_id', leagueId),
-                supabase.from('bpe_picks').select('user_id, game_id, picked_team, confidence_points').eq('league_id', leagueId).eq('season', currentSeason)
+                supabase.from('wpe_picks').select('user_id, game_id, picked_team, confidence_points')
+                    .eq('league_id', leagueId).eq('season', currentSeason).eq('week', currentComparisonWeek)
             ]);
 
             const headerRow = document.getElementById('pg-header-row');
+            headerRow.innerHTML = '<th class="pg-matchup-th">Matchup</th>';
             const orderedMembers = (members || []).sort((a, b) => (a.user_id === currentUserId ? -1 : b.user_id === currentUserId ? 1 : 0));
             orderedMembers.forEach(m => {
                 const th = document.createElement('th');
@@ -462,23 +459,17 @@
             });
 
             const picksByGameUser = {};
-            (allPicks || []).forEach(p => {
+            (weekPicks || []).forEach(p => {
                 picksByGameUser[`${p.game_id}:${p.user_id}`] = p;
             });
 
             const body = document.getElementById('pg-body');
             body.innerHTML = '';
             if (!games || games.length === 0) {
-                body.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No games synced yet.</td></tr>`;
+                body.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No games in this week's slate.</td></tr>`;
                 return;
             }
 
-            // Player result cell: logo + full team name (wraps rather than truncating,
-            // since unlike the abbreviation badge this now needs to read at a glance) +
-            // a result line once the pick's outcome is knowable. Games another member's
-            // pick hasn't unlocked for yet render as 🔒 (see bpe_picks RLS in schema.sql —
-            // the row is simply absent from picksByGameUser, not distinguishable client-side
-            // from "no pick made", so isLocked(g) is what decides which empty state to show).
             function pcellHtml(pick, g, isMe) {
                 if (!pick) {
                     if (!isMe && !isLocked(g)) return `<div class="pcell pcell--hidden">🔒</div>`;
@@ -497,38 +488,27 @@
                 if (correct === null) {
                     return `<div class="pcell pcell--pending">${logoHtml}${nameHtml}<span class="pcell-result">Push</span></div>`;
                 }
-                const pts = bpeLeague.scoring_mode === 'confidence' ? (pick.confidence_points ?? 0)
-                    : { bowl: 1, cfp_r1: 2, cfp_qf: 3, cfp_sf: 4, cfp_championship: 5 }[g.tier];
+                const pts = wpeLeague.scoring_mode === 'confidence' ? (pick.confidence_points ?? 0) : 1;
                 return correct
                     ? `<div class="pcell pcell--hit">${logoHtml}${nameHtml}<span class="pcell-result">✓ +${pts}</span></div>`
                     : `<div class="pcell pcell--miss">${logoHtml}${nameHtml}<span class="pcell-result">✗ +0</span></div>`;
             }
 
-            let lastTier = null;
             games.forEach(g => {
-                if (g.tier !== lastTier) {
-                    lastTier = g.tier;
-                    const tr = document.createElement('tr');
-                    tr.className = 'pg-round-row';
-                    tr.innerHTML = `<td colspan="${1 + orderedMembers.length}">${TIER_LABEL[g.tier]}</td>`;
-                    body.appendChild(tr);
-                }
-
                 const tr = document.createElement('tr');
                 const awayTag = g.spread != null && g.favorite_team ? (g.favorite_team === g.away_team ? `−${g.spread}` : `+${g.spread}`) : null;
                 const homeTag = g.spread != null && g.favorite_team ? (g.favorite_team === g.home_team ? `−${g.spread}` : `+${g.spread}`) : null;
-                // Matchup column is shared/informational now (picks live in each player's
-                // own cell), so the only highlight here is the actual winner, in green.
-                function muRow(team, isWinner, score, spreadTag, logoUrl) {
+                function muRow(team, isWinner, score, spreadTag, logoUrl, rank) {
                     const logoHtml = logoUrl ? `<img class="team-logo" src="${escapeHtml(logoUrl)}" alt="" />` : '';
+                    const rankHtml = rank != null ? `<span class="t-rank">#${rank}</span>` : '';
                     const rightHtml = score != null ? `<span class="t-score">${score}</span>`
                         : spreadTag != null ? `<span class="t-spread">${spreadTag}</span>` : '';
-                    return `<div class="mu-team-row${isWinner ? ' winner' : ''}">${logoHtml}<span class="t-name">${escapeHtml(team)}</span>${rightHtml}</div>`;
+                    return `<div class="mu-team-row${isWinner ? ' winner' : ''}">${logoHtml}${rankHtml}<span class="t-name">${escapeHtml(team)}</span>${rightHtml}</div>`;
                 }
                 const statusSuffix = g.status === 'final' ? ' · Final' : g.status === 'live' ? ' · Live' : '';
-                let matchupCell = `<div class="mu-head">${escapeHtml(g.bowl_name)}${statusSuffix}</div>
-                  ${muRow(g.away_team, g.winner_team === g.away_team, g.away_score, awayTag, g.away_team_logo)}
-                  ${muRow(g.home_team, g.winner_team === g.home_team, g.home_score, homeTag, g.home_team_logo)}`;
+                let matchupCell = `<div class="mu-head">Week ${g.week}${statusSuffix}</div>
+                  ${muRow(g.away_team, g.winner_team === g.away_team, g.away_score, awayTag, g.away_team_logo, g.away_rank)}
+                  ${muRow(g.home_team, g.winner_team === g.home_team, g.home_score, homeTag, g.home_team_logo, g.home_rank)}`;
                 let row = `<td class="pg-matchup-cell">${matchupCell}</td>`;
 
                 orderedMembers.forEach(m => {

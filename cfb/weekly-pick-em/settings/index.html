@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>League Settings — Weekly Pick 'Em</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
+    <script src="/js/auth.js"></script>
+
+    <style>
+        .scope-count { font-weight: var(--weight-normal); color: var(--c-text-muted); font-size: var(--text-xs); }
+        .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-2); }
+        .checkbox-option { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+                            border: 0.5px solid var(--c-border-strong); border-radius: var(--radius-sm); font-size: var(--text-sm);
+                            color: var(--c-text-primary); cursor: pointer; }
+        .checkbox-option:has(input:checked) { border-color: var(--c-accent-border); background: var(--c-accent-dim); }
+        .checkbox-option input { accent-color: var(--c-accent); flex-shrink: 0; }
+    </style>
+</head>
+<body>
+
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">The Sports Lobby</a>
+        <div class="nav-links">
+            <a href="/cfb/index.html" class="nav-link">CFB</a>
+        </div>
+    </nav>
+
+    <main class="page-wrapper page-wrapper--center">
+        <h2 class="page-title mb-1" id="league-name">Loading…</h2>
+        <p class="page-subtitle mb-4">League Settings</p>
+
+        <div class="card" style="width:100%; max-width:480px; margin-bottom:var(--space-4);">
+            <h3 class="mb-3">Your Team Name</h3>
+            <p class="field-hint mb-3">Required for this league — it's what shows in standings instead of your account name.</p>
+            <form onsubmit="event.preventDefault(); saveTeamName();">
+                <div class="field">
+                    <label class="label" for="team-name">Team Name</label>
+                    <input class="input" type="text" id="team-name" name="team-name" maxlength="30" placeholder="e.g. Sunday Scaries" required />
+                </div>
+                <p id="team-name-status" class="text-xs mb-3"></p>
+                <button type="submit" class="btn btn--primary btn--block" id="team-name-save-btn">Save</button>
+            </form>
+        </div>
+
+        <div class="card hidden" id="commissioner-card" style="width:100%; max-width:480px; margin-bottom:var(--space-4);">
+            <h3 class="mb-3">League Rules</h3>
+            <p class="field-hint mb-3" id="rules-lock-note"></p>
+            <form onsubmit="event.preventDefault(); saveLeagueSettings();">
+                <div class="field">
+                    <label class="label">Picking Against</label>
+                    <div class="radio-group">
+                        <label class="radio-option" id="pick-mode-straight-option">
+                            <input type="radio" name="pick-mode" value="straight_up" />
+                            <span class="radio-label"><strong>Straight Up</strong></span>
+                        </label>
+                        <label class="radio-option" id="pick-mode-spread-option">
+                            <input type="radio" name="pick-mode" value="spread" />
+                            <span class="radio-label"><strong>Against the Spread</strong></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label">Scoring</label>
+                    <div class="radio-group">
+                        <label class="radio-option" id="scoring-mode-flat-option">
+                            <input type="radio" name="scoring-mode" value="flat" />
+                            <span class="radio-label"><strong>Flat Points</strong></span>
+                        </label>
+                        <label class="radio-option" id="scoring-mode-confidence-option">
+                            <input type="radio" name="scoring-mode" value="confidence" />
+                            <span class="radio-label"><strong>Confidence Points</strong></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label">Weekly Game Slate</label>
+                    <p class="field-hint mb-2">This one stays editable any time — it only changes which games are offered starting next week, not picks already made.</p>
+                    <div class="radio-group" id="scope-radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="scope-mode" value="sports_lobby_choice" onchange="onScopeModeChange(this.value)" />
+                            <span class="radio-label">
+                                <strong>Sports Lobby Choice <span class="scope-count" data-scope="sports_lobby_choice">(…)</span></strong>
+                                <span>Our weekly pick of the best matchups across all of FBS, with at least 6 Group of 5 games guaranteed</span>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="scope-mode" value="power4" onchange="onScopeModeChange(this.value)" />
+                            <span class="radio-label">
+                                <strong>Power 4 <span class="scope-count" data-scope="power4">(…)</span></strong>
+                                <span>SEC, Big Ten, Big 12, ACC only</span>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="scope-mode" value="group_of_5" onchange="onScopeModeChange(this.value)" />
+                            <span class="radio-label">
+                                <strong>Group of 5 <span class="scope-count" data-scope="group_of_5">(…)</span></strong>
+                                <span>American, Conference USA, MAC, Mountain West, Sun Belt</span>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="scope-mode" value="all_fbs" onchange="onScopeModeChange(this.value)" />
+                            <span class="radio-label">
+                                <strong>All FBS <span class="scope-count" data-scope="all_fbs">(…)</span></strong>
+                                <span>Every scheduled FBS game, every week</span>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="scope-mode" value="custom" onchange="onScopeModeChange(this.value)" />
+                            <span class="radio-label">
+                                <strong>Select Your Own <span class="scope-count" data-scope="custom">(…)</span></strong>
+                                <span>Pick specific conferences, plus an optional Top 25 games toggle</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="custom-scope-section" class="tier-section hidden">
+                    <label class="subsection-label">Conferences</label>
+                    <div class="checkbox-grid" id="conference-checkboxes"></div>
+                    <label class="checkbox-option" style="margin-top:var(--space-3); display:inline-flex;">
+                        <input type="checkbox" id="include-top25" onchange="onCustomScopeChange()" />
+                        <span>Include Top 25 games, even if the opponent's conference isn't checked above</span>
+                    </label>
+                    <p class="field-hint text-danger hidden" id="custom-scope-error">Select at least one conference, or turn on Top 25 games.</p>
+                </div>
+
+                <div class="tier-section">
+                    <label class="checkbox-option" style="display:inline-flex;">
+                        <input type="checkbox" id="include-week-zero" />
+                        <span>Include Week 0 games — the season-opening slate about a week before the main schedule</span>
+                    </label>
+                </div>
+
+                <p id="rules-status" class="text-xs mb-3" style="margin-top:var(--space-4);"></p>
+                <button type="submit" class="btn btn--primary btn--block" id="rules-save-btn">Save</button>
+            </form>
+        </div>
+
+        <a href="/cfb/weekly-pick-em/dashboard/" class="btn btn--ghost mt-2">← Back to League Dashboard</a>
+    </main>
+
+    <footer class="site-footer">
+        <span>2026 The Sports Lobby. All rights reserved.</span>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/terms.html" class="footer-link">Terms</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
+    </footer>
+
+    <script>
+        let currentUserId = null;
+        let leagueId = null;
+        let currentSeason = null;
+        let redirectAfterSave = false;
+        let rulesLocked = false;
+
+        function resolveLeagueId() {
+            const fromUrl = new URLSearchParams(window.location.search).get('league_id');
+            if (fromUrl) { sessionStorage.setItem('league_id', fromUrl); return fromUrl; }
+            return sessionStorage.getItem('league_id');
+        }
+
+        function onScopeModeChange(value) {
+            document.getElementById('custom-scope-section').classList.toggle('hidden', value !== 'custom');
+        }
+
+        function getCheckedConferences() {
+            return [...document.querySelectorAll('#conference-checkboxes input:checked')].map(el => el.value);
+        }
+
+        async function onCustomScopeChange() {
+            document.getElementById('custom-scope-error').classList.add('hidden');
+            await refreshCustomCount();
+        }
+
+        async function refreshCustomCount() {
+            const { data } = await supabase.rpc('wpe_scope_preview_counts', {
+                p_season: currentSeason,
+                p_custom_conferences: getCheckedConferences(),
+                p_custom_include_top25: document.getElementById('include-top25').checked
+            });
+            const row = (data || []).find(r => r.scope_mode === 'custom');
+            const el = document.querySelector('.scope-count[data-scope="custom"]');
+            if (el) el.textContent = `(approx. ${row?.game_count ?? 0} games/week)`;
+        }
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { window.location.href = '/login/index.html'; return; }
+            currentUserId = session.user.id;
+
+            leagueId = resolveLeagueId();
+            if (!leagueId) { window.location.href = '/cfb/index.html'; return; }
+
+            redirectAfterSave = new URLSearchParams(window.location.search).get('require') === 'team_name';
+
+            const { data: leagueRow } = await supabase
+                .from('leagues')
+                .select('name, commissioner_id, current_season')
+                .eq('id', leagueId)
+                .single();
+
+            document.getElementById('league-name').textContent = leagueRow?.name ?? 'League';
+            currentSeason = leagueRow?.current_season;
+
+            const { data: memberRow } = await supabase
+                .from('league_members')
+                .select('team_name')
+                .eq('league_id', leagueId)
+                .eq('user_id', currentUserId)
+                .single();
+            document.getElementById('team-name').value = memberRow?.team_name || '';
+
+            if (leagueRow?.commissioner_id === currentUserId) {
+                await initCommissionerCard();
+            }
+        }
+
+        async function initCommissionerCard() {
+            document.getElementById('commissioner-card').classList.remove('hidden');
+
+            const [{ data: wpeLeague }, { count: pickCount }, { data: counts }, { data: confs }] = await Promise.all([
+                supabase.from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode, conferences, include_top25, include_week_zero').eq('league_id', leagueId).eq('season', currentSeason).single(),
+                supabase.from('wpe_picks').select('id', { count: 'exact', head: true }).eq('league_id', leagueId).eq('season', currentSeason),
+                supabase.rpc('wpe_scope_preview_counts', { p_season: currentSeason }),
+                supabase.rpc('wpe_list_conferences')
+            ]);
+
+            (counts || []).forEach(c => {
+                const el = document.querySelector(`.scope-count[data-scope="${c.scope_mode}"]`);
+                if (el) el.textContent = `(approx. ${c.game_count} games/week)`;
+            });
+
+            const grid = document.getElementById('conference-checkboxes');
+            grid.innerHTML = (confs || []).map(c => `
+                <label class="checkbox-option">
+                    <input type="checkbox" value="${c.replace(/"/g, '&quot;')}" onchange="onCustomScopeChange()" ${wpeLeague?.conferences?.includes(c) ? 'checked' : ''} />
+                    <span>${c}</span>
+                </label>
+            `).join('') || '<span class="text-muted text-xs">No conferences synced yet.</span>';
+
+            if (wpeLeague) {
+                document.querySelector(`input[name="pick-mode"][value="${wpeLeague.pick_mode}"]`).checked = true;
+                document.querySelector(`input[name="scoring-mode"][value="${wpeLeague.scoring_mode}"]`).checked = true;
+                document.querySelector(`input[name="scope-mode"][value="${wpeLeague.scope_mode}"]`).checked = true;
+                document.getElementById('include-top25').checked = !!wpeLeague.include_top25;
+                document.getElementById('include-week-zero').checked = !!wpeLeague.include_week_zero;
+                onScopeModeChange(wpeLeague.scope_mode);
+                if (wpeLeague.scope_mode === 'custom') await refreshCustomCount();
+            }
+
+            rulesLocked = (pickCount ?? 0) > 0;
+            if (rulesLocked) {
+                document.querySelectorAll('#pick-mode-straight-option input, #pick-mode-spread-option input, #scoring-mode-flat-option input, #scoring-mode-confidence-option input')
+                    .forEach(el => el.disabled = true);
+                document.getElementById('rules-lock-note').textContent =
+                    "Pick/scoring mode lock once anyone has made a pick this season. You can still adjust which conferences count anytime — this only changes future weeks, not already-scored picks.";
+            } else {
+                document.getElementById('rules-lock-note').textContent =
+                    "Pick/scoring mode lock as soon as the first pick is made this season. The game slate below stays editable any time.";
+            }
+        }
+
+        async function saveTeamName() {
+            const input = document.getElementById('team-name');
+            const statusEl = document.getElementById('team-name-status');
+            const btn = document.getElementById('team-name-save-btn');
+            const value = input.value.trim();
+
+            statusEl.textContent = '';
+            statusEl.className = 'text-xs mb-3';
+
+            if (!value) {
+                statusEl.textContent = 'Team name cannot be empty.';
+                statusEl.classList.add('text-danger');
+                return;
+            }
+
+            btn.disabled = true;
+            const { error } = await supabase.rpc('set_team_name', {
+                p_league_id: leagueId,
+                p_team_name: value
+            });
+            btn.disabled = false;
+
+            if (error) {
+                statusEl.textContent = error.message;
+                statusEl.classList.add('text-danger');
+                return;
+            }
+
+            statusEl.textContent = redirectAfterSave ? 'Saved. Continuing…' : 'Saved.';
+            statusEl.classList.add('text-accent');
+            if (redirectAfterSave) {
+                const dest = new URLSearchParams(window.location.search).get('next') || '/cfb/weekly-pick-em/dashboard/';
+                setTimeout(() => { window.location.href = dest + (dest.includes('?') ? '&' : '?') + 'league_id=' + leagueId; }, 600);
+            }
+        }
+
+        async function saveLeagueSettings() {
+            const statusEl = document.getElementById('rules-status');
+            const btn = document.getElementById('rules-save-btn');
+            const pickMode = document.querySelector('input[name="pick-mode"]:checked').value;
+            const scoringMode = document.querySelector('input[name="scoring-mode"]:checked').value;
+            const scopeMode = document.querySelector('input[name="scope-mode"]:checked').value;
+            const conferences = getCheckedConferences();
+            const includeTop25 = document.getElementById('include-top25').checked;
+            const includeWeekZero = document.getElementById('include-week-zero').checked;
+
+            if (scopeMode === 'custom' && conferences.length === 0 && !includeTop25) {
+                document.getElementById('custom-scope-error').classList.remove('hidden');
+                return;
+            }
+
+            statusEl.textContent = '';
+            statusEl.className = 'text-xs mb-3';
+            btn.disabled = true;
+
+            const { error } = await supabase.rpc('wpe_update_league_settings', {
+                p_league_id: leagueId,
+                p_pick_mode: pickMode,
+                p_scoring_mode: scoringMode,
+                p_scope_mode: scopeMode,
+                p_conferences: conferences,
+                p_include_top25: includeTop25,
+                p_include_week_zero: includeWeekZero
+            });
+            btn.disabled = false;
+
+            if (error) {
+                statusEl.textContent = error.message;
+                statusEl.classList.add('text-danger');
+                return;
+            }
+            statusEl.textContent = 'Saved.';
+            statusEl.classList.add('text-accent');
+        }
+
+        init();
+    </script>
+</body>
+</html>

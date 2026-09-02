@@ -43,6 +43,8 @@
             <span class="tab active" data-tab="picks">My Picks</span>
         </div>
 
+        <p class="matchup-legend">The home team is always listed second. A highlighted row is your pick — green for correct, red for incorrect, amber while the game is live.</p>
+
         <div id="rounds-container">
             <p class="text-muted" style="padding:var(--space-4);">Loading…</p>
         </div>
@@ -69,19 +71,43 @@
 
         const ROUND_DEFS = [
             { key: 'w1', title: 'Bowls + CFP Round 1', tiers: ['bowl', 'cfp_r1'], confKind: 'range', confMax: 39,
-              hint: "Rank every pick's confidence from 1 (least sure) to 39 (most sure) — each number can only be used once. All picks + rankings are required before you can save.",
+              hint: mode => mode === 'confidence'
+                ? "Rank every pick's confidence from 1 (least sure) to 39 (most sure) — each number can only be used once. All picks + rankings are required before you can save."
+                : 'Pick a winner for every game in this round.',
               emptyHint: 'Games appear here as bowl matchups get set — check back after Selection Sunday.' },
             { key: 'w2', title: 'Quarterfinals', tiers: ['cfp_qf'], confKind: 'fixed', confValues: [8, 16, 24, 32],
-              hint: 'Opens once Round 1 results set the matchups.', emptyHint: 'Opens once Round 1 results set the matchups.' },
+              hint: mode => mode === 'confidence'
+                ? 'Rank each pick 8, 16, 24, or 32 points — each value used once.'
+                : 'Pick a winner for each Quarterfinal matchup.',
+              emptyHint: 'Opens once Round 1 results set the matchups.' },
             { key: 'w3', title: 'Semifinals', tiers: ['cfp_sf'], confKind: 'fixed', confValues: [13, 27],
-              hint: 'Opens once Quarterfinal results set the matchups.', emptyHint: 'Opens once Quarterfinal results set the matchups.' },
+              hint: mode => mode === 'confidence'
+                ? 'Rank each pick 13 or 27 points — each value used once.'
+                : 'Pick a winner for each Semifinal matchup.',
+              emptyHint: 'Opens once Quarterfinal results set the matchups.' },
             { key: 'w4', title: 'Championship', tiers: ['cfp_championship'], confKind: 'forced', confValues: [20],
-              hint: 'Opens once Semifinal results set the matchup.', emptyHint: 'Opens once Semifinal results set the matchup.' },
+              hint: mode => mode === 'confidence'
+                ? 'This pick is worth a flat 20 points.'
+                : 'Pick the National Championship winner.',
+              emptyHint: 'Opens once Semifinal results set the matchup.' },
         ];
+
+        // Sub-headings inside Wave 1's shared confidence pool — bowls and CFP Round 1
+        // still share one 1-39 ranking, just displayed as visually separate groups.
+        const TIER_GROUP_LABEL = { bowl: 'Bowls', cfp_r1: 'CFP Round 1' };
 
         // pending[gameId] = { picked_team, confidence_points } — local edit state,
         // seeded from existing picks, flushed to the server by the round's Save button.
         const pending = {};
+        // dirty[roundKey] = true once a pick/confidence changes after the last load/save —
+        // drives whether the round shows "ready to save" vs a persistent "saved" state.
+        const dirty = {};
+        // sortState[roundKey] = { key: 'matchup'|'date'|'conf'|'result', dir: 'asc'|'desc' } —
+        // one shared sort per round, applied identically across its tier sub-tables.
+        const sortState = {};
+        function getSortState(def) {
+            return sortState[def.key] || (sortState[def.key] = { key: 'date', dir: 'asc' });
+        }
         let allGames = [];
         let gamesById = {};
 
@@ -159,6 +185,7 @@
 
             for (const key in pending) delete pending[key];
             (myPicks || []).forEach(p => { pending[p.game_id] = { picked_team: p.picked_team, confidence_points: p.confidence_points }; });
+            for (const key in dirty) delete dirty[key];
 
             const container = document.getElementById('rounds-container');
             container.innerHTML = '';
@@ -169,7 +196,7 @@
         function renderRound(def, myPicks) {
             const games = allGames.filter(g => def.tiers.includes(g.tier));
             const block = document.createElement('div');
-            block.className = 'round-block';
+            block.className = 'round-block' + (bpeLeague.scoring_mode !== 'confidence' ? ' round-block--compact' : '');
             block.dataset.round = def.key;
 
             if (games.length === 0) {
@@ -189,7 +216,13 @@
                 <span class="round-count">${games.length} game${games.length === 1 ? '' : 's'}</span>
               </div>
               <div class="round-panel" id="${def.key}-panel">
-                <div class="round-hint">${def.hint}</div>
+                <div class="round-hint">${def.hint(bpeLeague.scoring_mode)}</div>
+                ${openGames.length > 0 ? `
+                  <div class="quick-fill-row">
+                    <span class="quick-fill-label">Quick fill:</span>
+                    <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="favorites">Select All Favorites</button>
+                    <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="underdogs">Select All Underdogs</button>
+                  </div>` : ''}
                 ${bpeLeague.scoring_mode === 'confidence' && def.confKind === 'range' ? `
                   <div class="conf-tracker-box">
                     <div class="conf-tracker-label">
@@ -204,22 +237,27 @@
                     </div>
                     <div class="conf-tracker" id="${def.key}-tracker"></div>
                   </div>` : ''}
-                <div class="round-toolbar">
-                  <div class="sort-toggle">
-                    Sort:
-                    <div class="sort-btns">
-                      <button class="sort-btn active" data-sort="date">Kickoff date</button>
-                      ${bpeLeague.scoring_mode === 'confidence' ? '<button class="sort-btn" data-sort="conf">Confidence</button>' : ''}
-                    </div>
-                  </div>
-                </div>
-                <div class="table-wrap">
-                  <table class="picks-table">
-                    <colgroup><col class="c-matchup"><col class="c-kick"><col class="c-conf"><col class="c-result"></colgroup>
-                    <thead><tr><th>Matchup</th><th>Kickoff</th><th>Conf.</th><th>Result</th></tr></thead>
-                    <tbody id="${def.key}-body"></tbody>
-                  </table>
-                </div>
+                ${def.tiers.map(tier => {
+                    const tierGames = games.filter(g => g.tier === tier);
+                    if (!tierGames.length) return '';
+                    const tierId = `${def.key}-body-${tier}`;
+                    const sortTh = (key, label, extraCls) => `<th class="sortable${extraCls ? ' ' + extraCls : ''}" data-sort-key="${key}" data-label="${label}">${label}</th>`;
+                    const showConf = bpeLeague.scoring_mode === 'confidence';
+                    return `
+                      ${def.tiers.length > 1 ? `<div class="tier-group-label">${TIER_GROUP_LABEL[tier] || tier}</div>` : ''}
+                      <div class="table-wrap">
+                        <table class="picks-table${showConf ? '' : ' picks-table--no-conf'}">
+                          <colgroup><col class="c-matchup"><col class="c-kick">${showConf ? '<col class="c-conf">' : ''}<col class="c-result"></colgroup>
+                          <thead><tr>
+                            ${sortTh('matchup', 'Matchup')}
+                            ${sortTh('date', 'Kickoff', 'col-kick')}
+                            ${showConf ? sortTh('conf', 'Conf.') : ''}
+                            ${sortTh('result', 'Result', 'col-result')}
+                          </tr></thead>
+                          <tbody id="${tierId}"></tbody>
+                        </table>
+                      </div>`;
+                }).join('')}
                 ${openGames.length > 0 ? `
                   <div class="save-bar">
                     <span class="save-bar__msg" id="${def.key}-save-msg"></span>
@@ -228,15 +266,18 @@
               </div>
             `;
 
-            const tbody = block.querySelector(`#${def.key}-body`);
-            games.forEach(g => tbody.appendChild(renderGameRow(g, def)));
+            def.tiers.forEach(tier => {
+                const tbody = block.querySelector(`#${def.key}-body-${tier}`);
+                if (!tbody) return;
+                games.filter(g => g.tier === tier).forEach(g => tbody.appendChild(renderGameRow(g, def)));
+            });
 
             const toggle = block.querySelector(`#${def.key}-toggle`);
             if (toggle) toggle.addEventListener('click', () => block.classList.toggle('collapsed'));
 
             wireRoundInteractions(def, block);
-            if (bpeLeague.scoring_mode === 'confidence' && def.confKind === 'range') refreshConfTracker(def);
-            refreshSaveState(def);
+            if (bpeLeague.scoring_mode === 'confidence' && def.confKind === 'range') refreshConfTracker(def, block);
+            refreshSaveState(def, block);
 
             return block;
         }
@@ -248,35 +289,42 @@
             tr.dataset.gameId = g.id;
             tr.dataset.date = g.kickoff_at || '9999-12-31';
             tr.dataset.state = g.status === 'final' ? 'final' : locked ? 'live' : 'open';
+            tr.dataset.bowl = g.bowl_name || '';
+            // Result sort rank: correct picks first, then pushes, then incorrect/no-pick, then still-undecided.
+            tr.dataset.result = g.status !== 'final' ? '3'
+                : !pick ? '2'
+                : isCorrect(pick, g) === null ? '1'
+                : isCorrect(pick, g) ? '0' : '2';
 
             const spreadOn = bpeLeague.pick_mode === 'spread';
             const favIsHome = g.favorite_team === g.home_team;
             const awayTag = spreadOn && g.spread != null ? (favIsHome ? `+${g.spread}` : `−${g.spread}`) : null;
             const homeTag = spreadOn && g.spread != null ? (favIsHome ? `−${g.spread}` : `+${g.spread}`) : null;
 
-            function teamRow(team, isHome, tagText) {
+            function teamRow(team, isHome, tagText, logoUrl) {
+                const logoHtml = logoUrl ? `<img class="team-logo" src="${escapeHtml(logoUrl)}" alt="" />` : '';
                 if (g.status === 'scheduled' && !locked) {
                     const selected = pick?.picked_team === team ? ' selected' : '';
                     return `<div class="mu-team-row selectable${selected}" data-team="${escapeHtml(team)}">
-                        <span class="t-name">${escapeHtml(team)}${isHome ? ' <span class="home-tag">· Home</span>' : ''}</span>
+                        ${logoHtml}<span class="t-name"><span class="t-name-label">${escapeHtml(team)}</span></span>
                         <span class="t-right">${tagText != null ? `<span class="t-spread">${tagText}</span>` : ''}</span>
                       </div>`;
                 }
                 const isPicked = pick?.picked_team === team;
                 const correct = isCorrect(pick, g);
                 let cls = 'plain';
-                if (isPicked) cls = correct === true ? 'picked-hit' : correct === false ? 'picked-miss' : 'picked-pending';
+                if (isPicked) cls = g.status === 'live' ? 'picked-live' : correct === true ? 'picked-hit' : correct === false ? 'picked-miss' : 'picked-pending';
                 const score = isHome ? g.home_score : g.away_score;
                 return `<div class="mu-team-row ${cls}">
-                    <span class="t-name">${escapeHtml(team)}${isPicked ? ' <span class="pick-tag">Your pick</span>' : ''}${isHome ? ' <span class="home-tag">· Home</span>' : ''}</span>
+                    ${logoHtml}<span class="t-name"><span class="t-name-label">${escapeHtml(team)}</span></span>
                     <span class="t-right">${score != null ? `<span class="t-score">${score}</span>` : ''}</span>
                   </div>`;
             }
 
             const matchupHtml = `
               <div class="mu-head">${escapeHtml(g.bowl_name)}${fmtKickoff(g.kickoff_at) ? ' · ' + fmtKickoff(g.kickoff_at) : ''}</div>
-              ${teamRow(g.away_team, false, awayTag)}
-              ${teamRow(g.home_team, true, homeTag)}
+              ${teamRow(g.away_team, false, awayTag, g.away_team_logo)}
+              ${teamRow(g.home_team, true, homeTag, g.home_team_logo)}
             `;
 
             let kickHtml, confHtml, resultHtml;
@@ -289,22 +337,22 @@
                 kickHtml = `<div class="kline kline--muted">${fmtKickoff(g.kickoff_at) || 'Kickoff TBD'}</div>`;
             }
 
-            if (bpeLeague.scoring_mode !== 'confidence') {
-                confHtml = `<span class="text-muted">—</span>`;
-            } else if (g.status === 'final' || locked) {
-                confHtml = pick?.confidence_points != null
-                    ? `<span class="conf-fixed" ${isCorrect(pick, g) === false ? 'style="color:var(--c-text-muted); text-decoration:line-through;"' : ''}>${pick.confidence_points}</span>`
-                    : `<span class="text-muted">—</span>`;
-            } else if (def.confKind === 'forced') {
-                confHtml = `<span class="conf-fixed">20</span>`;
-            } else {
-                const options = def.confKind === 'range'
-                    ? Array.from({ length: def.confMax }, (_, i) => i + 1)
-                    : def.confValues;
-                confHtml = `<select class="conf-select" data-game-id="${g.id}">
-                    <option value="">Rank…</option>
-                    ${options.map(n => `<option value="${n}" ${pick?.confidence_points === n ? 'selected' : ''}>${n}</option>`).join('')}
-                  </select>`;
+            if (bpeLeague.scoring_mode === 'confidence') {
+                if (g.status === 'final' || locked) {
+                    confHtml = pick?.confidence_points != null
+                        ? `<span class="conf-fixed" ${isCorrect(pick, g) === false ? 'style="color:var(--c-text-muted); text-decoration:line-through;"' : ''}>${pick.confidence_points}</span>`
+                        : `<span class="text-muted">—</span>`;
+                } else if (def.confKind === 'forced') {
+                    confHtml = `<span class="conf-fixed">20</span>`;
+                } else {
+                    const options = def.confKind === 'range'
+                        ? Array.from({ length: def.confMax }, (_, i) => i + 1)
+                        : def.confValues;
+                    confHtml = `<select class="conf-select" data-game-id="${g.id}">
+                        <option value="">Rank…</option>
+                        ${options.map(n => `<option value="${n}" ${pick?.confidence_points === n ? 'selected' : ''}>${n}</option>`).join('')}
+                      </select>`;
+                }
             }
 
             if (g.status === 'final') {
@@ -323,53 +371,92 @@
                 resultHtml = `<span class="text-muted">—</span>`;
             }
 
-            tr.innerHTML = `<td>${matchupHtml}</td><td class="kick-block">${kickHtml}</td><td>${confHtml}</td><td>${resultHtml}</td>`;
+            tr.innerHTML = `<td>${matchupHtml}</td><td class="kick-block">${kickHtml}</td>${bpeLeague.scoring_mode === 'confidence' ? `<td>${confHtml}</td>` : ''}<td class="col-result">${resultHtml}</td>`;
             return tr;
         }
 
-        function wireRoundInteractions(def, block) {
-            const tbody = block.querySelector(`#${def.key}-body`);
+        function roundTbodies(def, root) {
+            return Array.from((root || document).querySelectorAll(`tbody[id^="${def.key}-body"]`));
+        }
 
-            tbody.querySelectorAll('tr[data-state="open"]').forEach(row => {
-                const gameId = row.dataset.gameId;
-                row.querySelectorAll('.mu-team-row.selectable').forEach(el => {
-                    el.addEventListener('click', () => {
-                        row.querySelectorAll('.mu-team-row.selectable').forEach(x => x.classList.remove('selected'));
-                        el.classList.add('selected');
-                        pending[gameId] = { ...(pending[gameId] || {}), picked_team: el.dataset.team };
-                        refreshSaveState(def);
+        function wireRoundInteractions(def, block) {
+            roundTbodies(def, block).forEach(tbody => {
+                tbody.querySelectorAll('tr[data-state="open"]').forEach(row => {
+                    const gameId = row.dataset.gameId;
+                    row.querySelectorAll('.mu-team-row.selectable').forEach(el => {
+                        el.addEventListener('click', () => {
+                            row.querySelectorAll('.mu-team-row.selectable').forEach(x => x.classList.remove('selected'));
+                            el.classList.add('selected');
+                            pending[gameId] = { ...(pending[gameId] || {}), picked_team: el.dataset.team };
+                            dirty[def.key] = true;
+                            refreshSaveState(def, block);
+                        });
                     });
                 });
-            });
 
-            tbody.querySelectorAll('.conf-select').forEach(sel => {
-                sel.addEventListener('change', () => {
-                    const gameId = sel.dataset.gameId;
-                    const val = sel.value ? parseInt(sel.value, 10) : null;
-                    pending[gameId] = { ...(pending[gameId] || {}), confidence_points: val };
-                    refreshConfAvailability(def, block);
-                    if (def.confKind === 'range') refreshConfTracker(def);
-                    refreshSaveState(def);
+                tbody.querySelectorAll('.conf-select').forEach(sel => {
+                    sel.addEventListener('change', () => {
+                        const gameId = sel.dataset.gameId;
+                        const val = sel.value ? parseInt(sel.value, 10) : null;
+                        pending[gameId] = { ...(pending[gameId] || {}), confidence_points: val };
+                        dirty[def.key] = true;
+                        refreshConfAvailability(def, block);
+                        if (def.confKind === 'range') refreshConfTracker(def, block);
+                        refreshSaveState(def, block);
+                    });
                 });
             });
             refreshConfAvailability(def, block);
 
-            block.querySelectorAll('.sort-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    block.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    sortRoundRows(def, btn.dataset.sort);
+            block.querySelectorAll('[data-fill-mode]').forEach(btn => {
+                btn.addEventListener('click', () => applyBulkFill(def, btn.dataset.fillMode, block));
+            });
+
+            block.querySelectorAll('th[data-sort-key]').forEach(th => {
+                th.addEventListener('click', () => {
+                    const state = getSortState(def);
+                    const key = th.dataset.sortKey;
+                    state.dir = (state.key === key && state.dir === 'asc') ? 'desc' : 'asc';
+                    state.key = key;
+                    sortRoundRows(def, block);
+                    updateSortHeaders(def, block);
                 });
             });
+            updateSortHeaders(def, block);
 
             const saveBtn = block.querySelector(`#${def.key}-save-btn`);
             if (saveBtn) saveBtn.addEventListener('click', () => saveRound(def, block));
         }
 
+        // Bulk-fills every open (unlocked) game in this round with either the
+        // spread favorite or the underdog, overwriting any existing pending
+        // pick — games with no line yet are left untouched since there's no
+        // favorite to select. Pure client-side edit of `pending`, same
+        // Save-then-persist flow as a manual pick.
+        function applyBulkFill(def, mode, block) {
+            const games = allGames.filter(g => def.tiers.includes(g.tier) && !isLocked(g));
+            let changed = false;
+            games.forEach(g => {
+                if (!g.favorite_team) return;
+                const team = mode === 'favorites' ? g.favorite_team : (g.favorite_team === g.home_team ? g.away_team : g.home_team);
+                pending[g.id] = { ...(pending[g.id] || {}), picked_team: team };
+                changed = true;
+                const row = block.querySelector(`tr[data-game-id="${g.id}"]`);
+                if (row) {
+                    row.querySelectorAll('.mu-team-row.selectable').forEach(el => {
+                        el.classList.toggle('selected', el.dataset.team === team);
+                    });
+                }
+            });
+            if (changed) {
+                dirty[def.key] = true;
+                refreshSaveState(def, block);
+            }
+        }
+
         function refreshConfAvailability(def, block) {
             if (bpeLeague.scoring_mode !== 'confidence') return;
-            const tbody = block.querySelector(`#${def.key}-body`);
-            const selects = Array.from(tbody.querySelectorAll('.conf-select'));
+            const selects = roundTbodies(def, block).flatMap(tbody => Array.from(tbody.querySelectorAll('.conf-select')));
             const taken = new Set();
             allGames.filter(g => def.tiers.includes(g.tier)).forEach(g => {
                 const p = pending[g.id];
@@ -385,8 +472,8 @@
             });
         }
 
-        function refreshConfTracker(def) {
-            const tracker = document.getElementById(`${def.key}-tracker`);
+        function refreshConfTracker(def, root) {
+            const tracker = (root || document).querySelector(`#${def.key}-tracker`);
             if (!tracker) return;
             tracker.innerHTML = '';
             const games = allGames.filter(g => def.tiers.includes(g.tier));
@@ -412,9 +499,9 @@
             }
         }
 
-        function refreshSaveState(def) {
-            const btn = document.getElementById(`${def.key}-save-btn`);
-            const msg = document.getElementById(`${def.key}-save-msg`);
+        function refreshSaveState(def, root) {
+            const btn = (root || document).querySelector(`#${def.key}-save-btn`);
+            const msg = (root || document).querySelector(`#${def.key}-save-msg`);
             if (!btn) return;
 
             const openGames = allGames.filter(g => def.tiers.includes(g.tier) && !isLocked(g));
@@ -430,11 +517,13 @@
             });
 
             if (incomplete.length === 0) {
-                msg.textContent = openGames.length ? 'All picks made — ready to save.' : '';
+                const isDirty = !!dirty[def.key];
+                msg.textContent = !openGames.length ? '' : isDirty ? 'All picks made — ready to save.' : 'All picks saved ✓';
                 msg.classList.add('complete');
-                btn.disabled = openGames.length === 0;
+                msg.classList.toggle('saved', openGames.length > 0 && !isDirty);
+                btn.disabled = !openGames.length || !isDirty;
             } else {
-                msg.classList.remove('complete');
+                msg.classList.remove('complete', 'saved');
                 btn.disabled = true;
                 if (incomplete.length <= 3) {
                     msg.textContent = incomplete.map(i => `${i.name} still needs ${i.need}.`).join(' ');
@@ -444,15 +533,33 @@
             }
         }
 
-        function sortRoundRows(def, mode) {
-            const tbody = document.getElementById(`${def.key}-body`);
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            rows.sort((a, b) => {
-                if (mode === 'date') return a.dataset.date.localeCompare(b.dataset.date);
-                const confOf = row => pending[row.dataset.gameId]?.confidence_points ?? -1;
-                return confOf(b) - confOf(a);
+        function sortRoundRows(def, block) {
+            // Sorts within each tier's own tbody — Wave 1's Bowls/CFP Round 1 groups
+            // stay visually separate even under a shared sort key.
+            const { key, dir } = getSortState(def);
+            const mult = dir === 'asc' ? 1 : -1;
+            const confOf = row => pending[row.dataset.gameId]?.confidence_points ?? -1;
+            roundTbodies(def, block).forEach(tbody => {
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                rows.sort((a, b) => {
+                    let cmp;
+                    if (key === 'matchup') cmp = a.dataset.bowl.localeCompare(b.dataset.bowl);
+                    else if (key === 'conf') cmp = confOf(a) - confOf(b);
+                    else if (key === 'result') cmp = Number(a.dataset.result) - Number(b.dataset.result);
+                    else cmp = a.dataset.date.localeCompare(b.dataset.date);
+                    return cmp * mult;
+                });
+                rows.forEach(r => tbody.appendChild(r));
             });
-            rows.forEach(r => tbody.appendChild(r));
+        }
+
+        function updateSortHeaders(def, block) {
+            const { key, dir } = getSortState(def);
+            block.querySelectorAll('th[data-sort-key]').forEach(th => {
+                const active = th.dataset.sortKey === key;
+                th.classList.toggle('sort-active', active);
+                th.textContent = th.dataset.label + (active ? (dir === 'desc' ? ' ▼' : ' ▲') : '');
+            });
         }
 
         async function saveRound(def, block) {
@@ -483,7 +590,14 @@
             }
 
             btn.textContent = 'Saved ✓';
-            setTimeout(() => loadAndRender(), 900);
+            setTimeout(() => {
+                // Re-render only this round from current (now-persisted) local state —
+                // NOT a full loadAndRender(), which would refetch every round's picks
+                // from the DB and stomp any unsaved edits sitting in other rounds.
+                dirty[def.key] = false;
+                const newBlock = renderRound(def);
+                block.replaceWith(newBlock);
+            }, 900);
         }
 
         function renderTiebreakerCard(existing) {

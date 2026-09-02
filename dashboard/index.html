@@ -111,7 +111,8 @@
             'world-cup-bracket-challenge': 'World Cup Bracket Challenge',
             'world-cup-draft':             'World Cup Country Draft',
             'fedex-playoffs':              'FedEx Cup Playoffs',
-            'cfb-bowl-season-pick-em':     "Bowl Season Pick 'Em"
+            'cfb-bowl-season-pick-em':     "Bowl Season Pick 'Em",
+            'cfb-weekly-pick-em':          "Weekly Pick 'Em"
         };
 
         const TYPE_LABELS = {
@@ -124,14 +125,16 @@
             'world-cup-bracket-challenge': '⚽',
             'world-cup-draft':              '⚽',
             'fedex-playoffs':               '⛳',
-            'cfb-bowl-season-pick-em':      '🏈'
+            'cfb-bowl-season-pick-em':      '🏈',
+            'cfb-weekly-pick-em':           '🏈'
         };
 
         const SPORT_OF_GAME = {
             'world-cup-bracket-challenge': 'soccer',
             'world-cup-draft':              'soccer',
             'fedex-playoffs':               'golf',
-            'cfb-bowl-season-pick-em':      'cfb'
+            'cfb-bowl-season-pick-em':      'cfb',
+            'cfb-weekly-pick-em':           'cfb'
         };
 
         const SPORT_LABELS = {
@@ -379,6 +382,15 @@
                 return;
             }
 
+            if (league?.game_type === 'cfb-weekly-pick-em') {
+                if (!confirm(`Start a new Weekly Pick 'Em season? Last season's picks and standings will be saved to Season History — everyone keeps the same invite link and picks fresh once this year's regular season schedule syncs.`)) return;
+                const { error } = await supabase.rpc('wpe_start_new_season', { p_league_id: leagueId });
+                if (error) { alert(error.message); return; }
+                league.status = 'active';
+                applyFilters();
+                return;
+            }
+
             const { error } = await supabase.rpc('reactivate_league', { p_league_id: leagueId });
             if (error) { alert(error.message); return; }
             if (league) league.status = 'active';
@@ -398,6 +410,8 @@
                 window.location.href = '/golf/fedex-playoffs/dashboard/';
             } else if (gameType === 'cfb-bowl-season-pick-em') {
                 window.location.href = '/cfb/bowl-season-pick-em/dashboard/';
+            } else if (gameType === 'cfb-weekly-pick-em') {
+                window.location.href = '/cfb/weekly-pick-em/dashboard/';
             } else if (leagueType === 'knockout-only') {
                 window.location.href = '/soccer/world-cup-bracket-challenge/bracket/';
             } else {

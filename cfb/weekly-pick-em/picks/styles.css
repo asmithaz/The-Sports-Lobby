@@ -1,13 +1,14 @@
 /* ============================================================
-   Bowl Season Pick 'Em — My Picks
+   Weekly Pick 'Em — My Picks
    Only styles NOT already covered by /css/components.css.
+   Same visual language as cfb/bowl-season-pick-em/picks/styles.css
    ============================================================ */
 
 .dash-header .sub { color: var(--c-text-muted); font-size: var(--text-sm); margin-top: 2px; }
 
 .matchup-legend { font-size: var(--text-xs); color: var(--c-text-muted); margin: 0 0 var(--space-4); }
 
-/* ---- round blocks ---- */
+/* ---- round blocks (one per week) ---- */
 .round-block { margin-bottom: var(--space-5); }
 .round-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
               cursor: pointer; user-select: none; }
@@ -16,21 +17,15 @@
 .round-block.collapsed .round-caret { transform: rotate(-90deg); }
 .round-count { font-size: var(--text-xs); color: var(--c-text-muted); }
 .round-hint { font-size: var(--text-sm); color: var(--c-text-secondary); margin-bottom: var(--space-3); }
-.round-block--locked { opacity: 0.5; }
-.round-block--locked .round-head h2 { color: var(--c-text-secondary); }
-.round-block--locked .round-head { cursor: default; }
 
 .round-panel { border: 0.5px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface);
                padding: var(--space-4); margin-top: var(--space-3); }
 .round-block.collapsed .round-panel { display: none; }
-/* Flat-scoring rounds (no Conf. column): header + card both hug the table's
-   width and center in the available space, instead of the header spanning
-   full width while the (narrower) card sits stranded on the left below it.
-   Scoped to each round only — the page-level title/tabs stay full width to
-   match the Standings page, so switching tabs doesn't shift the top bar. */
 .round-block--compact .round-head,
-.round-block--compact .round-panel { max-width: 740px; margin-left: auto; margin-right: auto; }
+.round-block--compact .round-panel { max-width: 900px; margin-left: auto; margin-right: auto; }
 
+.round-block--tbd .round-head { cursor: default; opacity: 0.6; }
+.round-block--tbd .round-head h2 { color: var(--c-text-secondary); }
 
 /* ---- quick fill (Select All Favorites / Underdogs) ---- */
 .quick-fill-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
@@ -43,7 +38,7 @@
 .conf-legend { display: flex; gap: var(--space-3); font-size: var(--text-xs); color: var(--c-text-secondary); }
 .conf-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .conf-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
-.conf-tracker { display: flex; flex-wrap: nowrap; gap: 3px; overflow-x: auto; padding-bottom: 2px; }
+.conf-tracker { display: flex; flex-wrap: wrap; gap: 3px; padding-bottom: 2px; }
 .conf-chip { flex: 0 0 auto; width: 23px; height: 21px; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono);
              font-weight: var(--weight-medium); font-size: 10px; border-radius: 4px; border: 1px dashed var(--c-border-strong); color: var(--c-text-secondary); }
 .conf-chip--pending { border-style: solid; background: var(--c-accent-dim); border-color: var(--c-accent-border); color: var(--c-accent); font-weight: var(--weight-bold); }
@@ -51,27 +46,16 @@
 .conf-chip--hit { border-style: solid; background: var(--c-accent); border-color: var(--c-accent); color: #0f1117; font-weight: var(--weight-bold); }
 .conf-chip--miss { border-style: solid; background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.25); color: var(--c-danger); font-weight: var(--weight-bold); }
 
-/* ---- tier group label (Wave 1: Bowls vs CFP Round 1) ---- */
-.tier-group-label { font-size: var(--text-xs); font-weight: var(--weight-bold); color: var(--c-text-muted); text-transform: uppercase;
-                     letter-spacing: 0.08em; margin: var(--space-4) 0 var(--space-2); }
-.tier-group-label:first-of-type { margin-top: 0; }
-
 /* ---- picks table ---- */
-.picks-table { width: 100%; min-width: 680px; border-collapse: collapse; font-size: var(--text-sm); table-layout: fixed; }
-.picks-table col.c-matchup { width: 30%; }
-.picks-table col.c-kick    { width: 24%; }
-.picks-table col.c-conf    { width: 14%; }
-.picks-table col.c-result  { width: 32%; }
-/* No Conf. column (flat-scoring leagues): the table (and its round-block header
-   + card, see .round-block--compact) is capped and centered instead of
-   stretching full width. 680px / 50-18-32 split still gives Matchup enough
-   room that a long real team name + a "Your Pick" badge won't ellipsis —
-   the row itself hugs its own content now (see .mu-team-row), so this is
-   a ceiling, not a width every row will actually use. */
-.picks-table--no-conf { width: 100%; max-width: 680px; min-width: 480px; }
-.picks-table--no-conf col.c-matchup { width: 50%; }
-.picks-table--no-conf col.c-kick    { width: 18%; }
-.picks-table--no-conf col.c-result  { width: 32%; }
+.picks-table { width: 100%; min-width: 780px; border-collapse: collapse; font-size: var(--text-sm); table-layout: fixed; }
+.picks-table col.c-matchup { width: 36%; }
+.picks-table col.c-kick    { width: 26%; }
+.picks-table col.c-conf    { width: 12%; }
+.picks-table col.c-result  { width: 26%; }
+.picks-table--no-conf { width: 100%; max-width: 860px; min-width: 720px; }
+.picks-table--no-conf col.c-matchup { width: 46%; }
+.picks-table--no-conf col.c-kick    { width: 28%; }
+.picks-table--no-conf col.c-result  { width: 26%; }
 .picks-table thead th { padding: var(--space-2) var(--space-3); text-align: left; font-size: var(--text-xs);
                          font-weight: var(--weight-bold); letter-spacing: 0.07em; color: var(--c-text-muted);
                          text-transform: uppercase; border-bottom: 0.5px solid var(--c-border-strong); background: var(--c-surface); }
@@ -83,7 +67,8 @@
 .picks-table tbody td.col-result, .picks-table tbody td.kick-block { text-align: center; }
 .picks-table tbody tr:last-child td { border-bottom: none; }
 
-.mu-head { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: 2px; }
+.mu-head { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: 2px;
+           display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 15px; }
 .mu-team-row { display: flex; align-items: center; gap: var(--space-2); padding: 6px 8px; border-radius: var(--radius-sm);
                font-size: var(--text-sm); margin-top: 4px; }
 .mu-team-row.selectable { cursor: pointer; background: var(--c-surface-2); border: 0.5px solid var(--c-border-strong); transition: all var(--transition); }
@@ -100,6 +85,7 @@
 .mu-team-row.picked-miss .t-name { color: var(--c-danger); }
 .team-logo { width: 30px; height: 30px; object-fit: contain; flex-shrink: 0; }
 .t-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; color: var(--c-text-primary); }
+.t-rank { flex-shrink: 0; font-family: var(--font-mono); font-size: var(--text-xs); font-weight: var(--weight-bold); color: var(--c-accent); }
 .t-name-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .t-right { flex: 0 0 60px; text-align: center; }
 .t-spread { font-family: var(--font-mono); font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--c-text-secondary); }
@@ -107,7 +93,7 @@
 .picked-hit .t-score, .picked-pending .t-score { color: var(--c-text-primary); font-weight: var(--weight-bold); }
 .picked-miss .t-score { color: var(--c-text-muted); }
 
-.kick-block .kline { font-size: var(--text-sm); color: var(--c-text-secondary); }
+.kick-block .kline { font-size: var(--text-sm); color: var(--c-text-secondary); white-space: nowrap; }
 .kick-block .kline--live { color: var(--c-text-primary); display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: var(--weight-medium); }
 .kick-block .kline--final { color: var(--c-text-primary); font-weight: var(--weight-medium); }
 .kick-block .kline--muted { color: var(--c-text-muted); }
@@ -125,12 +111,25 @@
 .save-bar__msg { font-size: var(--text-sm); color: var(--c-warning); }
 .save-bar__msg.complete { color: var(--c-accent); }
 
-/* ---- tiebreaker ---- */
-.tiebreak-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.tiebreak-input { max-width: 140px; }
-.tiebreak-status { font-size: var(--text-xs); color: var(--c-text-muted); }
-.tiebreak-status.saved { color: var(--c-accent); }
+/* Per-game "Pick saved" indicator, in the matchup cell itself (not the
+   Result column, which is reserved for the game's actual outcome).
+   Reserved min-height keeps the row from jumping when this toggles
+   empty -> filled during the brief save round-trip. */
+.mu-saved { flex-shrink: 0; }
+.save-check { font-size: var(--text-xs); font-weight: var(--weight-bold); color: var(--c-accent); white-space: nowrap; }
 
-@media (max-width: 900px) {
-  .picks-table { min-width: 640px; }
-}
+/* ---- weekly tiebreakers ---- */
+.tiebreak-card { margin-top: var(--space-4); padding: var(--space-4); border: 0.5px solid var(--c-border);
+                  border-radius: var(--radius-md); background: var(--c-surface-2); }
+.tiebreak-card-title { font-size: var(--text-sm); font-weight: var(--weight-bold); color: var(--c-text-primary); margin-bottom: 2px; }
+.tiebreak-card-hint { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: var(--space-3); }
+.tiebreak-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-2) 0;
+                border-top: 0.5px solid var(--c-border); }
+.tiebreak-row:first-of-type { border-top: none; }
+.tiebreak-info { display: flex; flex-direction: column; gap: 1px; min-width: 200px; flex: 1; }
+.tiebreak-label { font-size: var(--text-xs); font-weight: var(--weight-bold); color: var(--c-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+.tiebreak-matchup { font-size: var(--text-sm); color: var(--c-text-primary); }
+.tiebreak-input { max-width: 110px; }
+.tiebreak-status { font-size: var(--text-xs); color: var(--c-text-muted); min-width: 110px; }
+.tiebreak-status--saved { color: var(--c-accent); font-weight: var(--weight-bold); }
+

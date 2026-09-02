@@ -1,6 +1,7 @@
 /* ============================================================
-   Bowl Season Pick 'Em — Dashboard
+   Weekly Pick 'Em — Dashboard
    Only styles NOT already covered by /css/components.css.
+   Same visual language as cfb/bowl-season-pick-em/dashboard/styles.css
    ============================================================ */
 
 .dash-header .sub { color: var(--c-text-muted); font-size: var(--text-sm); margin-top: 2px; }
@@ -14,8 +15,6 @@
 .join-panel p.text-secondary { margin: 0 0 var(--space-4); }
 .join-error { color: var(--c-danger); font-size: var(--text-sm); margin: var(--space-2) 0 0; }
 .join-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-5); }
-
-#sync-status-bar { margin-bottom: var(--space-5); }
 
 .section-title { font-size: var(--text-md); font-weight: var(--weight-bold); margin-bottom: 2px; }
 .section-sub { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: var(--space-3); }
@@ -36,7 +35,7 @@ tr.expanded .name-cell .caret { transform: rotate(90deg); color: var(--c-accent)
 .breakdown { display: none; padding: var(--space-4) var(--space-5); background: var(--c-surface); }
 tr.expanded + tr .breakdown { display: block; }
 .breakdown-hint { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: var(--space-2); }
-.breakdown-waves { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
+.breakdown-waves { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
 .breakdown-wave { background: var(--c-surface-2); border: 0.5px solid var(--c-border); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);
                    cursor: pointer; transition: all var(--transition); }
 .breakdown-wave:hover { border-color: var(--c-border-strong); }
@@ -52,47 +51,29 @@ tr.expanded + tr .breakdown { display: block; }
 /* ---- pick comparison grid ---- */
 .pg-wrap { border: 0.5px solid var(--c-border); border-radius: var(--radius-md); overflow: auto; max-height: 560px; -webkit-overflow-scrolling: touch;
            width: fit-content; max-width: 100%; margin: 0 auto; }
-/* No width:100% — the table (and .pg-wrap around it, which is fit-content +
-   centered) sizes to its own content: matchup column capped, player columns
-   natural width. As more player columns are added the whole card grows wider
-   on its own; .pg-wrap's overflow:auto picks up a horizontal scrollbar once
-   it outgrows the section. */
 .pg-table { border-collapse: collapse; font-size: var(--text-sm); }
 .pg-table th, .pg-table td { padding: 8px var(--space-3); text-align: center; white-space: nowrap; border-bottom: 0.5px solid var(--c-border); }
 .pg-table thead th { position: sticky; top: 0; background: var(--c-surface); font-size: var(--text-xs); font-weight: var(--weight-bold);
                       letter-spacing: 0.05em; color: var(--c-text-muted); text-transform: uppercase; z-index: 3; border-bottom: 0.5px solid var(--c-border-strong); }
 .pg-table th.pg-col--me, .pg-table td.pg-col--me { background: var(--c-accent-dim); }
 .pg-table thead th.pg-col--me { background: var(--c-surface-2); color: var(--c-accent); z-index: 4; }
-/* text-align: left here needs to beat the ".pg-table th/td { text-align: center }"
-   rule above it, which is more specific (class+element vs. a single class) and
-   was silently winning — hence the "th/td" repeated in this selector. */
 .pg-table th.pg-matchup-th, .pg-table td.pg-matchup-cell {
     position: sticky; left: 0; z-index: 2; background: var(--c-surface); text-align: left;
     min-width: 180px; max-width: 260px; white-space: normal;
 }
 .pg-table thead .pg-matchup-th { z-index: 5; }
-.pg-round-row td { background: var(--c-surface-2); color: var(--c-text-muted); font-size: var(--text-xs); text-transform: uppercase;
-                    letter-spacing: 0.08em; text-align: left; font-weight: var(--weight-bold); position: sticky; left: 0; }
 .pg-matchup-cell .mu-head { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: 3px; }
-/* Matchup column is shared/informational (each player's own pick lives in
-   their own .pcell now) — the only state it carries is which team actually
-   won, in the same green used everywhere else for "correct". */
 .pg-matchup-cell .mu-team-row { display: flex; align-items: flex-start; justify-content: flex-start; gap: 6px; padding: 3px 6px;
                                  border-radius: var(--radius-sm); border: 0.5px solid transparent; font-size: var(--text-sm); color: var(--c-text-primary); }
 .pg-matchup-cell .mu-team-row.winner { background: var(--c-accent-dim); border-color: var(--c-accent-border); }
 .pg-matchup-cell .mu-team-row.winner .t-name,
 .pg-matchup-cell .mu-team-row.winner .t-score { color: var(--c-accent); font-weight: var(--weight-bold); }
 .pg-matchup-cell .t-name { flex: 1; min-width: 0; white-space: normal; word-break: break-word; }
+.pg-matchup-cell .t-rank { flex-shrink: 0; font-family: var(--font-mono); font-size: var(--text-xs); font-weight: var(--weight-bold); color: var(--c-accent); }
 .pg-matchup-cell .t-score { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--c-text-secondary); flex-shrink: 0; }
 .pg-matchup-cell .t-spread { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--c-text-secondary); flex-shrink: 0; }
 .pg-matchup-cell .team-logo { width: 26px; height: 26px; object-fit: contain; flex-shrink: 0; }
 
-/* Per-player result cell — logo, full team name (wraps, doesn't ellipsis —
-   this now needs to read at a glance instead of an abbreviation badge), and
-   a result line once the pick's outcome is knowable. Fixed width + min-height
-   (name clamped to 2 lines) so every cell is the same size regardless of how
-   long that row's team names are, instead of each one growing to fit its own
-   content and making the row heights uneven. */
 .pcell { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
          width: 132px; min-height: 92px; padding: 6px 6px; border-radius: var(--radius-sm); border: 0.5px solid var(--c-border);
          vertical-align: top; }
