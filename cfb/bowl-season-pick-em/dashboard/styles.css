@@ -83,8 +83,9 @@ tr.expanded + tr .breakdown { display: block; }
 .pg-matchup-cell .mu-team-row.winner .t-name,
 .pg-matchup-cell .mu-team-row.winner .t-score { color: var(--c-accent); font-weight: var(--weight-bold); }
 .pg-matchup-cell .t-name { flex: 1; min-width: 0; white-space: normal; word-break: break-word; }
-.pg-matchup-cell .t-score { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--c-text-secondary); flex-shrink: 0; }
-.pg-matchup-cell .t-spread { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--c-text-secondary); flex-shrink: 0; }
+.pg-matchup-cell .t-right { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
+.pg-matchup-cell .t-score { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--c-text-secondary); }
+.pg-matchup-cell .t-spread { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--c-text-muted); }
 .pg-matchup-cell .team-logo { width: 26px; height: 26px; object-fit: contain; flex-shrink: 0; }
 
 /* Per-player result cell — logo, full team name (wraps, doesn't ellipsis —

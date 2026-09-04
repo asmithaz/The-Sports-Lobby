@@ -168,6 +168,24 @@ function statusFor(competition: any): "scheduled" | "live" | "final" {
   return "scheduled";
 }
 
+// Grades against the spread using whichever (spread, favoriteTeam) pair is
+// passed in — callers must pass the FROZEN values from the DB, not
+// freshly-fetched ESPN odds, since ESPN stops returning `odds` for most
+// games once they go final. Using live odds here silently nulled out
+// ats_winner_team (rendered as a false "Push") for every already-final game
+// on its next routine sync.
+function computeAtsWinner(
+  homeTeam: string, awayTeam: string, homeScore: number, awayScore: number,
+  spread: number | null, favoriteTeam: string | null,
+): string | null {
+  if (spread == null || favoriteTeam == null) return null;
+  const favIsHome = favoriteTeam === homeTeam;
+  const margin = favIsHome ? homeScore - awayScore : awayScore - homeScore;
+  return margin > spread ? favoriteTeam
+    : margin < spread ? (favIsHome ? awayTeam : homeTeam)
+    : null; // push
+}
+
 function mapEvent(ev: any, week: number, teamConference: Map<string, string>): MappedGame | null {
   const competition = ev?.competitions?.[0];
   const competitors: any[] = competition?.competitors ?? [];
@@ -210,13 +228,11 @@ function mapEvent(ev: any, week: number, teamConference: Map<string, string>): M
     winnerTeam = homeScore > awayScore ? home.team.displayName
       : awayScore > homeScore ? away.team.displayName
       : null;
-    if (spread != null && favoriteTeam != null) {
-      const favIsHome = favoriteTeam === home.team.displayName;
-      const margin = favIsHome ? homeScore - awayScore : awayScore - homeScore;
-      atsWinnerTeam = margin > spread ? favoriteTeam
-        : margin < spread ? (favIsHome ? away.team.displayName : home.team.displayName)
-        : null; // push
-    }
+    // Uses THIS run's freshly-fetched spread/favorite — correct here since
+    // this is the value being frozen for the first time (insert path).
+    // The routine-update path below must NOT reuse this; see
+    // computeAtsWinner's comment.
+    atsWinnerTeam = computeAtsWinner(home.team.displayName, away.team.displayName, homeScore, awayScore, spread, favoriteTeam);
   }
 
   const homeId = home.team.id != null ? String(home.team.id) : null;
@@ -469,11 +485,11 @@ Deno.serve(async (req) => {
 
     const { data: existingGames, error: existingErr } = await supabase
       .from("wpe_games")
-      .select("id, espn_event_id, home_team, away_team")
+      .select("id, espn_event_id, home_team, away_team, spread, favorite_team")
       .eq("season", seasonYear);
     if (existingErr) throw existingErr;
 
-    const existingByEspnId = new Map<string, { id: string; home_team: string; away_team: string }>();
+    const existingByEspnId = new Map<string, { id: string; home_team: string; away_team: string; spread: number | null; favorite_team: string | null }>();
     for (const g of existingGames ?? []) existingByEspnId.set(g.espn_event_id, g);
 
     const toInsert: any[] = [];
@@ -495,6 +511,17 @@ Deno.serve(async (req) => {
       // `week` is included so the one-time Week 0/Week 1 boundary fix
       // (see reassignWeekBoundaries) can correct already-synced rows —
       // safe pre-launch since no real league has picks on these games yet.
+      //
+      // ats_winner_team is re-derived here from the EXISTING row's frozen
+      // spread/favorite_team, not `game.ats_winner_team` (which mapEvent
+      // computed off this run's freshly-fetched ESPN odds). ESPN stops
+      // returning `odds` for most games once they go final, so on the
+      // sync immediately after a game ends, `game.ats_winner_team` was
+      // silently coming back null — rendering every final game as a
+      // "Push" regardless of the actual frozen line.
+      const atsWinnerTeam = game.status === "final" && game.home_score != null && game.away_score != null
+        ? computeAtsWinner(game.home_team, game.away_team, game.home_score, game.away_score, existing.spread, existing.favorite_team)
+        : null;
       const { error: updateErr } = await supabase
         .from("wpe_games")
         .update({
@@ -503,7 +530,7 @@ Deno.serve(async (req) => {
           home_score: game.home_score,
           away_score: game.away_score,
           winner_team: game.winner_team,
-          ats_winner_team: game.ats_winner_team,
+          ats_winner_team: atsWinnerTeam,
           kickoff_at: game.kickoff_at,
           home_conference: game.home_conference,
           away_conference: game.away_conference,

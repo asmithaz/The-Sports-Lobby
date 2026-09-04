@@ -501,8 +501,7 @@
                 function muRow(team, isWinner, score, spreadTag, logoUrl, rank) {
                     const logoHtml = logoUrl ? `<img class="team-logo" src="${escapeHtml(logoUrl)}" alt="" />` : '';
                     const rankHtml = rank != null ? `<span class="t-rank">#${rank}</span>` : '';
-                    const rightHtml = score != null ? `<span class="t-score">${score}</span>`
-                        : spreadTag != null ? `<span class="t-spread">${spreadTag}</span>` : '';
+                    const rightHtml = `<span class="t-right">${score != null ? `<span class="t-score">${score}</span>` : ''}${spreadTag != null ? `<span class="t-spread">${spreadTag}</span>` : ''}</span>`;
                     return `<div class="mu-team-row${isWinner ? ' winner' : ''}">${logoHtml}${rankHtml}<span class="t-name">${escapeHtml(team)}</span>${rightHtml}</div>`;
                 }
                 const statusSuffix = g.status === 'final' ? ' · Final' : g.status === 'live' ? ' · Live' : '';

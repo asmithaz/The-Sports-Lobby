@@ -88,6 +88,24 @@ function classifyTier(headline: string): MappedGame["tier"] {
   return "bowl";
 }
 
+// Grades against the spread using whichever (spread, favoriteTeam) pair is
+// passed in — callers must pass the FROZEN values from the DB, not
+// freshly-fetched ESPN odds, since ESPN stops returning `odds` for most
+// games once they go final. Using live odds here silently nulled out
+// ats_winner_team (rendered as a false "Push") for every already-final game
+// on its next routine sync.
+function computeAtsWinner(
+  homeTeam: string, awayTeam: string, homeScore: number, awayScore: number,
+  spread: number | null, favoriteTeam: string | null,
+): string | null {
+  if (spread == null || favoriteTeam == null) return null;
+  const favIsHome = favoriteTeam === homeTeam;
+  const margin = favIsHome ? homeScore - awayScore : awayScore - homeScore;
+  return margin > spread ? favoriteTeam
+    : margin < spread ? (favIsHome ? awayTeam : homeTeam)
+    : null; // push
+}
+
 function statusFor(competition: any): "scheduled" | "live" | "final" {
   const state = String(competition?.status?.type?.state ?? "").toLowerCase();
   if (state === "post") return "final";
@@ -147,13 +165,7 @@ function mapEvent(ev: any): MappedGame | null {
     winnerTeam = homeScore > awayScore ? home.team.displayName
       : awayScore > homeScore ? away.team.displayName
       : null; // a tie is theoretically impossible in CFB, but don't crash if it happens
-    if (spread != null && favoriteTeam != null) {
-      const favIsHome = favoriteTeam === home.team.displayName;
-      const margin = favIsHome ? homeScore - awayScore : awayScore - homeScore;
-      atsWinnerTeam = margin > spread ? favoriteTeam
-        : margin < spread ? (favIsHome ? away.team.displayName : home.team.displayName)
-        : null; // push
-    }
+    atsWinnerTeam = computeAtsWinner(home.team.displayName, away.team.displayName, homeScore, awayScore, spread, favoriteTeam);
   }
 
   return {
@@ -238,11 +250,11 @@ Deno.serve(async (req) => {
 
     const { data: existingGames, error: existingErr } = await supabase
       .from("bpe_games")
-      .select("id, espn_event_id, home_team, away_team")
+      .select("id, espn_event_id, home_team, away_team, spread, favorite_team")
       .eq("season", season);
     if (existingErr) throw existingErr;
 
-    const existingByEspnId = new Map<string, { id: string; home_team: string; away_team: string }>();
+    const existingByEspnId = new Map<string, { id: string; home_team: string; away_team: string; spread: number | null; favorite_team: string | null }>();
     for (const g of existingGames ?? []) existingByEspnId.set(g.espn_event_id, g);
 
     const toInsert: any[] = [];
@@ -259,6 +271,13 @@ Deno.serve(async (req) => {
         continue;
       }
       // Routine refresh — spread is intentionally excluded from this update.
+      // ats_winner_team is re-derived from the EXISTING row's frozen
+      // spread/favorite_team, not `game.ats_winner_team` (computed off this
+      // run's freshly-fetched ESPN odds, which disappear once a game is
+      // final) — see computeAtsWinner's comment.
+      const atsWinnerTeam = game.status === "final" && game.home_score != null && game.away_score != null
+        ? computeAtsWinner(game.home_team, game.away_team, game.home_score, game.away_score, existing.spread, existing.favorite_team)
+        : null;
       const { error: updateErr } = await supabase
         .from("bpe_games")
         .update({
@@ -266,7 +285,7 @@ Deno.serve(async (req) => {
           home_score: game.home_score,
           away_score: game.away_score,
           winner_team: game.winner_team,
-          ats_winner_team: game.ats_winner_team,
+          ats_winner_team: atsWinnerTeam,
           kickoff_at: game.kickoff_at,
           updated_at: new Date().toISOString(),
         })

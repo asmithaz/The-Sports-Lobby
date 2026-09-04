@@ -394,7 +394,7 @@
                 const score = isHome ? g.home_score : g.away_score;
                 return `<div class="mu-team-row ${cls}">
                     ${logoHtml}<span class="t-name">${rankHtml}<span class="t-name-label">${escapeHtml(team)}</span></span>
-                    <span class="t-right">${score != null ? `<span class="t-score">${score}</span>` : ''}</span>
+                    <span class="t-right">${score != null ? `<span class="t-score">${score}</span>` : ''}${tagText != null ? `<span class="t-spread">${tagText}</span>` : ''}</span>
                   </div>`;
             }
 
