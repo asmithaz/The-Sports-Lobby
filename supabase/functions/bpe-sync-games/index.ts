@@ -3,11 +3,17 @@
 // Pulls the college football postseason schedule + live/final scores
 // from ESPN's public scoreboard API, upserts them into `bpe_games`
 // (cfb/bowl-season-pick-em/schema.sql), and recalculates every active
-// league's standings. A game's `spread` is written only on first
-// insert and never touched again on subsequent syncs — that's what
-// keeps it frozen per "Bowl Season Pick 'Em.txt". If an already-known
-// game's teams change (opt-out / vacated bid), picks on that game are
-// cleared and every member of every Bowl Pick 'Em league is emailed.
+// league's standings. A game's `spread`/`favorite_team` are frozen the
+// first time ESPN reports a real line, not merely the first time the row
+// is inserted — bowl matchups/CFP slots are typically known well before
+// sportsbooks post odds, so freezing at insert-time would leave most
+// games with no spread forever (same bug fixed in wpe-sync-games
+// 2026-09-09, applied here proactively before bowl season starts and hits
+// it live). Once a non-null spread is seen, it's left alone on every
+// later sync — that's what keeps it frozen per "Bowl Season Pick 'Em.txt".
+// If an already-known game's teams change (opt-out / vacated bid), picks
+// on that game are cleared and every member of every Bowl Pick 'Em league
+// is emailed.
 //
 // KNOWN OPEN RISK (see the build plan / rules doc): the exact query
 // params below were derived from web UI URLs the user confirmed work
@@ -23,8 +29,13 @@
 // acceptable at ~46 rows/season, not worth a UI.
 //
 // Triggered by:
-//  - A GitHub Actions cron every 15 minutes during bowl season
-//    (.github/workflows/bpe-sync-games.yml)
+//  - pg_cron + pg_net every 15 minutes during bowl season (schema.sql
+//    SECTION 10) — moved off GitHub Actions' `schedule:` trigger
+//    2026-09-09, same reasoning wpe-sync-games launched on this pattern
+//    from day one: GH Actions' schedule went silent 5+ hours during a
+//    live event on 2026-08-27 (see fcp-sync-scores). GH Actions is kept
+//    (.github/workflows/bpe-sync-games.yml) as a manual workflow_dispatch
+//    fallback only.
 //  - The "Refresh" button on the Bowl Pick 'Em dashboard
 //  - Manually with ?dry_run=true to inspect the mapped output without writing
 //
@@ -258,6 +269,7 @@ Deno.serve(async (req) => {
     for (const g of existingGames ?? []) existingByEspnId.set(g.espn_event_id, g);
 
     const toInsert: any[] = [];
+    const toUpdate: any[] = [];
     const changedGames: { id: string; game: MappedGame }[] = [];
 
     for (const game of mapped) {
@@ -270,26 +282,50 @@ Deno.serve(async (req) => {
         changedGames.push({ id: existing.id, game });
         continue;
       }
-      // Routine refresh — spread is intentionally excluded from this update.
-      // ats_winner_team is re-derived from the EXISTING row's frozen
-      // spread/favorite_team, not `game.ats_winner_team` (computed off this
-      // run's freshly-fetched ESPN odds, which disappear once a game is
-      // final) — see computeAtsWinner's comment.
+      // The line is still open (no spread recorded yet) — take this run's
+      // freshly-fetched spread/favorite as the one to freeze going forward.
+      // Once `existing.spread` is non-null, keep using it instead (frozen).
+      const frozenSpread = existing.spread ?? game.spread;
+      const frozenFavorite = existing.favorite_team ?? game.favorite_team;
+      // ats_winner_team is re-derived from the FROZEN spread/favorite_team,
+      // not `game.ats_winner_team` (computed off this run's freshly-fetched
+      // ESPN odds, which disappear once a game is final) — see
+      // computeAtsWinner's comment.
       const atsWinnerTeam = game.status === "final" && game.home_score != null && game.away_score != null
-        ? computeAtsWinner(game.home_team, game.away_team, game.home_score, game.away_score, existing.spread, existing.favorite_team)
+        ? computeAtsWinner(game.home_team, game.away_team, game.home_score, game.away_score, frozenSpread, frozenFavorite)
         : null;
-      const { error: updateErr } = await supabase
-        .from("bpe_games")
-        .update({
-          status: game.status,
-          home_score: game.home_score,
-          away_score: game.away_score,
-          winner_team: game.winner_team,
-          ats_winner_team: atsWinnerTeam,
-          kickoff_at: game.kickoff_at,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existing.id);
+      toUpdate.push({
+        id: existing.id,
+        // Required even though this row always takes the ON CONFLICT DO
+        // UPDATE path below — Postgres validates NOT NULL columns (these
+        // have no default) while constructing the candidate INSERT row,
+        // before conflict resolution is even considered. Same fix applied
+        // to wpe-sync-games 2026-09-08 after a live 500 there.
+        season, espn_event_id: game.espn_event_id, tier: game.tier, bowl_name: game.bowl_name,
+        home_team: game.home_team, away_team: game.away_team,
+        status: game.status,
+        home_score: game.home_score,
+        away_score: game.away_score,
+        winner_team: game.winner_team,
+        ats_winner_team: atsWinnerTeam,
+        spread: frozenSpread,
+        favorite_team: frozenFavorite,
+        kickoff_at: game.kickoff_at,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    // Batched as a single upsert keyed on `id` rather than one .update()
+    // per game — wpe-sync-games hit this same shape of bug live 2026-09-08:
+    // a sequential await-per-row loop took 11s+ for ~330 games, blowing
+    // past pg_net's 5s cron timeout so games never actually got marked
+    // final. Bowl season is only ~46 games/run so the risk is smaller, but
+    // the fix is free and keeps both sync functions consistent. Upsert only
+    // ever touches the columns listed per row, so unlisted columns
+    // (spread, favorite_team, matchup_version, etc.) stay untouched exactly
+    // like the old per-row .update() did.
+    if (toUpdate.length > 0) {
+      const { error: updateErr } = await supabase.from("bpe_games").upsert(toUpdate, { onConflict: "id" });
       if (updateErr) throw updateErr;
     }
 
