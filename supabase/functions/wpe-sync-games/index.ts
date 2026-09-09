@@ -4,9 +4,12 @@
 // from ESPN's public scoreboard API, upserts them into `wpe_games`
 // (cfb/weekly-pick-em/schema.sql), computes the weekly "Sports Lobby
 // Choice" curated slate, and recalculates every active league's
-// standings. A game's `spread` is written only on first insert and never
-// touched again on subsequent syncs — conference/rank/sports_lobby_choice
-// DO refresh on every routine sync (descriptive metadata, not a frozen
+// standings. A game's `spread`/`favorite_team` are frozen the first time
+// ESPN reports a real line, not merely the first time the row is inserted
+// — games get inserted up to LOOKAHEAD_WEEKS before kickoff, well before
+// odds are posted, so freezing at insert-time left most games with no
+// spread ever (fixed 2026-09-09). Conference/rank/sports_lobby_choice DO
+// refresh on every routine sync (descriptive metadata, not a frozen
 // betting line). If an already-known game's teams change, its picks are
 // cleared via wpe_apply_matchup_change (no mass email — regular-season
 // matchup changes are rare/low-stakes, unlike a bowl opt-out).
@@ -78,6 +81,15 @@ function scoreboardUrl(params: Record<string, string | number>) {
 // "current" — matches ESPN's own schedule availability, which is
 // typically known well ahead of kickoff even before odds are posted.
 const LOOKAHEAD_WEEKS = 2;
+
+// How many weeks BEHIND "current" to keep re-fetching, so a straggler game
+// still live/scheduled when ESPN flips its own "current" week pointer
+// forward (e.g. a Sunday/Monday-night game finishing after the rest of the
+// week is done) still gets synced to "final". Live-verified 2026-09-08:
+// once ESPN's `week.number` advances, the prior week's scoreboard is
+// simply never returned by the "current" query again, so a not-yet-final
+// game there is stuck at its last-known status forever without this.
+const LOOKBACK_WEEKS = 1;
 
 // Must match wpe_power4_conferences() / wpe_group_of_5_conferences() in
 // cfb/weekly-pick-em/schema.sql exactly. Ids confirmed via the standings
@@ -431,12 +443,17 @@ Deno.serve(async (req) => {
 
     // Sync ahead LOOKAHEAD_WEEKS beyond current, so upcoming weeks appear
     // on the picks page as their own (initially spread-less) section
-    // instead of only showing up once they become "current". Skipped
-    // when a caller explicitly pins a single week (manual backfill/testing).
+    // instead of only showing up once they become "current" — and sync
+    // behind LOOKBACK_WEEKS so a straggler game from a just-passed week
+    // keeps getting its score/status updated (see LOOKBACK_WEEKS comment).
+    // Skipped when a caller explicitly pins a single week (manual
+    // backfill/testing).
     const weeksToFetch: { events: any[]; week: number }[] = [{ events: primaryData?.events ?? [], week: weekNumber }];
     if (overrideWeek === undefined) {
+      const aheadWeeks = Array.from({ length: LOOKAHEAD_WEEKS }, (_, i) => weekNumber + i + 1);
+      const behindWeeks = Array.from({ length: LOOKBACK_WEEKS }, (_, i) => weekNumber - i - 1).filter((wk) => wk >= 0);
       const extras = await Promise.all(
-        Array.from({ length: LOOKAHEAD_WEEKS }, (_, i) => weekNumber + i + 1).map(async (wk) => {
+        [...aheadWeeks, ...behindWeeks].map(async (wk) => {
           try {
             const res = await fetch(scoreboardUrl({ groups: 80, limit: 200, week: wk, year: seasonYear, seasontype: seasonType }));
             if (!res.ok) return { events: [], week: wk };
@@ -493,6 +510,7 @@ Deno.serve(async (req) => {
     for (const g of existingGames ?? []) existingByEspnId.set(g.espn_event_id, g);
 
     const toInsert: any[] = [];
+    const toUpdate: any[] = [];
     const changedGames: { id: string; game: MappedGame }[] = [];
 
     for (const game of mapped) {
@@ -505,9 +523,16 @@ Deno.serve(async (req) => {
         changedGames.push({ id: existing.id, game });
         continue;
       }
-      // Routine refresh — spread is intentionally excluded so it stays
-      // frozen at first sync. Conference/rank/sports_lobby_choice DO
-      // refresh here (descriptive metadata, not a frozen betting line).
+      // Routine refresh — spread/favorite_team are frozen ONLY once a real
+      // line has been recorded, not merely once the row exists. Games get
+      // inserted up to LOOKAHEAD_WEEKS ahead of kickoff, well before ESPN
+      // posts odds, so `existing.spread` is null for a while after insert;
+      // if this stayed frozen from insert, those games would NEVER get a
+      // spread (live-verified 2026-09-09: most of a week's games showed no
+      // spread on the picks page, only ones synced after ESPN posted odds).
+      // Once a non-null spread is seen, it's left alone on every later sync.
+      // Conference/rank/sports_lobby_choice DO refresh here (descriptive
+      // metadata, not a frozen betting line).
       // `week` is included so the one-time Week 0/Week 1 boundary fix
       // (see reassignWeekBoundaries) can correct already-synced rows —
       // safe pre-launch since no real league has picks on these games yet.
@@ -519,27 +544,55 @@ Deno.serve(async (req) => {
       // sync immediately after a game ends, `game.ats_winner_team` was
       // silently coming back null — rendering every final game as a
       // "Push" regardless of the actual frozen line.
+      // The line is still open (no spread recorded yet) — take this run's
+      // freshly-fetched spread/favorite as the one to freeze going forward.
+      // Once `existing.spread` is non-null, keep using it instead (frozen).
+      const frozenSpread = existing.spread ?? game.spread;
+      const frozenFavorite = existing.favorite_team ?? game.favorite_team;
       const atsWinnerTeam = game.status === "final" && game.home_score != null && game.away_score != null
-        ? computeAtsWinner(game.home_team, game.away_team, game.home_score, game.away_score, existing.spread, existing.favorite_team)
+        ? computeAtsWinner(game.home_team, game.away_team, game.home_score, game.away_score, frozenSpread, frozenFavorite)
         : null;
-      const { error: updateErr } = await supabase
-        .from("wpe_games")
-        .update({
-          week: game.week,
-          status: game.status,
-          home_score: game.home_score,
-          away_score: game.away_score,
-          winner_team: game.winner_team,
-          ats_winner_team: atsWinnerTeam,
-          kickoff_at: game.kickoff_at,
-          home_conference: game.home_conference,
-          away_conference: game.away_conference,
-          home_rank: game.home_rank,
-          away_rank: game.away_rank,
-          sports_lobby_choice: game.sports_lobby_choice,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existing.id);
+      toUpdate.push({
+        id: existing.id,
+        // Required even though this row always takes the ON CONFLICT DO
+        // UPDATE path below — Postgres validates NOT NULL columns (these
+        // three have no default) while constructing the candidate INSERT
+        // row, before conflict resolution is even considered. Live-
+        // verified 2026-09-08: omitting them 500'd every upsert.
+        season: seasonYear,
+        espn_event_id: game.espn_event_id,
+        home_team: game.home_team,
+        away_team: game.away_team,
+        week: game.week,
+        status: game.status,
+        home_score: game.home_score,
+        away_score: game.away_score,
+        winner_team: game.winner_team,
+        ats_winner_team: atsWinnerTeam,
+        spread: frozenSpread,
+        favorite_team: frozenFavorite,
+        kickoff_at: game.kickoff_at,
+        home_conference: game.home_conference,
+        away_conference: game.away_conference,
+        home_rank: game.home_rank,
+        away_rank: game.away_rank,
+        sports_lobby_choice: game.sports_lobby_choice,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    // Batched as a single upsert keyed on `id` rather than one .update() per
+    // game — live-verified 2026-09-08: with ~330 games synced per run, the
+    // old one-await-per-row loop took 11s+ end to end, well past pg_net's
+    // 5s default timeout on the cron trigger (see schema.sql SECTION 8).
+    // pg_net logged nothing but "Timeout of 5000ms reached" for 6+ hours
+    // straight while the underlying Edge Function invocation never got to
+    // finish writing scores — games stuck mid-live never flipped to final.
+    // Upsert only ever touches the columns listed per row, so unlisted
+    // columns (spread, favorite_team, etc.) stay untouched exactly like
+    // the old per-row .update() did.
+    if (toUpdate.length > 0) {
+      const { error: updateErr } = await supabase.from("wpe_games").upsert(toUpdate, { onConflict: "id" });
       if (updateErr) throw updateErr;
     }
 
