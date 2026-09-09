@@ -54,15 +54,17 @@ function pointsForPosition(position: number | null): number {
 // ESPN's status.type.state is "pre" | "in" | "post" across every sport on
 // this API. Checked at both the event and competition level since golf's
 // scoreboard has been observed to set it on either depending on the event.
-function findEventKey(events: any[]): { event: string; competition: any; started: boolean } | null {
+function findEventKey(
+  events: any[],
+): { event: string; competition: any; started: boolean; completed: boolean } | null {
   for (const ev of events ?? []) {
     const name = String(ev?.name ?? ev?.shortName ?? "").toLowerCase();
     for (const [needle, key] of Object.entries(EVENT_NAME_MATCH)) {
       if (name.includes(needle)) {
         const competition = ev?.competitions?.[0];
         if (competition) {
-          const state = competition?.status?.type?.state ?? ev?.status?.type?.state;
-          return { event: key, competition, started: state !== "pre" };
+          const type = competition?.status?.type ?? ev?.status?.type;
+          return { event: key, competition, started: type?.state !== "pre", completed: type?.completed === true };
         }
       }
     }
@@ -109,13 +111,22 @@ async function findUpcomingEventFromCalendar(
 }
 
 // Normalizes ESPN's per-competitor status into our fcp_event_results.status enum.
-function statusFor(competitor: any): "active" | "made_cut" | "cut" | "withdrawn" {
+//
+// ESPN never actually reports "FINAL" on an individual competitor — a
+// finished golfer's status.type.name is "STATUS_FINISH" ("Finish"/"F"), and
+// that same value re-fires after *every* round, not just the last one (a
+// golfer who wraps up round 1 early shows identically to one who just won
+// the tournament). So "made_cut" can't be decided from competitor-level
+// text at all — it has to come from the whole competition's own `completed`
+// flag (same field findEventKey() already reads for `started`), which only
+// flips true once the entire tournament is over for the whole field.
+function statusFor(competitor: any, competitionCompleted: boolean): "active" | "made_cut" | "cut" | "withdrawn" {
   const typeName = String(competitor?.status?.type?.name ?? "").toUpperCase();
   const typeDesc = String(competitor?.status?.type?.description ?? "").toLowerCase();
 
   if (typeName.includes("WITHDR") || typeDesc.includes("withdr")) return "withdrawn";
   if (typeName.includes("CUT") || typeDesc.includes("cut")) return "cut";
-  if (typeName.includes("FINAL") || typeDesc.includes("final")) return "made_cut";
+  if (competitionCompleted) return "made_cut";
   return "active";
 }
 
@@ -253,6 +264,11 @@ Deno.serve(async (req) => {
     let competitionId: string;
     let started: boolean;
     let competitors: any[];
+    // Whether the whole tournament (every golfer, every round) is over —
+    // drives statusFor()'s "made_cut" call. False in the calendar/core-API
+    // branch below by construction: that branch only ever runs for an event
+    // that hasn't teed off yet.
+    let competitionCompleted = false;
     // Which round is "today" — only meaningful (and only available) off the
     // live scoreboard's own competition.status.period. The calendar/core-API
     // branch below is for an event that hasn't teed off yet at all, so there
@@ -265,6 +281,7 @@ Deno.serve(async (req) => {
       started = matched.started;
       competitors = matched.competition?.competitors ?? [];
       currentRoundPeriod = matched.competition?.status?.period ?? null;
+      competitionCompleted = matched.completed;
     } else {
       if (!upcoming) {
         return new Response(
@@ -349,7 +366,7 @@ Deno.serve(async (req) => {
 
           return {
             golferId,
-            status: hasStarted ? statusFor(competitor) : "scheduled" as const,
+            status: hasStarted ? statusFor(competitor, competitionCompleted) : "scheduled" as const,
             relative: hasStarted ? relativeScoreFor(competitor) : null,
             teeTime: individualStarted ? null : individual?.teeTime ?? null,
             // Only meaningful for the round in progress right now — a golfer
