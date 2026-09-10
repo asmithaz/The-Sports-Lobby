@@ -716,3 +716,43 @@ BEGIN
   EXCEPTION WHEN duplicate_object THEN NULL;
   END;
 END $$;
+
+
+-- ------------------------------------------------------------
+-- 10. LIVE SYNC SCHEDULING (pg_cron + pg_net)
+-- Moved off GitHub Actions' `schedule:` trigger 2026-09-09 — same
+-- reasoning cfb/weekly-pick-em/schema.sql SECTION 8 documents: GH
+-- Actions' schedule went silent 5+ hours during a live event on
+-- 2026-08-27 (fcp-sync-scores). .github/workflows/bpe-sync-games.yml is
+-- kept as a manual workflow_dispatch-only fallback.
+--
+-- Reuses the same 'fcp_service_role_key' Vault secret every other sync
+-- cron in this project uses — it's this Supabase project's one service
+-- role key, not FedEx-specific.
+--
+-- `season` is passed explicitly (not left to the function's own
+-- new Date().getFullYear() default) because bowl season spans a
+-- calendar-year boundary (Dec season N into Jan season N+1) — the
+-- default would silently resolve to the wrong year in January.
+-- UPDATE THE SEASON YEAR AND DATE WINDOW EACH YEAR — same values as
+-- SEASON / BOWL_SEASON_START / BOWL_SEASON_END in the GitHub Actions
+-- workflow; keep both in sync.
+-- ------------------------------------------------------------
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS pg_net  WITH SCHEMA extensions;
+
+SELECT cron.schedule(
+  'bpe-sync-games-cron',
+  '*/15 * * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://rjtlolzdwmrhctdatekj.supabase.co/functions/v1/bpe-sync-games?season=2026',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'fcp_service_role_key')
+    ),
+    body := '{}'::jsonb
+  )
+  WHERE current_date BETWEEN DATE '2026-12-06' AND DATE '2027-01-26';
+  $$
+);
