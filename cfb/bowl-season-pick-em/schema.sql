@@ -476,8 +476,18 @@ GRANT EXECUTE ON FUNCTION bpe_opt_in_bowls_set_notification(int) TO authenticate
 -- bpe_recalculate_scores: recomputes one league+season's bpe_scores from
 -- scratch off bpe_picks + bpe_games. Correctness (straight-up vs ATS) and
 -- point values (flat tier table vs confidence_points) branch on the
--- league's own pick_mode/scoring_mode. A push (ats_winner_team IS NULL
--- under spread mode) scores 0 and doesn't count as a win or a loss.
+-- league's own pick_mode/scoring_mode.
+--
+-- Spread mode has two distinct reasons a game can end up with no ATS
+-- winner, graded differently (same fix as cfb/weekly-pick-em/schema.sql's
+-- wpe_recalculate_scores):
+--   - g.spread IS NULL: the game never had a line by the time it locked
+--     (bpe-sync-games freezes spread/favorite_team at reveal — see that
+--     file's header comment). Nobody ever saw a number for this game, so
+--     it plays as a plain straight-up pick'em: graded against winner_team.
+--   - g.spread IS NOT NULL AND g.ats_winner_team IS NULL: an actual push
+--     (final margin landed exactly on the frozen line) — scores 0,
+--     doesn't count as a win or a loss.
 CREATE OR REPLACE FUNCTION bpe_recalculate_scores(p_league_id uuid, p_season int)
 RETURNS void
 LANGUAGE plpgsql
@@ -509,9 +519,15 @@ BEGIN
   LEFT JOIN bpe_games g ON g.id = p.game_id AND g.status = 'final'
   LEFT JOIN LATERAL (
     SELECT
-      (g.id IS NOT NULL AND NOT (v_pick_mode = 'spread' AND g.ats_winner_team IS NULL)
-        AND ((v_pick_mode = 'straight_up' AND p.picked_team = g.winner_team)
-             OR (v_pick_mode = 'spread' AND p.picked_team = g.ats_winner_team))
+      -- A real push (had a line, margin landed on it exactly) is the only
+      -- case that voids the pick entirely; a never-had-a-line game falls
+      -- through to the pick'em branch below instead.
+      (g.id IS NOT NULL AND NOT (v_pick_mode = 'spread' AND g.spread IS NOT NULL AND g.ats_winner_team IS NULL)
+        AND (
+          v_pick_mode = 'straight_up' AND p.picked_team = g.winner_team
+          OR v_pick_mode = 'spread' AND g.spread IS NULL AND p.picked_team = g.winner_team
+          OR v_pick_mode = 'spread' AND g.spread IS NOT NULL AND p.picked_team = g.ats_winner_team
+        )
       ) AS is_correct
   ) chk ON true
   LEFT JOIN LATERAL (
@@ -524,7 +540,7 @@ BEGIN
         END
       END AS pts,
       chk.is_correct AS is_win,
-      (g.id IS NOT NULL AND NOT (v_pick_mode = 'spread' AND g.ats_winner_team IS NULL) AND NOT chk.is_correct) AS is_loss
+      (g.id IS NOT NULL AND NOT (v_pick_mode = 'spread' AND g.spread IS NOT NULL AND g.ats_winner_team IS NULL) AND NOT chk.is_correct) AS is_loss
   ) calc ON true
   WHERE m.league_id = p_league_id
   GROUP BY m.user_id

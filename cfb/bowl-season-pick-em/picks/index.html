@@ -128,7 +128,10 @@
         function isCorrect(pick, game) {
             if (!pick || game.status !== 'final') return null;
             if (bpeLeague.pick_mode === 'spread') {
-                if (game.ats_winner_team == null) return null;
+                // Never had a line at lock time (see bpe-sync-games' freeze
+                // comment) — plays as a straight-up pick'em, not a push.
+                if (game.spread == null) return pick.picked_team === game.winner_team;
+                if (game.ats_winner_team == null) return null; // a real push
                 return pick.picked_team === game.ats_winner_team;
             }
             return pick.picked_team === game.winner_team;
@@ -222,7 +225,11 @@
                     <span class="quick-fill-label">Quick fill:</span>
                     <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="favorites">Select All Favorites</button>
                     <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="underdogs">Select All Underdogs</button>
-                  </div>` : ''}
+                    ${bpeLeague.scoring_mode === 'confidence' && def.confKind !== 'forced' ? `<button type="button" class="btn btn--ghost btn--sm" data-fill-mode="randomize-confidence">Randomize Confidence</button>` : ''}
+                    <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="clear">Clear All Picks</button>
+                    <span class="save-pill" id="${def.key}-count"></span>
+                  </div>
+                  ${bpeLeague.pick_mode === 'spread' ? `<div class="quick-fill-note">For games with no spread available (pick'em) at the lock time, the home team counts as the favorite and the away team as the underdog.</div>` : ''}` : ''}
                 ${bpeLeague.scoring_mode === 'confidence' && def.confKind === 'range' ? `
                   <div class="conf-tracker-box">
                     <div class="conf-tracker-label">
@@ -321,8 +328,14 @@
                   </div>`;
             }
 
+            // Spread-mode league, no line ever landed by the time this game
+            // locked (frozen null — see bpe-sync-games) — plays as a plain
+            // pick'em, called out so it's not mistaken for a rendering bug.
+            const isPickEm = spreadOn && g.spread == null;
+            const pickEmNote = isPickEm ? `<div class="mu-pickem-note">Pick'em — no line available at lock</div>` : '';
             const matchupHtml = `
               <div class="mu-head">${escapeHtml(g.bowl_name)}${fmtKickoff(g.kickoff_at) ? ' · ' + fmtKickoff(g.kickoff_at) : ''}</div>
+              ${pickEmNote}
               ${teamRow(g.away_team, false, awayTag, g.away_team_logo)}
               ${teamRow(g.home_team, true, homeTag, g.home_team_logo)}
             `;
@@ -409,7 +422,12 @@
             refreshConfAvailability(def, block);
 
             block.querySelectorAll('[data-fill-mode]').forEach(btn => {
-                btn.addEventListener('click', () => applyBulkFill(def, btn.dataset.fillMode, block));
+                btn.addEventListener('click', () => {
+                    const mode = btn.dataset.fillMode;
+                    if (mode === 'clear') applyClearAll(def, block);
+                    else if (mode === 'randomize-confidence') applyRandomizeConfidence(def, block);
+                    else applyBulkFill(def, mode, block);
+                });
             });
 
             block.querySelectorAll('th[data-sort-key]').forEach(th => {
@@ -430,15 +448,18 @@
 
         // Bulk-fills every open (unlocked) game in this round with either the
         // spread favorite or the underdog, overwriting any existing pending
-        // pick — games with no line yet are left untouched since there's no
-        // favorite to select. Pure client-side edit of `pending`, same
-        // Save-then-persist flow as a manual pick.
+        // pick. A pick'em game (no line — see isPickEm in renderGameRow) has
+        // no real favorite/underdog, so it defaults to home=favorite,
+        // away=underdog for quick-fill purposes only — an arbitrary but
+        // consistent convention, not a claim about who's actually better.
+        // Pure client-side edit of `pending`, same Save-then-persist flow as
+        // a manual pick.
         function applyBulkFill(def, mode, block) {
             const games = allGames.filter(g => def.tiers.includes(g.tier) && !isLocked(g));
             let changed = false;
             games.forEach(g => {
-                if (!g.favorite_team) return;
-                const team = mode === 'favorites' ? g.favorite_team : (g.favorite_team === g.home_team ? g.away_team : g.home_team);
+                const favorite = g.favorite_team || g.home_team;
+                const team = mode === 'favorites' ? favorite : (favorite === g.home_team ? g.away_team : g.home_team);
                 pending[g.id] = { ...(pending[g.id] || {}), picked_team: team };
                 changed = true;
                 const row = block.querySelector(`tr[data-game-id="${g.id}"]`);
@@ -452,6 +473,80 @@
                 dirty[def.key] = true;
                 refreshSaveState(def, block);
             }
+        }
+
+        // Clears every currently-picked, still-open game in this round —
+        // locally only, same as a manual pick change (nothing hits the
+        // server until "Save Picks" is clicked). A picked_team of `null`
+        // (as opposed to no `pending` entry at all) is a sentinel meaning
+        // "explicitly cleared, needs bpe_clear_pick on save" — see
+        // saveRound, which is the only thing that tells a real clear apart
+        // from a game nobody has touched this session.
+        function applyClearAll(def, block) {
+            const games = allGames.filter(g => def.tiers.includes(g.tier) && !isLocked(g) && pending[g.id]?.picked_team);
+            if (!games.length) return;
+            if (!confirm(`Clear all ${games.length} pick${games.length === 1 ? '' : 's'} in ${def.title}?`)) return;
+
+            games.forEach(g => {
+                pending[g.id] = { picked_team: null, confidence_points: null };
+                const row = block.querySelector(`tr[data-game-id="${g.id}"]`);
+                if (row) {
+                    row.querySelectorAll('.mu-team-row.selectable').forEach(el => el.classList.remove('selected'));
+                    const sel = row.querySelector('.conf-select');
+                    if (sel) sel.value = '';
+                }
+            });
+            dirty[def.key] = true;
+            refreshConfAvailability(def, block);
+            if (def.confKind === 'range') refreshConfTracker(def, block);
+            refreshSaveState(def, block);
+        }
+
+        function shuffle(arr) {
+            const a = arr.slice();
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
+
+        // Randomly (re-)assigns confidence ranks to every open game in this
+        // round — local-only like the other quick-fill buttons, nothing
+        // hits the server until "Save Picks". Reclickable: each click
+        // reshuffles and overwrites any prior assignment on open games.
+        // Draws from whichever value pool the round uses (1..confMax for
+        // 'range' rounds, the fixed set for 'fixed' rounds — never shown
+        // for 'forced' rounds, which have nothing to randomize), minus
+        // whatever's already locked in on a game that's already kicked off.
+        function applyRandomizeConfidence(def, block) {
+            const games = allGames.filter(g => def.tiers.includes(g.tier));
+            const openGames = games.filter(g => !isLocked(g));
+            if (!openGames.length) return;
+
+            const values = def.confKind === 'range'
+                ? Array.from({ length: def.confMax }, (_, i) => i + 1)
+                : def.confValues;
+            const taken = new Set();
+            games.filter(g => isLocked(g)).forEach(g => {
+                const n = pending[g.id]?.confidence_points;
+                if (n != null) taken.add(n);
+            });
+            const pool = shuffle(values.filter(n => !taken.has(n)));
+
+            openGames.forEach((g, i) => {
+                const n = pool[i];
+                if (n == null) return;
+                pending[g.id] = { ...(pending[g.id] || {}), confidence_points: n };
+                const row = block.querySelector(`tr[data-game-id="${g.id}"]`);
+                const sel = row?.querySelector('.conf-select');
+                if (sel) sel.value = String(n);
+            });
+
+            dirty[def.key] = true;
+            refreshConfAvailability(def, block);
+            if (def.confKind === 'range') refreshConfTracker(def, block);
+            refreshSaveState(def, block);
         }
 
         function refreshConfAvailability(def, block) {
@@ -502,6 +597,7 @@
         function refreshSaveState(def, root) {
             const btn = (root || document).querySelector(`#${def.key}-save-btn`);
             const msg = (root || document).querySelector(`#${def.key}-save-msg`);
+            const countPill = (root || document).querySelector(`#${def.key}-count`);
             if (!btn) return;
 
             const openGames = allGames.filter(g => def.tiers.includes(g.tier) && !isLocked(g));
@@ -516,8 +612,8 @@
                 incomplete.push({ name: g.bowl_name, need });
             });
 
+            const isDirty = !!dirty[def.key];
             if (incomplete.length === 0) {
-                const isDirty = !!dirty[def.key];
                 msg.textContent = !openGames.length ? '' : isDirty ? 'All picks made — ready to save.' : 'All picks saved ✓';
                 msg.classList.add('complete');
                 msg.classList.toggle('saved', openGames.length > 0 && !isDirty);
@@ -530,6 +626,14 @@
                 } else {
                     msg.textContent = `${incomplete.length} games still need a pick and/or a confidence rank.`;
                 }
+            }
+
+            if (countPill && openGames.length) {
+                const pickedCount = openGames.length - incomplete.length;
+                const isSaved = incomplete.length === 0 && !isDirty;
+                countPill.textContent = isSaved ? `${pickedCount}/${openGames.length} saved` : `${pickedCount}/${openGames.length} picked`;
+                countPill.classList.toggle('save-pill--done', isSaved);
+                countPill.classList.toggle('save-pill--partial', !isSaved && pickedCount > 0);
             }
         }
 
@@ -571,6 +675,12 @@
             const openGames = allGames.filter(g => def.tiers.includes(g.tier) && !isLocked(g));
             const results = await Promise.allSettled(openGames.map(g => {
                 const p = pending[g.id];
+                // `pending[g.id]` present but picked_team explicitly null is
+                // applyClearAll's sentinel for "clear this on save" — as
+                // opposed to no entry at all, meaning untouched this session.
+                if (p && p.picked_team === null) {
+                    return supabase.rpc('bpe_clear_pick', { p_league_id: leagueId, p_game_id: g.id });
+                }
                 if (!p?.picked_team) return Promise.resolve();
                 return supabase.rpc('bpe_submit_pick', {
                     p_league_id: leagueId,

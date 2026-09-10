@@ -246,7 +246,11 @@
                     <span class="quick-fill-label">Quick fill:</span>
                     <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="favorites">Select All Favorites</button>
                     <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="underdogs">Select All Underdogs</button>
-                  </div>` : ''}
+                    ${showConf ? `<button type="button" class="btn btn--ghost btn--sm" data-fill-mode="randomize-confidence">Randomize Confidence</button>` : ''}
+                    <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="clear">Clear All Picks</button>
+                    <span class="save-pill" id="week-${week}-count"></span>
+                  </div>
+                  ${wpeLeague.pick_mode === 'spread' ? `<div class="quick-fill-note">For games with no spread available (pick'em) at the lock time, the home team counts as the favorite and the away team as the underdog.</div>` : ''}` : ''}
                 ${showConf ? `
                   <div class="conf-tracker-box">
                     <div class="conf-tracker-label">
@@ -511,7 +515,12 @@
             refreshConfAvailability(week, block);
 
             block.querySelectorAll('[data-fill-mode]').forEach(btn => {
-                btn.addEventListener('click', () => applyBulkFill(week, btn.dataset.fillMode, block));
+                btn.addEventListener('click', () => {
+                    const mode = btn.dataset.fillMode;
+                    if (mode === 'clear') applyClearAll(week, block);
+                    else if (mode === 'randomize-confidence') applyRandomizeConfidence(week, block, confMax);
+                    else applyBulkFill(week, mode, block);
+                });
             });
 
             block.querySelectorAll('th[data-sort-key]').forEach(th => {
@@ -585,6 +594,87 @@
             });
         }
 
+        // Clears every currently-picked, still-open game this week — both
+        // locally and on the server via wpe_clear_pick (schema.sql), the
+        // same RPC an individual pick clear would use. Confirmed first
+        // since it's a bulk, hard-to-undo action, matching the confirm()
+        // pattern the dashboard already uses for its own bulk/irreversible
+        // actions (completeLeague, start-new-season).
+        async function applyClearAll(week, block) {
+            const games = weekGames(week).filter(g => !isLocked(g) && pending[g.id]?.picked_team);
+            if (!games.length) return;
+            if (!confirm(`Clear all ${games.length} saved pick${games.length === 1 ? '' : 's'} for Week ${week}?`)) return;
+
+            games.forEach(g => {
+                delete pending[g.id];
+                const row = block.querySelector(`tr[data-game-id="${g.id}"]`);
+                if (row) {
+                    row.querySelectorAll('.mu-team-row.selectable').forEach(el => el.classList.remove('selected'));
+                    const sel = row.querySelector('.conf-select');
+                    if (sel) sel.value = '';
+                }
+                setSavedIndicator(g.id, block, false);
+            });
+            if (wpeLeague.scoring_mode === 'confidence') {
+                refreshConfAvailability(week, block);
+                refreshConfTracker(week, block, weekGames(week).length);
+            }
+            refreshSaveState(week, block);
+
+            const results = await Promise.all(games.map(g =>
+                supabase.rpc('wpe_clear_pick', { p_league_id: leagueId, p_game_id: g.id })
+            ));
+            const failed = results.filter(r => r.error);
+            if (failed.length) {
+                console.error(failed.map(r => r.error));
+                refreshSaveState(week, block, `${failed.length} pick${failed.length === 1 ? '' : 's'} failed to clear`);
+            }
+        }
+
+        function shuffle(arr) {
+            const a = arr.slice();
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
+
+        // Randomly (re-)assigns confidence ranks to every open game this
+        // week, drawing from whatever numbers 1..confMax aren't already
+        // locked in on a game that's already kicked off. Reclickable — each
+        // click reshuffles and overwrites any prior assignment on open
+        // games, same overwrite semantics as the team quick-fill buttons.
+        // Doesn't touch picked_team, so it composes with Select All
+        // Favorites/Underdogs in either order.
+        function applyRandomizeConfidence(week, block, confMax) {
+            const games = weekGames(week);
+            const openGames = games.filter(g => !isLocked(g));
+            if (!openGames.length) return;
+
+            const taken = new Set();
+            games.filter(g => isLocked(g)).forEach(g => {
+                const n = pending[g.id]?.confidence_points;
+                if (n != null) taken.add(n);
+            });
+            const pool = shuffle(Array.from({ length: confMax }, (_, i) => i + 1).filter(n => !taken.has(n)));
+
+            openGames.forEach((g, i) => {
+                const n = pool[i];
+                if (n == null) return;
+                pending[g.id] = { ...(pending[g.id] || {}), confidence_points: n };
+                const row = block.querySelector(`tr[data-game-id="${g.id}"]`);
+                const sel = row?.querySelector('.conf-select');
+                if (sel) sel.value = String(n);
+                setSavedIndicator(g.id, block, false);
+            });
+
+            refreshConfAvailability(week, block);
+            refreshConfTracker(week, block, confMax);
+            openGames.forEach(g => autoSaveGame(g.id, week, block));
+            refreshSaveState(week, block);
+        }
+
         function refreshConfAvailability(week, block) {
             if (wpeLeague.scoring_mode !== 'confidence') return;
             const selects = Array.from(block.querySelectorAll('.conf-select'));
@@ -634,6 +724,7 @@
         // gates an action.
         function refreshSaveState(week, root, errorMsg) {
             const msg = root.querySelector(`#week-${week}-save-msg`);
+            const countPill = root.querySelector(`#week-${week}-count`);
             if (!msg) return;
 
             if (errorMsg) {
@@ -660,6 +751,12 @@
                 ? `${savedCount}/${openGames.length} games saved ✓`
                 : `${savedCount}/${openGames.length} games saved — ${remaining} remaining to save`;
             msg.classList.toggle('complete', remaining === 0);
+
+            if (countPill) {
+                countPill.textContent = `${savedCount}/${openGames.length} saved`;
+                countPill.classList.toggle('save-pill--done', remaining === 0);
+                countPill.classList.toggle('save-pill--partial', remaining > 0 && savedCount > 0);
+            }
         }
 
         function sortWeekRows(week, block) {
