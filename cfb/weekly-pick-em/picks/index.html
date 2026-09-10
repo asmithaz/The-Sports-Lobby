@@ -104,7 +104,10 @@
         function isCorrect(pick, game) {
             if (!pick || game.status !== 'final') return null;
             if (wpeLeague.pick_mode === 'spread') {
-                if (game.ats_winner_team == null) return null;
+                // Never had a line at reveal time (see wpe-sync-games' freeze
+                // comment) — plays as a straight-up pick'em, not a push.
+                if (game.spread == null) return pick.picked_team === game.winner_team;
+                if (game.ats_winner_team == null) return null; // a real push
                 return pick.picked_team === game.ats_winner_team;
             }
             return pick.picked_team === game.winner_team;
@@ -405,11 +408,18 @@
             const needsConf = wpeLeague.scoring_mode === 'confidence';
             const alreadySaved = g.status !== 'final' && !!pick?.picked_team && (!needsConf || pick?.confidence_points != null);
             const confLine = [g.away_conference, g.home_conference].filter(Boolean).join(' at ');
+            // Spread-mode league, no line ever landed by the time this
+            // game's week became visible (frozen null — see wpe-sync-games)
+            // — plays as a plain pick'em, called out so it's not mistaken
+            // for a rendering bug.
+            const isPickEm = wpeLeague.pick_mode === 'spread' && g.spread == null;
+            const pickEmNote = isPickEm ? `<div class="mu-pickem-note">Pick'em — no line available at lock</div>` : '';
             const matchupHtml = `
               <div class="mu-head">
                 <span>${escapeHtml(confLine)}</span>
                 <span class="mu-saved" id="mu-foot-${g.id}">${alreadySaved ? '<span class="save-check">✓ Pick saved</span>' : ''}</span>
               </div>
+              ${pickEmNote}
               ${teamRow(g.away_team, false, awayTag, g.away_team_logo, g.away_rank)}
               ${teamRow(g.home_team, true, homeTag, g.home_team_logo, g.home_rank)}
             `;
@@ -419,7 +429,7 @@
             if (g.status === 'final') {
                 kickHtml = `<div class="kline kline--final">Final</div>`;
             } else if (locked) {
-                kickHtml = `<div class="kline kline--live"><span class="status-dot"></span>Live${g.home_score != null ? ` · ${g.away_score}–${g.home_score}` : ''}</div>`;
+                kickHtml = `<div class="kline kline--live"><span class="status-dot"></span>${escapeHtml(g.status_detail || 'Live')}${g.home_score != null ? ` · ${g.away_score}–${g.home_score}` : ''}</div>`;
             } else {
                 kickHtml = `<div class="kline kline--muted">${fmtKickoff(g.kickoff_at) || 'Kickoff TBD'}</div>`;
             }
@@ -552,14 +562,17 @@
 
         // Bulk-fills every open (unlocked) game this week with either the
         // spread favorite or the underdog, overwriting any existing pending
-        // pick — games with no line yet (pick'em/TBD) are left untouched since
-        // there's no favorite to select. Pure client-side edit of `pending`,
-        // same Save-then-persist flow as a manual pick.
+        // pick. A pick'em game (no line — see isPickEm in renderGameRow) has
+        // no real favorite/underdog, so it defaults to home=favorite,
+        // away=underdog for quick-fill purposes only — an arbitrary but
+        // consistent convention, not a claim about who's actually better.
+        // Pure client-side edit of `pending`, same Save-then-persist flow as
+        // a manual pick.
         function applyBulkFill(week, mode, block) {
             const games = weekGames(week).filter(g => !isLocked(g));
             games.forEach(g => {
-                if (!g.favorite_team) return;
-                const team = mode === 'favorites' ? g.favorite_team : (g.favorite_team === g.home_team ? g.away_team : g.home_team);
+                const favorite = g.favorite_team || g.home_team;
+                const team = mode === 'favorites' ? favorite : (favorite === g.home_team ? g.away_team : g.home_team);
                 pending[g.id] = { ...(pending[g.id] || {}), picked_team: team };
                 const row = block.querySelector(`tr[data-game-id="${g.id}"]`);
                 if (row) {

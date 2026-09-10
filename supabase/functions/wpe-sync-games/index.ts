@@ -4,13 +4,24 @@
 // from ESPN's public scoreboard API, upserts them into `wpe_games`
 // (cfb/weekly-pick-em/schema.sql), computes the weekly "Sports Lobby
 // Choice" curated slate, and recalculates every active league's
-// standings. A game's `spread`/`favorite_team` are frozen the first time
-// ESPN reports a real line, not merely the first time the row is inserted
-// — games get inserted up to LOOKAHEAD_WEEKS before kickoff, well before
-// odds are posted, so freezing at insert-time left most games with no
-// spread ever (fixed 2026-09-09). Conference/rank/sports_lobby_choice DO
-// refresh on every routine sync (descriptive metadata, not a frozen
-// betting line). If an already-known game's teams change, its picks are
+// standings. A game's `spread`/`favorite_team` are frozen the moment its
+// week first becomes the CURRENT week — the same instant `isFutureWeek()`
+// in cfb/weekly-pick-em/picks/index.html stops hiding it behind a "TBD"
+// header and matchups first become visible/pickable. Before that, both
+// columns refresh freely every sync as ESPN's odds come in (nobody can see
+// or act on them yet, so there's nothing to freeze). Whatever value exists
+// at that reveal instant — a real line, or still null — is what every
+// player sees identically from then on; a still-null spread at reveal
+// isn't a bug, it makes that one game a straight-up pick'em (see
+// wpe_recalculate_scores in schema.sql, and the pick'em fallback in
+// picks/index.html's isCorrect()/applyBulkFill()). Design decided
+// 2026-09-10 — supersedes an interim "freeze at first non-null value"
+// version of this fix from 2026-09-09, which closed the original
+// insert-time-freeze bug but still let some players see a blank spread
+// while others later saw a real number for the same still-open game.
+// Conference/rank/sports_lobby_choice DO refresh on every routine sync
+// (descriptive metadata, not a frozen betting line). If an already-known
+// game's teams change, its picks are
 // cleared via wpe_apply_matchup_change (no mass email — regular-season
 // matchup changes are rare/low-stakes, unlike a bowl opt-out).
 //
@@ -160,6 +171,7 @@ interface MappedGame {
   spread: number | null;
   kickoff_at: string | null;
   status: "scheduled" | "live" | "final";
+  status_detail: string | null;
   home_score: number | null;
   away_score: number | null;
   winner_team: string | null;
@@ -231,6 +243,10 @@ function mapEvent(ev: any, week: number, teamConference: Map<string, string>): M
   }
 
   const status = statusFor(competition);
+  // ESPN's own live label — "3rd - 5:20", "Halftime", "End of 3rd", etc.
+  // Only meaningful while live; scheduled/final games render their own
+  // label client-side instead of trusting this string's shape.
+  const statusDetail: string | null = competition?.status?.type?.shortDetail ?? null;
   const homeScore = home.score != null ? parseInt(String(home.score), 10) : null;
   const awayScore = away.score != null ? parseInt(String(away.score), 10) : null;
 
@@ -265,6 +281,7 @@ function mapEvent(ev: any, week: number, teamConference: Map<string, string>): M
     spread,
     kickoff_at: ev?.date ?? null,
     status,
+    status_detail: statusDetail,
     home_score: homeScore,
     away_score: awayScore,
     winner_team: winnerTeam,
@@ -523,32 +540,34 @@ Deno.serve(async (req) => {
         changedGames.push({ id: existing.id, game });
         continue;
       }
-      // Routine refresh — spread/favorite_team are frozen ONLY once a real
-      // line has been recorded, not merely once the row exists. Games get
-      // inserted up to LOOKAHEAD_WEEKS ahead of kickoff, well before ESPN
-      // posts odds, so `existing.spread` is null for a while after insert;
-      // if this stayed frozen from insert, those games would NEVER get a
-      // spread (live-verified 2026-09-09: most of a week's games showed no
-      // spread on the picks page, only ones synced after ESPN posted odds).
-      // Once a non-null spread is seen, it's left alone on every later sync.
-      // Conference/rank/sports_lobby_choice DO refresh here (descriptive
+      // Routine refresh — spread/favorite_team are frozen the moment this
+      // game's week first becomes the CURRENT week (`game.week <=
+      // weekNumber`), matching the exact instant it stops being a hidden
+      // "TBD" section and becomes visible/pickable on the picks page (see
+      // isFutureWeek() in picks/index.html). While still a future week,
+      // both columns refresh freely from this run's freshly-fetched ESPN
+      // odds — nobody can see or act on the game yet, so there's nothing to
+      // freeze. Once revealed, whatever was last synced (a real line, or
+      // still null) is left untouched forever after, even if ESPN later
+      // posts a number for it — a still-null spread at reveal means that
+      // one game plays as a straight-up pick'em, not a bug (see
+      // wpe_recalculate_scores in schema.sql). Conference/rank/
+      // sports_lobby_choice DO refresh here regardless (descriptive
       // metadata, not a frozen betting line).
       // `week` is included so the one-time Week 0/Week 1 boundary fix
       // (see reassignWeekBoundaries) can correct already-synced rows —
       // safe pre-launch since no real league has picks on these games yet.
       //
-      // ats_winner_team is re-derived here from the EXISTING row's frozen
-      // spread/favorite_team, not `game.ats_winner_team` (which mapEvent
-      // computed off this run's freshly-fetched ESPN odds). ESPN stops
-      // returning `odds` for most games once they go final, so on the
-      // sync immediately after a game ends, `game.ats_winner_team` was
-      // silently coming back null — rendering every final game as a
-      // "Push" regardless of the actual frozen line.
-      // The line is still open (no spread recorded yet) — take this run's
-      // freshly-fetched spread/favorite as the one to freeze going forward.
-      // Once `existing.spread` is non-null, keep using it instead (frozen).
-      const frozenSpread = existing.spread ?? game.spread;
-      const frozenFavorite = existing.favorite_team ?? game.favorite_team;
+      // ats_winner_team is re-derived here from the FROZEN spread/
+      // favorite_team, not `game.ats_winner_team` (which mapEvent computed
+      // off this run's freshly-fetched ESPN odds). ESPN stops returning
+      // `odds` for most games once they go final, so on the sync
+      // immediately after a game ends, `game.ats_winner_team` was silently
+      // coming back null — rendering every final game as a "Push"
+      // regardless of the actual frozen line.
+      const stillFutureWeek = game.week > weekNumber;
+      const frozenSpread = stillFutureWeek ? game.spread : existing.spread;
+      const frozenFavorite = stillFutureWeek ? game.favorite_team : existing.favorite_team;
       const atsWinnerTeam = game.status === "final" && game.home_score != null && game.away_score != null
         ? computeAtsWinner(game.home_team, game.away_team, game.home_score, game.away_score, frozenSpread, frozenFavorite)
         : null;
@@ -565,6 +584,7 @@ Deno.serve(async (req) => {
         away_team: game.away_team,
         week: game.week,
         status: game.status,
+        status_detail: game.status_detail,
         home_score: game.home_score,
         away_score: game.away_score,
         winner_team: game.winner_team,

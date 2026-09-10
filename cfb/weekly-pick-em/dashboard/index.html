@@ -144,10 +144,17 @@
             if (!game.kickoff_at) return false;
             return new Date() >= new Date(new Date(game.kickoff_at).getTime() - 5 * 60 * 1000);
         }
+        function fmtKickoff(iso) {
+            if (!iso) return null;
+            return new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+        }
         function isCorrect(pick, game) {
             if (!pick || game.status !== 'final') return null;
             if (wpeLeague.pick_mode === 'spread') {
-                if (game.ats_winner_team == null) return null; // push
+                // Never had a line at reveal time — plays as a straight-up
+                // pick'em, not a push (see wpe-sync-games' freeze comment).
+                if (game.spread == null) return pick.picked_team === game.winner_team;
+                if (game.ats_winner_team == null) return null; // a real push
                 return pick.picked_team === game.ats_winner_team;
             }
             return pick.picked_team === game.winner_team;
@@ -344,7 +351,7 @@
         async function renderUserBreakdown(userId, wavesEl, chipsEl) {
             const { data: picks } = await supabase
                 .from('wpe_picks')
-                .select('game_id, week, picked_team, confidence_points, wpe_games(home_team, away_team, status, winner_team, ats_winner_team, kickoff_at)')
+                .select('game_id, week, picked_team, confidence_points, wpe_games(home_team, away_team, status, winner_team, ats_winner_team, spread, kickoff_at)')
                 .eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', userId)
                 .order('week', { ascending: true });
 
@@ -504,8 +511,8 @@
                     const rightHtml = `<span class="t-right">${score != null ? `<span class="t-score">${score}</span>` : ''}${spreadTag != null ? `<span class="t-spread">${spreadTag}</span>` : ''}</span>`;
                     return `<div class="mu-team-row${isWinner ? ' winner' : ''}">${logoHtml}${rankHtml}<span class="t-name">${escapeHtml(team)}</span>${rightHtml}</div>`;
                 }
-                const statusSuffix = g.status === 'final' ? ' · Final' : g.status === 'live' ? ' · Live' : '';
-                let matchupCell = `<div class="mu-head">Week ${g.week}${statusSuffix}</div>
+                const kickLabel = g.status === 'final' ? 'Final' : g.status === 'live' ? escapeHtml(g.status_detail || 'Live') : (fmtKickoff(g.kickoff_at) || 'Kickoff TBD');
+                let matchupCell = `<div class="mu-head">${kickLabel}</div>
                   ${muRow(g.away_team, g.winner_team === g.away_team, g.away_score, awayTag, g.away_team_logo, g.away_rank)}
                   ${muRow(g.home_team, g.winner_team === g.home_team, g.home_score, homeTag, g.home_team_logo, g.home_rank)}`;
                 let row = `<td class="pg-matchup-cell">${matchupCell}</td>`;

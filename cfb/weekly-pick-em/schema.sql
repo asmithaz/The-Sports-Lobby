@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS wpe_games (
   spread                numeric,                     -- FROZEN at first sync — never updated by a routine re-sync
   kickoff_at            timestamptz,
   status                text NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'live', 'final')),
+  status_detail         text,                        -- ESPN's own live label, e.g. "3rd - 5:20", "Halftime" — refreshed every sync, never frozen
   home_score            int,
   away_score            int,
   winner_team           text,                        -- straight-up winner, set once status = 'final'
@@ -53,6 +54,11 @@ CREATE TABLE IF NOT EXISTS wpe_games (
   updated_at            timestamptz NOT NULL DEFAULT now(),
   UNIQUE (season, espn_event_id)
 );
+
+-- `CREATE TABLE IF NOT EXISTS` above is a no-op once the table already
+-- exists — it does NOT retroactively add new columns, so any column added
+-- after initial launch needs its own explicit ALTER TABLE here.
+ALTER TABLE wpe_games ADD COLUMN IF NOT EXISTS status_detail text;
 
 CREATE INDEX IF NOT EXISTS wpe_games_season_week_idx ON wpe_games(season, week);
 
@@ -508,9 +514,18 @@ GRANT EXECUTE ON FUNCTION wpe_update_league_settings(uuid, text, text, text, tex
 -- wpe_recalculate_scores: recomputes one league+season's wpe_scores
 -- from scratch off wpe_picks + wpe_games. Flat mode is a uniform 1
 -- pt/correct pick (no per-tier point table — weekly games have no
--- tiers, unlike Bowl's bowl/CFP-round tiers). A push (ats_winner_team
--- IS NULL under spread mode) scores 0 and doesn't count as a win or a
--- loss.
+-- tiers, unlike Bowl's bowl/CFP-round tiers).
+--
+-- Spread mode has two distinct reasons a game can end up with no ATS
+-- winner, graded differently:
+--   - g.spread IS NULL: the game never had a line by the time its week
+--     became visible (wpe-sync-games freezes spread/favorite_team at
+--     that reveal moment — see that file's header comment). Nobody ever
+--     saw a number for this game, so it plays as a plain straight-up
+--     pick'em: graded against winner_team, same as a straight_up league.
+--   - g.spread IS NOT NULL AND g.ats_winner_team IS NULL: an actual push
+--     (final margin landed exactly on the frozen line) — scores 0,
+--     doesn't count as a win or a loss, same as before.
 CREATE OR REPLACE FUNCTION wpe_recalculate_scores(p_league_id uuid, p_season int)
 RETURNS void
 LANGUAGE plpgsql
@@ -539,9 +554,15 @@ BEGIN
   LEFT JOIN wpe_games g ON g.id = p.game_id AND g.status = 'final'
   LEFT JOIN LATERAL (
     SELECT
-      (g.id IS NOT NULL AND NOT (v_pick_mode = 'spread' AND g.ats_winner_team IS NULL)
-        AND ((v_pick_mode = 'straight_up' AND p.picked_team = g.winner_team)
-             OR (v_pick_mode = 'spread' AND p.picked_team = g.ats_winner_team))
+      -- A real push (had a line, margin landed on it exactly) is the only
+      -- case that voids the pick entirely; a never-had-a-line game falls
+      -- through to the pick'em branch below instead.
+      (g.id IS NOT NULL AND NOT (v_pick_mode = 'spread' AND g.spread IS NOT NULL AND g.ats_winner_team IS NULL)
+        AND (
+          v_pick_mode = 'straight_up' AND p.picked_team = g.winner_team
+          OR v_pick_mode = 'spread' AND g.spread IS NULL AND p.picked_team = g.winner_team
+          OR v_pick_mode = 'spread' AND g.spread IS NOT NULL AND p.picked_team = g.ats_winner_team
+        )
       ) AS is_correct
   ) chk ON true
   LEFT JOIN LATERAL (
@@ -551,7 +572,7 @@ BEGIN
         ELSE 1
       END AS pts,
       chk.is_correct AS is_win,
-      (g.id IS NOT NULL AND NOT (v_pick_mode = 'spread' AND g.ats_winner_team IS NULL) AND NOT chk.is_correct) AS is_loss
+      (g.id IS NOT NULL AND NOT (v_pick_mode = 'spread' AND g.spread IS NOT NULL AND g.ats_winner_team IS NULL) AND NOT chk.is_correct) AS is_loss
   ) calc ON true
   WHERE m.league_id = p_league_id
   GROUP BY m.user_id

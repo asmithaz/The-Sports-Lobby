@@ -69,6 +69,7 @@
 
 .mu-head { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: 2px;
            display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 15px; }
+.mu-pickem-note { font-size: var(--text-xs); font-style: italic; color: var(--c-text-muted); margin-bottom: 2px; }
 .mu-team-row { display: flex; align-items: center; gap: var(--space-2); padding: 6px 8px; border-radius: var(--radius-sm);
                font-size: var(--text-sm); margin-top: 4px; }
 .mu-team-row.selectable { cursor: pointer; background: var(--c-surface-2); border: 0.5px solid var(--c-border-strong); transition: all var(--transition); }
