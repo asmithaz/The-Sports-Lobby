@@ -49,10 +49,10 @@
 
             <div class="section-block">
                 <div class="section-title">Overall Standings</div>
-                <div class="section-sub">Click a name for their week-by-week breakdown. Tiebreak = cumulative closeness on the weekly total-score guesses, closer to zero is better.</div>
+                <div class="section-sub" id="standings-sub">Click a name for their week-by-week breakdown. Tiebreaks Won = tiebreaker games won this season (closest combined-score guess), used only to break ties in total points.</div>
                 <div class="table-wrap">
-                    <table class="data-table">
-                        <thead><tr><th>#</th><th>Team Name</th><th>Record</th><th>Points</th><th>Tiebreak</th></tr></thead>
+                    <table class="data-table" id="standings-table">
+                        <thead><tr><th>#</th><th>Team Name</th><th>Record</th><th>Points</th><th id="tiebreak-th">Tiebreaks Won</th></tr></thead>
                         <tbody id="standings-body"><tr><td colspan="5" class="text-muted" style="padding:var(--space-4);">Loading…</td></tr></tbody>
                     </table>
                 </div>
@@ -61,12 +61,30 @@
             <div class="section-block">
                 <div class="section-title">Pick Comparison</div>
                 <div class="section-sub">Everyone's picks are hidden until that game locks — you can always see your own.</div>
-                <div class="pill-toggle" id="week-toggle" style="margin-bottom:var(--space-3);"></div>
-                <div class="pg-wrap">
-                    <table class="pg-table">
-                        <thead><tr id="pg-header-row"><th class="pg-matchup-th">Matchup</th></tr></thead>
-                        <tbody id="pg-body"><tr><td class="text-muted" style="padding:var(--space-4);">Loading…</td></tr></tbody>
-                    </table>
+
+                <div class="pill-toggle" id="pg-view-toggle" style="margin-bottom:var(--space-3);">
+                    <button type="button" class="pill pill--green" data-view="grid">Weekly Grid</button>
+                    <button type="button" class="pill pill--muted" data-view="results">Season Results</button>
+                </div>
+
+                <div id="pg-view-grid">
+                    <div class="pill-toggle" id="week-toggle" style="margin-bottom:var(--space-3);"></div>
+                    <div class="pg-wrap">
+                        <table class="pg-table">
+                            <thead><tr id="pg-header-row"><th class="pg-team-th">Team</th></tr></thead>
+                            <tbody id="pg-body"><tr><td class="text-muted" style="padding:var(--space-4);">Loading…</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="pg-view-results" style="display:none;">
+                    <div class="section-sub" id="wr-sub" style="margin-bottom:var(--space-3);">Each week's results, plus a running season total. Sorted the same as Overall Standings.</div>
+                    <div class="pg-wrap">
+                        <table class="pg-table wr-table">
+                            <thead><tr id="wr-header-row"><th class="pg-team-th">Team</th><th class="wr-total-th">Total</th></tr></thead>
+                            <tbody id="wr-body"><tr><td class="text-muted" style="padding:var(--space-4);">Loading…</td></tr></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
@@ -123,6 +141,8 @@
         let wpeLeague = null; // { pick_mode, scoring_mode, scope_mode }
         let comparisonWeeks = [];
         let currentComparisonWeek = null;
+        let seasonWeeks = []; // every week in the season's synced schedule, including future ones — for the tiebreak table
+        let fullSlate = []; // every synced game for the season (every week, unfiltered by week) — for the standings breakdown
 
         const SCOPE_LABEL = {
             power4: 'Power 4', group_of_5: 'Group of 5', all_fbs: 'All FBS',
@@ -282,12 +302,63 @@
             }
 
             const { data: wpeLeagueRow } = await supabase
-                .from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode').eq('league_id', leagueId).eq('season', currentSeason).single();
-            wpeLeague = wpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat', scope_mode: 'sports_lobby_choice' };
+                .from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode, tiebreakers_enabled, include_army_navy_week').eq('league_id', leagueId).eq('season', currentSeason).single();
+            wpeLeague = wpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat', scope_mode: 'sports_lobby_choice', tiebreakers_enabled: true, include_army_navy_week: false };
             document.getElementById('league-sub').textContent =
                 `College Football Weekly Pick 'Em · ${SCOPE_LABEL[wpeLeague.scope_mode] || 'Custom'} · ${wpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${wpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring`;
 
+            if (wpeLeague.tiebreakers_enabled === false) {
+                document.body.classList.add('tb-disabled');
+                document.getElementById('standings-sub').textContent = 'Click a name for their week-by-week breakdown.';
+            }
+
+            // Full season schedule, not capped to the current week like
+            // comparisonWeeks — the tiebreak table and the Season Results
+            // view both always show every week so their column set doesn't
+            // change as the season progresses. wpe_get_slate only returns
+            // weeks ESPN has already published/synced, which lags behind
+            // the real season length early in the year, so union it with
+            // the known regular-season week count rather than relying on
+            // it alone. Computed unconditionally (not just when tiebreakers
+            // are on) since Season Results needs it regardless.
+            //
+            // REGULAR_SEASON_LENGTH is hand-maintained, not derived —
+            // update this constant at the start of each CFB season
+            // (14 for 2026; verify against that year's actual
+            // conference-championship-week number, ESPN's schedule
+            // API is blocked from this sandbox to check directly).
+            const REGULAR_SEASON_LENGTH = 14;
+            const { data: slate } = await supabase.rpc('wpe_get_slate', { p_league_id: leagueId, p_season: currentSeason });
+            fullSlate = slate || [];
+            const syncedWeeks = fullSlate.map(g => g.week);
+            const weekCount = REGULAR_SEASON_LENGTH + (wpeLeague.include_army_navy_week ? 1 : 0);
+            const REGULAR_SEASON_WEEKS = Array.from({ length: weekCount }, (_, i) => i + 1);
+            seasonWeeks = [...new Set([...REGULAR_SEASON_WEEKS, ...syncedWeeks])].sort((a, b) => a - b);
+
+            setupPgViewToggle();
             await Promise.all([loadStandings(), loadPickComparisonInit()]);
+        }
+
+        function setupPgViewToggle() {
+            const toggle = document.getElementById('pg-view-toggle');
+            const gridView = document.getElementById('pg-view-grid');
+            const resultsView = document.getElementById('pg-view-results');
+            toggle.addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-view]');
+                if (!btn) return;
+                const view = btn.dataset.view;
+                toggle.querySelectorAll('.pill').forEach(p => {
+                    const active = p.dataset.view === view;
+                    p.classList.toggle('pill--green', active);
+                    p.classList.toggle('pill--muted', !active);
+                });
+                gridView.style.display = view === 'grid' ? '' : 'none';
+                resultsView.style.display = view === 'results' ? '' : 'none';
+                // Refetched every time the tab is opened, not cached — scores
+                // and finished games can change while it sits off-screen,
+                // same reasoning as the standings breakdown's own refetch.
+                if (view === 'results') loadWeeklyResults();
+            });
         }
 
         async function loadStandings() {
@@ -314,7 +385,7 @@
                 const ownerName = profileMap[row.user_id]?.display_name;
 
                 const tr = document.createElement('tr');
-                tr.className = isMe ? 'row--me' : '';
+                tr.className = `standings-row${isMe ? ' row--me' : ''}`;
                 tr.innerHTML = `
                   <td class="rank-cell ${rank === 1 ? 'rank-cell--top' : ''}">${rank}</td>
                   <td><div class="name-cell"><span class="caret">▸</span><div class="name-stack">
@@ -323,23 +394,24 @@
                       </div></div></td>
                   <td class="num">${record}</td>
                   <td class="num num--score">${row.total_points}</td>
-                  <td class="num">${row.tiebreak_error != null ? Number(row.tiebreak_error).toFixed(1) : '—'}</td>
+                  <td class="num tiebreak-td">${row.tiebreak_error != null ? `<span class="pill ${row.tiebreaks_won > 0 ? 'pill--green' : 'pill--muted'}">${row.tiebreaks_won}</span>` : '—'}</td>
                 `;
 
                 const trB = document.createElement('tr');
                 trB.className = 'breakdown-row';
                 trB.innerHTML = `<td colspan="5"><div class="breakdown">
+                    <div class="tiebreak-summary"></div>
                     <div class="breakdown-hint">Click a week to see that week's picks.</div>
                     <div class="breakdown-waves"><span class="text-muted text-xs">Loading…</span></div>
                     <div class="pick-chips" data-loaded=""></div>
                   </div></td>`;
 
-                tr.querySelector('.name-cell').addEventListener('click', async () => {
+                tr.addEventListener('click', async () => {
                     tr.classList.toggle('expanded');
                     // Refetch every expand rather than caching after the first — picks/results
                     // can change (new saves, games going final) while the row stays on-screen.
                     if (tr.classList.contains('expanded')) {
-                        await renderUserBreakdown(row.user_id, trB.querySelector('.breakdown-waves'), trB.querySelector('.pick-chips'));
+                        await renderUserBreakdown(row.user_id, trB.querySelector('.breakdown-waves'), trB.querySelector('.pick-chips'), trB.querySelector('.tiebreak-summary'));
                     }
                 });
 
@@ -348,25 +420,102 @@
             });
         }
 
-        async function renderUserBreakdown(userId, wavesEl, chipsEl) {
-            const { data: picks } = await supabase
-                .from('wpe_picks')
-                .select('game_id, week, picked_team, confidence_points, wpe_games(home_team, away_team, status, winner_team, ats_winner_team, spread, kickoff_at)')
-                .eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', userId)
-                .order('week', { ascending: true });
+        async function renderUserBreakdown(userId, wavesEl, chipsEl, tbSummaryEl) {
+            const tiebreaksOn = wpeLeague.tiebreakers_enabled !== false;
+            const [{ data: picks }, tbResult] = await Promise.all([
+                supabase
+                    .from('wpe_picks')
+                    .select('game_id, week, picked_team, confidence_points')
+                    .eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', userId),
+                tiebreaksOn
+                    ? supabase.rpc('wpe_get_tiebreak_weekly', { p_league_id: leagueId, p_season: currentSeason, p_user_id: userId })
+                    : Promise.resolve({ data: [] })
+            ]);
+            const pickByGameId = {};
+            (picks || []).forEach(p => { pickByGameId[p.game_id] = p; });
 
+            // Built from the FULL slate of every opened week (fullSlate,
+            // filtered to comparisonWeeks — the same "opened for picking"
+            // set the Weekly Grid/Season Results use), not just the games
+            // this user has a visible pick for. A chip never shows which
+            // team was picked, only the matchup and an outcome color, so
+            // there's nothing to hide by always showing every game — a
+            // week someone skipped, or a locked game someone else declined
+            // to pick, now still shows up (red) instead of silently
+            // vanishing from the week entirely.
             const byWeek = {};
-            (picks || []).forEach(p => {
-                const g = p.wpe_games;
-                if (!g) return;
-                const correct = isCorrect(p, g);
-                (byWeek[p.week] = byWeek[p.week] || []).push({
-                    label: `${abbrev(g.away_team)}@${abbrev(g.home_team)}`,
-                    state: correct === null ? 'pending' : correct ? 'hit' : 'miss'
+            fullSlate.forEach(g => {
+                if (!comparisonWeeks.includes(g.week)) return;
+                const pick = pickByGameId[g.id];
+                // No visible pick on a game that's already final reads as a
+                // miss — same as a wrong pick, since neither the viewer nor
+                // this UI need to distinguish "picked wrong" from "never
+                // picked" once the outcome is locked in.
+                const correct = pick ? isCorrect(pick, g) : (g.status === 'final' ? false : null);
+                const state = g.status === 'live' ? 'live' : correct === true ? 'hit' : correct === false ? 'miss' : 'pending';
+                (byWeek[g.week] = byWeek[g.week] || []).push({
+                    label: `${g.away_team_abbr || abbrev(g.away_team)}@${g.home_team_abbr || abbrev(g.home_team)}`,
+                    state,
+                    kickoffAt: g.kickoff_at,
+                    awayTeam: g.away_team,
+                    homeTeam: g.home_team
+                });
+            });
+            // Kickoff order, same as wpe_get_slate (used by the Pick
+            // Comparison grid and the picks page) — not insertion order,
+            // which is what Supabase returns by default with no secondary
+            // sort. Ties (many Saturday games share a kickoff slot) break
+            // alphabetically, matching wpe_get_slate's own tiebreak so the
+            // two views always agree.
+            Object.values(byWeek).forEach(list => {
+                list.sort((a, b) => {
+                    if (!a.kickoffAt && !b.kickoffAt) return a.awayTeam.localeCompare(b.awayTeam) || a.homeTeam.localeCompare(b.homeTeam);
+                    if (!a.kickoffAt) return 1;
+                    if (!b.kickoffAt) return -1;
+                    const byKickoff = new Date(a.kickoffAt) - new Date(b.kickoffAt);
+                    return byKickoff !== 0 ? byKickoff : (a.awayTeam.localeCompare(b.awayTeam) || a.homeTeam.localeCompare(b.homeTeam));
                 });
             });
 
             const weeks = Object.keys(byWeek).map(Number).sort((a, b) => a - b);
+
+            // A single table with every week of the season pre-populated as
+            // its own column (seasonWeeks, fetched once in init() — not the
+            // per-user "weeks I've picked" list) so its shape is fixed for
+            // the whole season, not just growing as picks come in.
+            // "Tiebreaks Won" (season total) is its own highlighted column,
+            // then one column per week ("—" for a week with nothing
+            // resolved yet).
+            if (tbSummaryEl) {
+                const tbByWeek = {};
+                (tbResult.data || []).forEach(r => { (tbByWeek[r.week] = tbByWeek[r.week] || []).push(r); });
+                const totalWon = (tbResult.data || []).filter(r => r.won).length;
+                const tbWeekList = seasonWeeks.length ? seasonWeeks : weeks;
+
+                if (!tbWeekList.length) {
+                    tbSummaryEl.innerHTML = '';
+                } else {
+                    // CSS grid, not a <table> — a fixed-column-count table
+                    // rendered inconsistently across browsers (columns not
+                    // actually equal width despite table-layout: fixed).
+                    // Grid with an explicit column count avoids that
+                    // entirely and centers reliably.
+                    const colCount = 1 + tbWeekList.length;
+                    const labels = tbWeekList.map(w => `<div class="tb-cell tb-label">Wk${w}</div>`)
+                        .concat([`<div class="tb-cell tb-label tb-total-col">Total</div>`]);
+                    const values = tbWeekList.map(w => {
+                            const v = tbByWeek[w] ? tbByWeek[w].filter(r => r.won).length : '—';
+                            return `<div class="tb-cell tb-value">${v}</div>`;
+                        })
+                        .concat([`<div class="tb-cell tb-value tb-total-col">${totalWon}</div>`]);
+                    tbSummaryEl.innerHTML = `
+                        <div class="tiebreak-bar-heading">Tiebreaks Won</div>
+                        <div class="tiebreak-bar" style="grid-template-columns: repeat(${colCount}, minmax(64px, 1fr));">
+                            ${labels.join('')}${values.join('')}
+                        </div>`;
+                }
+            }
+
             if (!weeks.length) {
                 wavesEl.innerHTML = `<span class="text-muted text-xs">No picks yet.</span>`;
                 chipsEl.innerHTML = '';
@@ -388,16 +537,17 @@
                     });
                 });
             }
+            const CHIP_CLASS = { hit: 'pick-chip--hit', miss: 'pick-chip--miss', live: 'pick-chip--live' };
             function renderChips() {
                 const list = byWeek[currentWeek] || [];
+                // Always the chip area's full width, regardless of which
+                // week box is active — it used to be indented to align
+                // under the active box's left edge, which left it wasting
+                // space (and wrapping early) whenever a week other than
+                // the first was selected.
                 chipsEl.innerHTML = list.length
-                    ? list.map(c => `<span class="pick-chip ${c.state === 'hit' ? 'pick-chip--hit' : c.state === 'miss' ? 'pick-chip--miss' : ''}">${c.label}</span>`).join('')
-                    : `<span class="text-muted text-xs">No visible picks this week.</span>`;
-
-                const activeWave = wavesEl.querySelector('.breakdown-wave.active');
-                chipsEl.style.marginLeft = activeWave
-                    ? `${activeWave.getBoundingClientRect().left - wavesEl.getBoundingClientRect().left}px`
-                    : '0';
+                    ? list.map(c => `<span class="pick-chip ${CHIP_CLASS[c.state] || ''}">${c.label}</span>`).join('')
+                    : `<span class="text-muted text-xs">No games synced for this week yet.</span>`;
             }
             renderWeekBoxes();
             renderChips();
@@ -443,6 +593,11 @@
             };
         }
 
+        // Rows = people, columns = that week's matchups — lets a member read
+        // their whole week left-to-right instead of scanning down a single
+        // narrow column. Wk Total (pinned right) is a running sum of points
+        // actually earned so far (final games only; live/pending picks
+        // contribute 0 until they resolve), not a score projection.
         async function loadPickComparisonGrid() {
             const [{ data: games }, { data: members }, { data: weekPicks }] = await Promise.all([
                 supabase.rpc('wpe_get_slate', { p_league_id: leagueId, p_season: currentSeason, p_week: currentComparisonWeek }),
@@ -451,81 +606,178 @@
                     .eq('league_id', leagueId).eq('season', currentSeason).eq('week', currentComparisonWeek)
             ]);
 
+            const body = document.getElementById('pg-body');
             const headerRow = document.getElementById('pg-header-row');
-            headerRow.innerHTML = '<th class="pg-matchup-th">Matchup</th>';
-            const orderedMembers = (members || []).sort((a, b) => (a.user_id === currentUserId ? -1 : b.user_id === currentUserId ? 1 : 0));
-            orderedMembers.forEach(m => {
-                const th = document.createElement('th');
-                if (m.user_id === currentUserId) {
-                    th.className = 'pg-col--me';
-                    th.textContent = 'You';
-                } else {
-                    th.innerHTML = `<div class="pg-th-stack"><span class="pg-th-team">${escapeHtml(m.team_name || 'Unnamed')}</span></div>`;
+
+            if (!games || games.length === 0) {
+                headerRow.innerHTML = '<th class="pg-team-th">Team</th>';
+                body.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No games in this week's slate.</td></tr>`;
+                return;
+            }
+
+            function muThHtml(g) {
+                const awayTag = g.spread != null && g.favorite_team ? (g.favorite_team === g.away_team ? `−${g.spread}` : `+${g.spread}`) : null;
+                const homeTag = g.spread != null && g.favorite_team ? (g.favorite_team === g.home_team ? `−${g.spread}` : `+${g.spread}`) : null;
+                function muLine(team, isWinner, spreadTag, logoUrl) {
+                    const logoHtml = logoUrl ? `<img class="team-logo" src="${escapeHtml(logoUrl)}" alt="" />` : '';
+                    return `<div class="mu-th-line${isWinner ? ' winner' : ''}">${logoHtml}<span>${escapeHtml(team)}</span>${spreadTag != null ? `<span class="t-spread">${spreadTag}</span>` : ''}</div>`;
                 }
-                headerRow.appendChild(th);
-            });
+                const kickLabel = g.status === 'final' ? 'Final' : g.status === 'live' ? escapeHtml(g.status_detail || 'Live') : (fmtKickoff(g.kickoff_at) || 'Kickoff TBD');
+                return `<div class="mu-th-head">${kickLabel}</div>
+                  ${muLine(g.away_team, g.winner_team === g.away_team, awayTag, g.away_team_logo)}
+                  ${muLine(g.home_team, g.winner_team === g.home_team, homeTag, g.home_team_logo)}`;
+            }
+
+            headerRow.innerHTML = '<th class="pg-team-th">Team</th>'
+                + games.map(g => `<th class="pg-mu-th">${muThHtml(g)}</th>`).join('')
+                + '<th class="pg-total-th">Wk&nbsp;Total</th>';
+
+            const orderedMembers = (members || []).sort((a, b) => (a.user_id === currentUserId ? -1 : b.user_id === currentUserId ? 1 : 0));
 
             const picksByGameUser = {};
             (weekPicks || []).forEach(p => {
                 picksByGameUser[`${p.game_id}:${p.user_id}`] = p;
             });
 
-            const body = document.getElementById('pg-body');
-            body.innerHTML = '';
-            if (!games || games.length === 0) {
-                body.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No games in this week's slate.</td></tr>`;
-                return;
-            }
-
-            function pcellHtml(pick, g, isMe) {
+            function pcell(pick, g, isMe) {
                 if (!pick) {
-                    if (!isMe && !isLocked(g)) return `<div class="pcell pcell--hidden">🔒</div>`;
-                    return `<div class="pcell pcell--pending"><span class="pcell-name text-muted">—</span></div>`;
+                    if (!isMe && !isLocked(g)) return { html: `<div class="pcell pcell--hidden">🔒</div>`, pts: 0 };
+                    return { html: `<div class="pcell pcell--pending"><span class="pcell-name text-muted">—</span></div>`, pts: 0 };
                 }
                 const logoUrl = pick.picked_team === g.home_team ? g.home_team_logo : g.away_team_logo;
                 const logoHtml = logoUrl ? `<img class="pcell-logo" src="${escapeHtml(logoUrl)}" alt="" />` : '';
                 const nameHtml = `<span class="pcell-name">${escapeHtml(pick.picked_team)}</span>`;
                 if (g.status === 'live') {
-                    return `<div class="pcell pcell--live">${logoHtml}${nameHtml}<span class="pcell-result">Live</span></div>`;
+                    return { html: `<div class="pcell pcell--live">${logoHtml}${nameHtml}<span class="pcell-result">Live</span></div>`, pts: 0 };
                 }
                 if (g.status !== 'final') {
-                    return `<div class="pcell pcell--pending">${logoHtml}${nameHtml}</div>`;
+                    return { html: `<div class="pcell pcell--pending">${logoHtml}${nameHtml}</div>`, pts: 0 };
                 }
                 const correct = isCorrect(pick, g);
                 if (correct === null) {
-                    return `<div class="pcell pcell--pending">${logoHtml}${nameHtml}<span class="pcell-result">Push</span></div>`;
+                    return { html: `<div class="pcell pcell--pending">${logoHtml}${nameHtml}<span class="pcell-result">Push</span></div>`, pts: 0 };
                 }
                 const pts = wpeLeague.scoring_mode === 'confidence' ? (pick.confidence_points ?? 0) : 1;
                 return correct
-                    ? `<div class="pcell pcell--hit">${logoHtml}${nameHtml}<span class="pcell-result">✓ +${pts}</span></div>`
-                    : `<div class="pcell pcell--miss">${logoHtml}${nameHtml}<span class="pcell-result">✗ +0</span></div>`;
+                    ? { html: `<div class="pcell pcell--hit">${logoHtml}${nameHtml}<span class="pcell-result">✓ +${pts}</span></div>`, pts }
+                    : { html: `<div class="pcell pcell--miss">${logoHtml}${nameHtml}<span class="pcell-result">✗ +0</span></div>`, pts: 0 };
             }
 
-            games.forEach(g => {
+            body.innerHTML = '';
+            orderedMembers.forEach(m => {
+                const isMe = m.user_id === currentUserId;
                 const tr = document.createElement('tr');
-                const awayTag = g.spread != null && g.favorite_team ? (g.favorite_team === g.away_team ? `−${g.spread}` : `+${g.spread}`) : null;
-                const homeTag = g.spread != null && g.favorite_team ? (g.favorite_team === g.home_team ? `−${g.spread}` : `+${g.spread}`) : null;
-                function muRow(team, isWinner, score, spreadTag, logoUrl, rank) {
-                    const logoHtml = logoUrl ? `<img class="team-logo" src="${escapeHtml(logoUrl)}" alt="" />` : '';
-                    const rankHtml = rank != null ? `<span class="t-rank">#${rank}</span>` : '';
-                    const rightHtml = `<span class="t-right">${score != null ? `<span class="t-score">${score}</span>` : ''}${spreadTag != null ? `<span class="t-spread">${spreadTag}</span>` : ''}</span>`;
-                    return `<div class="mu-team-row${isWinner ? ' winner' : ''}">${logoHtml}${rankHtml}<span class="t-name">${escapeHtml(team)}</span>${rightHtml}</div>`;
-                }
-                const kickLabel = g.status === 'final' ? 'Final' : g.status === 'live' ? escapeHtml(g.status_detail || 'Live') : (fmtKickoff(g.kickoff_at) || 'Kickoff TBD');
-                let matchupCell = `<div class="mu-head">${kickLabel}</div>
-                  ${muRow(g.away_team, g.winner_team === g.away_team, g.away_score, awayTag, g.away_team_logo, g.away_rank)}
-                  ${muRow(g.home_team, g.winner_team === g.home_team, g.home_score, homeTag, g.home_team_logo, g.home_rank)}`;
-                let row = `<td class="pg-matchup-cell">${matchupCell}</td>`;
+                tr.className = isMe ? 'pg-row--me' : '';
 
-                orderedMembers.forEach(m => {
-                    const key = `${g.id}:${m.user_id}`;
-                    const pick = picksByGameUser[key];
-                    const isMe = m.user_id === currentUserId;
-                    row += `<td${isMe ? ' class="pg-col--me"' : ''}>${pcellHtml(pick, g, isMe)}</td>`;
+                let weekTotal = 0;
+                let row = `<td class="pg-team-cell"><span class="pg-team-name">${escapeHtml(m.team_name || 'Unnamed Team')}</span>${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</td>`;
+                games.forEach(g => {
+                    const cell = pcell(picksByGameUser[`${g.id}:${m.user_id}`], g, isMe);
+                    weekTotal += cell.pts;
+                    row += `<td>${cell.html}</td>`;
                 });
+                row += `<td class="pg-total-cell">${weekTotal}</td>`;
 
                 tr.innerHTML = row;
                 body.appendChild(tr);
+            });
+        }
+
+        // Season Results: one row per person, one column per week (fixed to
+        // seasonWeeks so the shape doesn't change as the season goes on,
+        // same convention as the tiebreak bar), showing that week's picks
+        // correct (or points, in confidence mode). Order and the pinned
+        // Total column both come straight from wpe_get_standings so this
+        // table never disagrees with Overall Standings above it.
+        async function loadWeeklyResults() {
+            const wrBody = document.getElementById('wr-body');
+            const wrHeader = document.getElementById('wr-header-row');
+            wrHeader.innerHTML = '<th class="pg-team-th">Team</th><th class="wr-total-th">Total</th>'
+                + seasonWeeks.map(w => `<th>Wk ${w}</th>`).join('');
+            wrBody.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">Loading…</td></tr>`;
+            document.getElementById('wr-sub').textContent = wpeLeague.scoring_mode === 'confidence'
+                ? 'Points scored each week, plus a running season total. Sorted the same as Overall Standings.'
+                : 'Picks correct each week, plus a running season total. Sorted the same as Overall Standings.';
+
+            const [{ data: standings, error }, { data: picks }] = await Promise.all([
+                supabase.rpc('wpe_get_standings', { p_league_id: leagueId }),
+                supabase.from('wpe_picks')
+                    .select('user_id, week, picked_team, confidence_points, wpe_games(status, winner_team, ats_winner_team, spread)')
+                    .eq('league_id', leagueId).eq('season', currentSeason)
+            ]);
+            if (error || !standings) {
+                wrBody.innerHTML = `<tr><td class="text-danger" style="padding:var(--space-4);">Failed to load season results.</td></tr>`;
+                console.error(error);
+                return;
+            }
+
+            // seen = picks visible to me for that user/week (own always,
+            // others once their games lock) — same semantic as the
+            // standings breakdown's hits/length, so a week fills in as its
+            // games go final rather than needing to wait for the whole week.
+            const byUserWeek = {};
+            (picks || []).forEach(p => {
+                const g = p.wpe_games;
+                if (!g) return;
+                const correct = isCorrect(p, g);
+                if (correct === null) return; // pending, live, or a real push — doesn't count toward the week yet
+                const bucket = (byUserWeek[p.user_id] = byUserWeek[p.user_id] || {});
+                const wk = (bucket[p.week] = bucket[p.week] || { seen: 0, correct: 0, points: 0 });
+                wk.seen += 1;
+                if (correct) {
+                    wk.correct += 1;
+                    wk.points += wpeLeague.scoring_mode === 'confidence' ? (p.confidence_points ?? 0) : 1;
+                }
+            });
+
+            function tierClass(ratio) {
+                if (ratio >= 0.7) return 'wr-cell--hi';
+                if (ratio >= 0.4) return 'wr-cell--mid';
+                return 'wr-cell--lo';
+            }
+            function weekValue(userId, w) {
+                const wk = byUserWeek[userId]?.[w];
+                return wpeLeague.scoring_mode === 'confidence' ? (wk?.points ?? 0) : (wk?.correct ?? 0);
+            }
+
+            // A week is "open" (shows 0 for no correct picks rather than —)
+            // once it's been offered for picking, same weeks the Weekly Grid
+            // toggle offers — not just once it has a visible correct pick,
+            // otherwise a 0-for-the-week performance would misleadingly
+            // look identical to a week that hasn't started yet.
+            const openWeeks = new Set(comparisonWeeks);
+
+            // The week's high score, so the leader can be highlighted —
+            // computed from the same value being displayed (points in
+            // confidence mode, correct-pick count otherwise).
+            const weekMax = {};
+            seasonWeeks.forEach(w => {
+                if (!openWeeks.has(w)) return;
+                weekMax[w] = Math.max(0, ...standings.map(row => weekValue(row.user_id, w)));
+            });
+
+            wrBody.innerHTML = '';
+            standings.forEach((row, i) => {
+                const isMe = row.user_id === currentUserId;
+                const tr = document.createElement('tr');
+                tr.className = isMe ? 'pg-row--me' : '';
+
+                let html = `<td class="pg-team-cell"><span class="wr-rank${i === 0 ? ' wr-rank--top' : ''}">${i + 1}</span><span class="pg-team-name">${escapeHtml(row.team_name || 'Unnamed Team')}</span>${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</td>`;
+                html += `<td class="wr-total-cell">${row.total_points}</td>`;
+                seasonWeeks.forEach(w => {
+                    if (!openWeeks.has(w)) {
+                        html += `<td><span class="wr-cell wr-cell--future">—</span></td>`;
+                        return;
+                    }
+                    const wk = byUserWeek[row.user_id]?.[w];
+                    const val = weekValue(row.user_id, w);
+                    const ratio = wk && wk.seen > 0 ? wk.correct / wk.seen : 0;
+                    const isWinner = weekMax[w] > 0 && val === weekMax[w];
+                    html += `<td><span class="wr-cell ${tierClass(ratio)}${isWinner ? ' wr-cell--winner' : ''}">${val}</span></td>`;
+                });
+
+                tr.innerHTML = html;
+                wrBody.appendChild(tr);
             });
         }
 
