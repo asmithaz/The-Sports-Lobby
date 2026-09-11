@@ -725,44 +725,40 @@
             }
         }
 
-        // Purely informational now — picks save themselves (see
+        // The pill is purely informational — picks save themselves (see
         // autoSaveGame), so this just reflects a running count, never
-        // gates an action.
+        // gates an action. save-bar/save-msg is kept only for surfacing a
+        // real error (a failed autosave or Clear All); it stays hidden
+        // otherwise, since the pill alone already covers the routine case.
         function refreshSaveState(week, root, errorMsg) {
             const msg = root.querySelector(`#week-${week}-save-msg`);
+            const bar = msg?.closest('.save-bar');
             const countPill = root.querySelector(`#week-${week}-count`);
-            if (!msg) return;
 
-            if (errorMsg) {
-                msg.classList.remove('complete');
-                msg.textContent = `Failed to save: ${errorMsg}`;
-                return;
+            if (msg) {
+                msg.textContent = errorMsg ? `Failed to save: ${errorMsg}` : '';
+                if (bar) bar.style.display = errorMsg ? '' : 'none';
             }
+            if (errorMsg || !countPill) return;
 
-            const openGames = weekGames(week).filter(g => !isLocked(g));
-            if (!openGames.length) {
-                msg.textContent = '';
-                msg.classList.remove('complete');
-                return;
-            }
+            // Denominator is always every game in the week, not just the
+            // still-open ones — a game doesn't stop counting once it
+            // locks. The pill doesn't distinguish a still-open game from
+            // one that locked with no pick on it; either way it's just
+            // not counted, same as the standings breakdown treats it.
+            const weekGameList = weekGames(week);
+            if (!weekGameList.length) { countPill.textContent = ''; return; }
 
             const needsConf = wpeLeague.scoring_mode === 'confidence';
-            const savedCount = openGames.filter(g => {
+            const savedCount = weekGameList.filter(g => {
                 const p = pending[g.id];
                 return !!p?.picked_team && (!needsConf || p.confidence_points != null);
             }).length;
-            const remaining = openGames.length - savedCount;
 
-            msg.textContent = remaining === 0
-                ? `${savedCount}/${openGames.length} games saved ✓`
-                : `${savedCount}/${openGames.length} games saved — ${remaining} remaining to save`;
-            msg.classList.toggle('complete', remaining === 0);
-
-            if (countPill) {
-                countPill.textContent = `${savedCount}/${openGames.length} saved`;
-                countPill.classList.toggle('save-pill--done', remaining === 0);
-                countPill.classList.toggle('save-pill--partial', remaining > 0 && savedCount > 0);
-            }
+            countPill.textContent = `${savedCount}/${weekGameList.length} saved`;
+            countPill.classList.toggle('save-pill--done', savedCount === weekGameList.length);
+            countPill.classList.toggle('save-pill--partial', savedCount > 0 && savedCount < weekGameList.length);
+            countPill.classList.toggle('save-pill--empty', savedCount === 0);
         }
 
         function sortWeekRows(week, block) {
