@@ -96,7 +96,14 @@
                         </label>
                     </div>
                 </div>
-                <p class="field-hint" style="margin-top:var(--space-3);">Every league also gets two weekly tiebreaker guesses (total score of a random game, plus the week's last game) — used only to break season-long ties, not for points. Nothing to configure here.</p>
+                <label class="checkbox-option" style="margin-top:var(--space-3); display:inline-flex;">
+                    <input type="checkbox" id="enable-tiebreakers" checked />
+                    <span>Enable weekly tiebreakers — two guesses per week (total score of a random game, plus the week's last game), used only to break season-long ties, not for points</span>
+                </label>
+                <label class="checkbox-option" style="margin-top:var(--space-3); display:inline-flex;">
+                    <input type="checkbox" id="include-army-navy-week" />
+                    <span>Include Army-Navy week — the standalone game played the week after conference championships, outside the normal weekly slate cadence</span>
+                </label>
             </div>
 
             <div class="form-card">
@@ -300,6 +307,8 @@
             const conferences = getCheckedConferences();
             const includeTop25 = document.getElementById('include-top25').checked;
             const includeWeekZero = document.getElementById('include-week-zero').checked;
+            const enableTiebreakers = document.getElementById('enable-tiebreakers').checked;
+            const includeArmyNavyWeek = document.getElementById('include-army-navy-week').checked;
 
             if (scopeMode === 'custom' && conferences.length === 0 && !includeTop25) {
                 document.getElementById('custom-scope-error').classList.remove('hidden');
@@ -367,6 +376,8 @@
             sessionStorage.setItem('wpe_conferences', JSON.stringify(conferences));
             sessionStorage.setItem('wpe_include_top25', includeTop25 ? '1' : '0');
             sessionStorage.setItem('wpe_include_week_zero', includeWeekZero ? '1' : '0');
+            sessionStorage.setItem('wpe_tiebreakers_enabled', enableTiebreakers ? '1' : '0');
+            sessionStorage.setItem('wpe_include_army_navy_week', includeArmyNavyWeek ? '1' : '0');
             window.location.href = '/cfb/weekly-pick-em/invite/';
         });
 

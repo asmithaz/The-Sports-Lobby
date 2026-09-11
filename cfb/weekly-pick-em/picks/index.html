@@ -144,8 +144,8 @@
             }
 
             const { data: wpeLeagueRow } = await supabase
-                .from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode').eq('league_id', leagueId).eq('season', currentSeason).single();
-            wpeLeague = wpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat', scope_mode: 'sports_lobby_choice' };
+                .from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode, tiebreakers_enabled').eq('league_id', leagueId).eq('season', currentSeason).single();
+            wpeLeague = wpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat', scope_mode: 'sports_lobby_choice', tiebreakers_enabled: true };
             document.getElementById('league-sub').textContent =
                 `College Football Weekly Pick 'Em · ${wpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${wpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring`;
 
@@ -175,19 +175,25 @@
                 return;
             }
 
-            // Tiebreakers: one lazy-assign call per week that's actually open
-            // (current or past — see isFutureWeek) — no reason to freeze a
-            // random tiebreaker game for a week nobody can pick yet.
-            const openWeeksForTiebreak = weeks.filter(w => !isFutureWeek(w));
-            await Promise.all(openWeeksForTiebreak.map(async (w) => {
-                const { data } = await supabase.rpc('wpe_get_tiebreaker_games', { p_league_id: leagueId, p_season: currentSeason, p_week: w });
-                tbGamesByWeek[w] = data;
-            }));
-            const { data: myGuesses } = await supabase
-                .from('wpe_tiebreaker_guesses').select('*')
-                .eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', currentUserId);
+            // Tiebreakers: commissioner-configurable (wpeLeague.tiebreakers_enabled)
+            // — skip entirely when off, so no games get lazily frozen for a
+            // league that never wanted this. One lazy-assign call per week
+            // that's actually open (current or past — see isFutureWeek) — no
+            // reason to freeze a random tiebreaker game for a week nobody can
+            // pick yet.
+            for (const key in tbGamesByWeek) delete tbGamesByWeek[key];
             for (const key in tbGuessByWeek) delete tbGuessByWeek[key];
-            (myGuesses || []).forEach(g => { tbGuessByWeek[g.week] = g; });
+            if (wpeLeague.tiebreakers_enabled !== false) {
+                const openWeeksForTiebreak = weeks.filter(w => !isFutureWeek(w));
+                await Promise.all(openWeeksForTiebreak.map(async (w) => {
+                    const { data } = await supabase.rpc('wpe_get_tiebreaker_games', { p_league_id: leagueId, p_season: currentSeason, p_week: w });
+                    tbGamesByWeek[w] = data;
+                }));
+                const { data: myGuesses } = await supabase
+                    .from('wpe_tiebreaker_guesses').select('*')
+                    .eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', currentUserId);
+                (myGuesses || []).forEach(g => { tbGuessByWeek[g.week] = g; });
+            }
 
             const defaultOpenWeek = weeks.includes(currentWeekNum) ? currentWeekNum : weeks[weeks.length - 1];
             weeks.forEach(w => container.appendChild(renderWeek(w, w !== defaultOpenWeek)));

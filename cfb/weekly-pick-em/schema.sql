@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS wpe_games (
   espn_event_id         text NOT NULL,
   home_team             text NOT NULL,
   away_team             text NOT NULL,
+  home_team_abbr        text,                        -- ESPN's own short code (e.g. "RUT"), not derived locally
+  away_team_abbr        text,
   home_team_logo        text,
   away_team_logo        text,
   home_conference       text,                        -- nullable — see sync function's primary/fallback strategy
@@ -59,6 +61,8 @@ CREATE TABLE IF NOT EXISTS wpe_games (
 -- exists — it does NOT retroactively add new columns, so any column added
 -- after initial launch needs its own explicit ALTER TABLE here.
 ALTER TABLE wpe_games ADD COLUMN IF NOT EXISTS status_detail text;
+ALTER TABLE wpe_games ADD COLUMN IF NOT EXISTS home_team_abbr text;
+ALTER TABLE wpe_games ADD COLUMN IF NOT EXISTS away_team_abbr text;
 
 CREATE INDEX IF NOT EXISTS wpe_games_season_week_idx ON wpe_games(season, week);
 
@@ -133,6 +137,18 @@ CREATE TABLE IF NOT EXISTS wpe_leagues (
 -- retroactively add new columns, so any column added after initial launch
 -- needs its own explicit ALTER TABLE here.
 ALTER TABLE wpe_leagues ADD COLUMN IF NOT EXISTS include_week_zero boolean NOT NULL DEFAULT false;
+-- Commissioner-configurable; defaults true so every already-running
+-- league/season keeps its current (mandatory) tiebreaker behavior.
+ALTER TABLE wpe_leagues ADD COLUMN IF NOT EXISTS tiebreakers_enabled boolean NOT NULL DEFAULT true;
+ALTER TABLE wpe_leagues DROP COLUMN IF EXISTS regular_season_weeks;
+-- The base regular-season length (currently 14 weeks for 2026) is a
+-- hardcoded constant in dashboard/index.html, updated by hand each season
+-- — not commissioner-configurable, since almost no commissioner would
+-- know or want to guess that number. Army-Navy (a standalone game the
+-- week after conference championships, not a real slate week) is the one
+-- real exception worth a toggle: off by default, since it's not part of
+-- the normal weekly cadence.
+ALTER TABLE wpe_leagues ADD COLUMN IF NOT EXISTS include_army_navy_week boolean NOT NULL DEFAULT false;
 
 ALTER TABLE wpe_leagues ENABLE ROW LEVEL SECURITY;
 
@@ -337,7 +353,14 @@ BEGIN
             OR (v_league.include_top25 AND ((g.home_rank BETWEEN 1 AND 25) OR (g.away_rank BETWEEN 1 AND 25)))
          ))
     )
-  ORDER BY g.week, g.kickoff_at NULLS LAST;
+  -- Many Saturday games share the exact same kickoff slot, so kickoff_at
+  -- alone leaves ties in whatever order the table scan happens to return
+  -- — not guaranteed stable, and not guaranteed to match a second,
+  -- differently-shaped query (e.g. the dashboard's per-user pick
+  -- breakdown) sorting the same games client-side. Breaking ties
+  -- alphabetically makes the order deterministic and reproducible
+  -- everywhere the same tiebreak is applied.
+  ORDER BY g.week, g.kickoff_at NULLS LAST, g.away_team, g.home_team;
 END;
 $$;
 GRANT EXECUTE ON FUNCTION wpe_get_slate(uuid, int, int) TO authenticated;
@@ -456,9 +479,12 @@ GRANT EXECUTE ON FUNCTION wpe_clear_pick(uuid, uuid) TO authenticated;
 -- lock, since changing the weekly game pool doesn't corrupt past
 -- weeks' already-scored picks the way flipping pick/scoring mode would.
 -- Adding a parameter changes the signature — CREATE OR REPLACE would leave
--- the old 6-arg version behind as a separate overload rather than
+-- the old 6/7-arg version behind as a separate overload rather than
 -- replacing it, so drop it explicitly first.
 DROP FUNCTION IF EXISTS wpe_update_league_settings(uuid, text, text, text, text[], boolean);
+DROP FUNCTION IF EXISTS wpe_update_league_settings(uuid, text, text, text, text[], boolean, boolean);
+DROP FUNCTION IF EXISTS wpe_update_league_settings(uuid, text, text, text, text[], boolean, boolean, boolean);
+DROP FUNCTION IF EXISTS wpe_update_league_settings(uuid, text, text, text, text[], boolean, boolean, boolean, int);
 CREATE OR REPLACE FUNCTION wpe_update_league_settings(
   p_league_id uuid,
   p_pick_mode text,
@@ -466,7 +492,9 @@ CREATE OR REPLACE FUNCTION wpe_update_league_settings(
   p_scope_mode text,
   p_conferences text[],
   p_include_top25 boolean,
-  p_include_week_zero boolean DEFAULT false
+  p_include_week_zero boolean DEFAULT false,
+  p_tiebreakers_enabled boolean DEFAULT true,
+  p_include_army_navy_week boolean DEFAULT false
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -504,11 +532,12 @@ BEGIN
   UPDATE wpe_leagues SET
     pick_mode = p_pick_mode, scoring_mode = p_scoring_mode,
     scope_mode = p_scope_mode, conferences = p_conferences, include_top25 = p_include_top25,
-    include_week_zero = p_include_week_zero
+    include_week_zero = p_include_week_zero, tiebreakers_enabled = p_tiebreakers_enabled,
+    include_army_navy_week = p_include_army_navy_week
   WHERE league_id = p_league_id AND season = v_season;
 END;
 $$;
-GRANT EXECUTE ON FUNCTION wpe_update_league_settings(uuid, text, text, text, text[], boolean, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION wpe_update_league_settings(uuid, text, text, text, text[], boolean, boolean, boolean, boolean) TO authenticated;
 
 
 -- wpe_recalculate_scores: recomputes one league+season's wpe_scores
@@ -617,10 +646,19 @@ GRANT EXECUTE ON FUNCTION wpe_recalculate_all_scores() TO service_role;
 -- WEEKLY TIEBREAKERS — added post-launch per user request, styled on
 -- Yahoo's two-tiebreaker pattern (Yahoo's own pick'em pools use exactly
 -- this shape: guess the total of a highlighted game, plus guess the
--- total of the week's last game). Every league gets both, every week —
--- not a setup toggle. They exist purely to break SEASON-LONG standings
--- ties (closest cumulative guess wins); they carry no point value of
+-- total of the week's last game). Commissioner-configurable per league
+-- via wpe_leagues.tiebreakers_enabled (defaults on). They exist purely
+-- to break SEASON-LONG standings ties; they carry no point value of
 -- their own and never affect wpe_scores.
+--
+-- Scoring is win-counting, not raw closeness: once a slot's game goes
+-- final, whoever in the league has the smallest |guess - actual| for
+-- that slot "wins" it (ties allowed). A member's season total is how
+-- many slots they've won — see wpe_get_standings' tiebreaks_won below.
+-- This is deliberately relative to the league, not an absolute score,
+-- so skipping weeks only costs you wins you could've had; it can never
+-- make your total look better the way summing raw error could (fewer
+-- guesses used to mean less accumulated error, which was backwards).
 -- ------------------------------------------------------------
 
 -- WPE TIEBREAKER GAMES — which game is Tiebreaker 1 / Tiebreaker 2 for
@@ -692,9 +730,15 @@ DECLARE
   v_row wpe_tiebreaker_games%ROWTYPE;
   v_tb1 uuid;
   v_tb2 uuid;
+  v_enabled boolean;
 BEGIN
   IF NOT is_league_member(p_league_id) THEN
     RAISE EXCEPTION 'Not a member of this league';
+  END IF;
+
+  SELECT tiebreakers_enabled INTO v_enabled FROM wpe_leagues WHERE league_id = p_league_id AND season = p_season;
+  IF NOT COALESCE(v_enabled, true) THEN
+    RAISE EXCEPTION 'Tiebreakers are disabled for this league';
   END IF;
 
   SELECT * INTO v_row FROM wpe_tiebreaker_games
@@ -769,12 +813,19 @@ GRANT EXECUTE ON FUNCTION wpe_submit_tiebreaker_guess(uuid, int, int, int) TO au
 
 
 -- wpe_get_standings: defaults to the league's current season; a past
--- season can be passed explicitly for the history page. `tiebreak_error`
--- is the sum of |guess - actual| across every RESOLVED tiebreaker guess
--- (both slots, every week) this season — NULL if the member never
--- submitted one. Used ONLY to break a tie in total_points; a lower
--- error sorts first (closest overall guesser), NULLs (no participation)
--- sort last. DROP + recreate below since changing a RETURNS TABLE
+-- season can be passed explicitly for the history page.
+--
+-- `tiebreaks_won` is a plain count of tiebreaker SLOTS (both slots,
+-- every week) this member has the closest guess on, league-wide — see
+-- the win-counting note in the WEEKLY TIEBREAKERS section header above.
+-- It's the primary tiebreak-of-ties field, descending.
+--
+-- `tiebreak_error` is the older sum of |guess - actual| across every
+-- RESOLVED tiebreaker guess this season — NULL if the member never
+-- submitted one. It's kept only as a TERTIARY tiebreak (only reached
+-- if two members are tied on both total_points and tiebreaks_won) and
+-- as the "never played" signal for display; it is no longer the
+-- primary metric. DROP + recreate below since changing a RETURNS TABLE
 -- shape isn't something CREATE OR REPLACE can do.
 DROP FUNCTION IF EXISTS wpe_get_standings(uuid, int);
 CREATE OR REPLACE FUNCTION wpe_get_standings(p_league_id uuid, p_season int DEFAULT NULL)
@@ -784,6 +835,7 @@ RETURNS TABLE (
   total_points int,
   wins int,
   losses int,
+  tiebreaks_won int,
   tiebreak_error numeric
 )
 LANGUAGE plpgsql
@@ -803,38 +855,109 @@ BEGIN
   END IF;
 
   RETURN QUERY
+  WITH slot_guesses AS (
+    SELECT g.week, 1 AS slot, g.user_id,
+           ABS(g.tb1_guess - (gm.home_score + gm.away_score)) AS err
+    FROM wpe_tiebreaker_guesses g
+    JOIN wpe_tiebreaker_games tg ON tg.league_id = g.league_id AND tg.season = g.season AND tg.week = g.week
+    JOIN wpe_games gm ON gm.id = tg.tb1_game_id AND gm.status = 'final'
+    WHERE g.league_id = p_league_id AND g.season = v_season AND g.tb1_guess IS NOT NULL
+    UNION ALL
+    SELECT g.week, 2, g.user_id,
+           ABS(g.tb2_guess - (gm.home_score + gm.away_score))
+    FROM wpe_tiebreaker_guesses g
+    JOIN wpe_tiebreaker_games tg ON tg.league_id = g.league_id AND tg.season = g.season AND tg.week = g.week
+    JOIN wpe_games gm ON gm.id = tg.tb2_game_id AND gm.status = 'final'
+    WHERE g.league_id = p_league_id AND g.season = v_season AND g.tb2_guess IS NOT NULL
+  ),
+  slot_mins AS (
+    SELECT week, slot, MIN(err) AS min_err FROM slot_guesses GROUP BY week, slot
+  ),
+  slot_wins AS (
+    SELECT sg.user_id, COUNT(*) AS won
+    FROM slot_guesses sg
+    JOIN slot_mins sm ON sm.week = sg.week AND sm.slot = sg.slot
+    WHERE sg.err = sm.min_err
+    GROUP BY sg.user_id
+  ),
+  tb_total_error AS (
+    SELECT sg.user_id, SUM(sg.err)::numeric AS total_error FROM slot_guesses sg GROUP BY sg.user_id
+  )
   SELECT
     m.user_id, m.team_name,
     COALESCE(s.total_points, 0), COALESCE(s.wins, 0), COALESCE(s.losses, 0),
-    tb.total_error
+    COALESCE(sw.won, 0)::int, te.total_error
   FROM league_members m
   LEFT JOIN wpe_scores s ON s.league_id = p_league_id AND s.season = v_season AND s.user_id = m.user_id
-  LEFT JOIN LATERAL (
-    SELECT SUM(err)::numeric AS total_error
-    FROM (
-      SELECT ABS(g.tb1_guess - (gm1.home_score + gm1.away_score)) AS err
-      FROM wpe_tiebreaker_guesses g
-      JOIN wpe_tiebreaker_games tg ON tg.league_id = g.league_id AND tg.season = g.season AND tg.week = g.week
-      JOIN wpe_games gm1 ON gm1.id = tg.tb1_game_id AND gm1.status = 'final'
-      WHERE g.league_id = p_league_id AND g.season = v_season AND g.user_id = m.user_id AND g.tb1_guess IS NOT NULL
-      UNION ALL
-      SELECT ABS(g.tb2_guess - (gm2.home_score + gm2.away_score))
-      FROM wpe_tiebreaker_guesses g
-      JOIN wpe_tiebreaker_games tg ON tg.league_id = g.league_id AND tg.season = g.season AND tg.week = g.week
-      JOIN wpe_games gm2 ON gm2.id = tg.tb2_game_id AND gm2.status = 'final'
-      WHERE g.league_id = p_league_id AND g.season = v_season AND g.user_id = m.user_id AND g.tb2_guess IS NOT NULL
-    ) errs
-  ) tb ON true
+  LEFT JOIN slot_wins sw ON sw.user_id = m.user_id
+  LEFT JOIN tb_total_error te ON te.user_id = m.user_id
   WHERE m.league_id = p_league_id
   ORDER BY
     COALESCE(s.total_points, 0) DESC,
-    CASE WHEN tb.total_error IS NULL THEN 1 ELSE 0 END,
-    tb.total_error ASC,
+    COALESCE(sw.won, 0) DESC,
+    CASE WHEN te.total_error IS NULL THEN 1 ELSE 0 END,
+    te.total_error ASC,
     COALESCE(s.wins, 0) DESC,
     m.team_name ASC;
 END;
 $$;
 GRANT EXECUTE ON FUNCTION wpe_get_standings(uuid, int) TO authenticated;
+
+
+-- wpe_get_tiebreak_weekly: per-week tiebreaker detail for ONE member,
+-- backing the dashboard's per-week breakdown. "won" still requires
+-- comparing against the whole league's guesses for that slot (same
+-- slot_guesses/slot_mins shape as wpe_get_standings above), just
+-- filtered down to p_user_id in the final SELECT.
+CREATE OR REPLACE FUNCTION wpe_get_tiebreak_weekly(p_league_id uuid, p_season int, p_user_id uuid)
+RETURNS TABLE (
+  week int,
+  slot int,
+  guess int,
+  actual int,
+  won boolean,
+  matchup text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+AS $$
+BEGIN
+  IF NOT is_league_member(p_league_id) THEN
+    RAISE EXCEPTION 'Not a member of this league';
+  END IF;
+
+  RETURN QUERY
+  WITH slot_guesses AS (
+    SELECT g.week, 1 AS slot, g.user_id, g.tb1_guess AS guess,
+           (gm.home_score + gm.away_score) AS actual,
+           ABS(g.tb1_guess - (gm.home_score + gm.away_score)) AS err,
+           gm.away_team || ' @ ' || gm.home_team AS matchup
+    FROM wpe_tiebreaker_guesses g
+    JOIN wpe_tiebreaker_games tg ON tg.league_id = g.league_id AND tg.season = g.season AND tg.week = g.week
+    JOIN wpe_games gm ON gm.id = tg.tb1_game_id AND gm.status = 'final'
+    WHERE g.league_id = p_league_id AND g.season = p_season AND g.tb1_guess IS NOT NULL
+    UNION ALL
+    SELECT g.week, 2, g.user_id, g.tb2_guess,
+           (gm.home_score + gm.away_score),
+           ABS(g.tb2_guess - (gm.home_score + gm.away_score)),
+           gm.away_team || ' @ ' || gm.home_team
+    FROM wpe_tiebreaker_guesses g
+    JOIN wpe_tiebreaker_games tg ON tg.league_id = g.league_id AND tg.season = g.season AND tg.week = g.week
+    JOIN wpe_games gm ON gm.id = tg.tb2_game_id AND gm.status = 'final'
+    WHERE g.league_id = p_league_id AND g.season = p_season AND g.tb2_guess IS NOT NULL
+  ),
+  slot_mins AS (
+    SELECT sg.week, sg.slot, MIN(sg.err) AS min_err FROM slot_guesses sg GROUP BY sg.week, sg.slot
+  )
+  SELECT sg.week, sg.slot, sg.guess, sg.actual, (sg.err = sm.min_err), sg.matchup
+  FROM slot_guesses sg
+  JOIN slot_mins sm ON sm.week = sg.week AND sm.slot = sg.slot
+  WHERE sg.user_id = p_user_id
+  ORDER BY sg.week, sg.slot;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION wpe_get_tiebreak_weekly(uuid, int, uuid) TO authenticated;
 
 
 -- wpe_start_new_season: commissioner-only. Carries forward
@@ -857,6 +980,8 @@ DECLARE
   v_conferences text[];
   v_include_top25 boolean;
   v_include_week_zero boolean;
+  v_tiebreakers_enabled boolean;
+  v_include_army_navy_week boolean;
 BEGIN
   SELECT (commissioner_id = auth.uid()), current_season INTO v_is_commissioner, v_prev_season
   FROM leagues WHERE id = p_league_id;
@@ -867,14 +992,14 @@ BEGIN
 
   v_new_season := v_prev_season + 1;
 
-  SELECT pick_mode, scoring_mode, scope_mode, conferences, include_top25, include_week_zero
-    INTO v_pick_mode, v_scoring_mode, v_scope_mode, v_conferences, v_include_top25, v_include_week_zero
+  SELECT pick_mode, scoring_mode, scope_mode, conferences, include_top25, include_week_zero, tiebreakers_enabled, include_army_navy_week
+    INTO v_pick_mode, v_scoring_mode, v_scope_mode, v_conferences, v_include_top25, v_include_week_zero, v_tiebreakers_enabled, v_include_army_navy_week
   FROM wpe_leagues WHERE league_id = p_league_id AND season = v_prev_season;
 
-  INSERT INTO wpe_leagues (league_id, season, pick_mode, scoring_mode, scope_mode, conferences, include_top25, include_week_zero)
+  INSERT INTO wpe_leagues (league_id, season, pick_mode, scoring_mode, scope_mode, conferences, include_top25, include_week_zero, tiebreakers_enabled, include_army_navy_week)
   VALUES (p_league_id, v_new_season, COALESCE(v_pick_mode, 'straight_up'), COALESCE(v_scoring_mode, 'flat'),
           COALESCE(v_scope_mode, 'sports_lobby_choice'), COALESCE(v_conferences, '{}'), COALESCE(v_include_top25, true),
-          COALESCE(v_include_week_zero, false))
+          COALESCE(v_include_week_zero, false), COALESCE(v_tiebreakers_enabled, true), COALESCE(v_include_army_navy_week, false))
   ON CONFLICT (league_id, season) DO NOTHING;
 
   UPDATE leagues SET current_season = v_new_season, status = 'active' WHERE id = p_league_id;

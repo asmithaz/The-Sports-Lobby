@@ -139,6 +139,20 @@
                     </label>
                 </div>
 
+                <div class="tier-section">
+                    <label class="checkbox-option" style="display:inline-flex;">
+                        <input type="checkbox" id="enable-tiebreakers" />
+                        <span>Enable weekly tiebreakers — two guesses per week (total score of a random game, plus the week's last game), used only to break season-long ties, not for points</span>
+                    </label>
+                </div>
+
+                <div class="tier-section">
+                    <label class="checkbox-option" style="display:inline-flex;">
+                        <input type="checkbox" id="include-army-navy-week" />
+                        <span>Include Army-Navy week — the standalone game played the week after conference championships, outside the normal weekly slate cadence</span>
+                    </label>
+                </div>
+
                 <p id="rules-status" class="text-xs mb-3" style="margin-top:var(--space-4);"></p>
                 <button type="submit" class="btn btn--primary btn--block" id="rules-save-btn">Save</button>
             </form>
@@ -232,7 +246,7 @@
             document.getElementById('commissioner-card').classList.remove('hidden');
 
             const [{ data: wpeLeague }, { count: pickCount }, { data: counts }, { data: confs }] = await Promise.all([
-                supabase.from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode, conferences, include_top25, include_week_zero').eq('league_id', leagueId).eq('season', currentSeason).single(),
+                supabase.from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode, conferences, include_top25, include_week_zero, tiebreakers_enabled, include_army_navy_week').eq('league_id', leagueId).eq('season', currentSeason).single(),
                 supabase.from('wpe_picks').select('id', { count: 'exact', head: true }).eq('league_id', leagueId).eq('season', currentSeason),
                 supabase.rpc('wpe_scope_preview_counts', { p_season: currentSeason }),
                 supabase.rpc('wpe_list_conferences')
@@ -257,6 +271,8 @@
                 document.querySelector(`input[name="scope-mode"][value="${wpeLeague.scope_mode}"]`).checked = true;
                 document.getElementById('include-top25').checked = !!wpeLeague.include_top25;
                 document.getElementById('include-week-zero').checked = !!wpeLeague.include_week_zero;
+                document.getElementById('enable-tiebreakers').checked = wpeLeague.tiebreakers_enabled !== false;
+                document.getElementById('include-army-navy-week').checked = !!wpeLeague.include_army_navy_week;
                 onScopeModeChange(wpeLeague.scope_mode);
                 if (wpeLeague.scope_mode === 'custom') await refreshCustomCount();
             }
@@ -318,6 +334,8 @@
             const conferences = getCheckedConferences();
             const includeTop25 = document.getElementById('include-top25').checked;
             const includeWeekZero = document.getElementById('include-week-zero').checked;
+            const enableTiebreakers = document.getElementById('enable-tiebreakers').checked;
+            const includeArmyNavyWeek = document.getElementById('include-army-navy-week').checked;
 
             if (scopeMode === 'custom' && conferences.length === 0 && !includeTop25) {
                 document.getElementById('custom-scope-error').classList.remove('hidden');
@@ -335,7 +353,9 @@
                 p_scope_mode: scopeMode,
                 p_conferences: conferences,
                 p_include_top25: includeTop25,
-                p_include_week_zero: includeWeekZero
+                p_include_week_zero: includeWeekZero,
+                p_tiebreakers_enabled: enableTiebreakers,
+                p_include_army_navy_week: includeArmyNavyWeek
             });
             btn.disabled = false;
 

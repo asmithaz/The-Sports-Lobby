@@ -205,7 +205,9 @@
                     scope_mode: sessionStorage.getItem('wpe_scope_mode') || 'sports_lobby_choice',
                     conferences: JSON.parse(sessionStorage.getItem('wpe_conferences') || '[]'),
                     include_top25: sessionStorage.getItem('wpe_include_top25') !== '0',
-                    include_week_zero: sessionStorage.getItem('wpe_include_week_zero') === '1'
+                    include_week_zero: sessionStorage.getItem('wpe_include_week_zero') === '1',
+                    tiebreakers_enabled: sessionStorage.getItem('wpe_tiebreakers_enabled') !== '0',
+                    include_army_navy_week: sessionStorage.getItem('wpe_include_army_navy_week') === '1'
                 });
 
             if (error) {

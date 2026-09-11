@@ -55,6 +55,7 @@
         let leagueId = null;
         let currentUserId = null;
         let seasons = [];
+        let seasonSettings = {}; // season -> { tiebreakers_enabled }
 
         function escapeHtml(str) {
             const d = document.createElement('div');
@@ -86,10 +87,11 @@
             document.getElementById('league-name').textContent = leagueRow.name;
 
             const { data: wpeRows } = await supabase
-                .from('wpe_leagues').select('season').eq('league_id', leagueId)
+                .from('wpe_leagues').select('season, tiebreakers_enabled').eq('league_id', leagueId)
                 .lt('season', leagueRow.current_season).order('season', { ascending: false });
 
             seasons = (wpeRows ?? []).map(r => r.season);
+            (wpeRows ?? []).forEach(r => { seasonSettings[r.season] = { tiebreakers_enabled: r.tiebreakers_enabled }; });
             if (!seasons.length) {
                 document.getElementById('history-content').innerHTML = '<p class="text-muted">No past seasons yet.</p>';
                 return;
@@ -126,12 +128,14 @@
                 return;
             }
 
+            document.body.classList.toggle('tb-disabled', seasonSettings[season]?.tiebreakers_enabled === false);
+
             document.getElementById('history-content').innerHTML = `
                 <div class="section-block">
                     <div class="section-title">${season} Final Standings</div>
                     <div class="table-wrap">
                         <table class="data-table">
-                            <thead><tr><th>#</th><th>Team Name</th><th>Record</th><th>Points</th><th>Tiebreak</th></tr></thead>
+                            <thead><tr><th>#</th><th>Team Name</th><th>Record</th><th>Points</th><th id="tiebreak-th">Tiebreaks Won</th></tr></thead>
                             <tbody id="history-standings-body"></tbody>
                         </table>
                     </div>
@@ -151,7 +155,7 @@
                       </div></td>
                   <td class="num">${row.wins}–${row.losses}</td>
                   <td class="num num--score">${row.total_points}</td>
-                  <td class="num">${row.tiebreak_error != null ? Number(row.tiebreak_error).toFixed(1) : '—'}</td>
+                  <td class="num tiebreak-td">${row.tiebreak_error != null ? `<span class="pill ${row.tiebreaks_won > 0 ? 'pill--green' : 'pill--muted'}">${row.tiebreaks_won}</span>` : '—'}</td>
                 `;
                 tbody.appendChild(tr);
             });

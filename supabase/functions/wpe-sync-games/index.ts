@@ -161,6 +161,8 @@ interface MappedGame {
   week: number;
   home_team: string;
   away_team: string;
+  home_team_abbr: string | null;
+  away_team_abbr: string | null;
   home_team_logo: string | null;
   away_team_logo: string | null;
   home_conference: string | null;
@@ -271,6 +273,8 @@ function mapEvent(ev: any, week: number, teamConference: Map<string, string>): M
     week,
     home_team: home.team.displayName,
     away_team: away.team.displayName,
+    home_team_abbr: home.team.abbreviation ?? null,
+    away_team_abbr: away.team.abbreviation ?? null,
     home_team_logo: home.team.logo ?? null,
     away_team_logo: away.team.logo ?? null,
     home_conference: (homeId && teamConference.get(homeId)) ?? null,
@@ -582,6 +586,8 @@ Deno.serve(async (req) => {
         espn_event_id: game.espn_event_id,
         home_team: game.home_team,
         away_team: game.away_team,
+        home_team_abbr: game.home_team_abbr,
+        away_team_abbr: game.away_team_abbr,
         week: game.week,
         status: game.status,
         status_detail: game.status_detail,
