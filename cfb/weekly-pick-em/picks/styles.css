@@ -48,7 +48,7 @@
 .conf-chip { flex: 0 0 auto; width: 23px; height: 21px; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono);
              font-weight: var(--weight-medium); font-size: 10px; border-radius: 4px; border: 1px dashed var(--c-border-strong); color: var(--c-text-secondary); }
 .conf-chip--pending { border-style: solid; background: var(--c-accent-dim); border-color: var(--c-accent-border); color: var(--c-accent); font-weight: var(--weight-bold); }
-.conf-chip--live { border-style: solid; background: var(--c-surface-2); border-color: var(--c-border-strong); color: var(--c-text-primary); font-weight: var(--weight-bold); }
+.conf-chip--live { border-style: solid; background: rgba(251,191,36,0.08); border-color: rgba(251,191,36,0.3); color: var(--c-warning); font-weight: var(--weight-bold); }
 .conf-chip--hit { border-style: solid; background: var(--c-accent); border-color: var(--c-accent); color: #0f1117; font-weight: var(--weight-bold); }
 .conf-chip--miss { border-style: solid; background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.25); color: var(--c-danger); font-weight: var(--weight-bold); }
 
