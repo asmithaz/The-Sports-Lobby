@@ -35,12 +35,15 @@ CREATE TABLE IF NOT EXISTS bpe_games (
   bowl_name        text NOT NULL,
   home_team        text NOT NULL,
   away_team        text NOT NULL,
+  home_team_abbr   text,                  -- ESPN's own short code (e.g. "RUT"), not derived locally
+  away_team_abbr   text,
   home_team_logo   text,
   away_team_logo   text,
   favorite_team    text,                  -- one of home_team/away_team, or NULL if pick'em/no line yet
   spread            numeric,              -- FROZEN at first sync — never updated by a routine re-sync
   kickoff_at       timestamptz,           -- nullable: a few bowls have teams set but kickoff TBD at first sync
   status           text NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'live', 'final')),
+  status_detail    text,                  -- ESPN's live label while status = 'live' (e.g. "3rd - 5:20")
   home_score       int,
   away_score       int,
   winner_team      text,                  -- straight-up winner, set once status = 'final'
@@ -50,6 +53,13 @@ CREATE TABLE IF NOT EXISTS bpe_games (
   updated_at       timestamptz NOT NULL DEFAULT now(),
   UNIQUE (season, espn_event_id)
 );
+
+-- Table was already applied to prod before these columns existed — CREATE
+-- TABLE IF NOT EXISTS doesn't retroactively add columns, so each one added
+-- after initial launch needs its own explicit ALTER TABLE here.
+ALTER TABLE bpe_games ADD COLUMN IF NOT EXISTS home_team_abbr text;
+ALTER TABLE bpe_games ADD COLUMN IF NOT EXISTS away_team_abbr text;
+ALTER TABLE bpe_games ADD COLUMN IF NOT EXISTS status_detail text;
 
 ALTER TABLE bpe_games ENABLE ROW LEVEL SECURITY;
 

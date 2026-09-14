@@ -70,12 +70,15 @@ interface MappedGame {
   bowl_name: string;
   home_team: string;
   away_team: string;
+  home_team_abbr: string | null;
+  away_team_abbr: string | null;
   home_team_logo: string | null;
   away_team_logo: string | null;
   favorite_team: string | null;
   spread: number | null;
   kickoff_at: string | null;
   status: "scheduled" | "live" | "final";
+  status_detail: string | null;
   home_score: number | null;
   away_score: number | null;
   winner_team: string | null;
@@ -167,6 +170,10 @@ function mapEvent(ev: any): MappedGame | null {
   }
 
   const status = statusFor(competition);
+  // ESPN's own live label — "3rd - 5:20", "Halftime", "End of 3rd", etc.
+  // Only meaningful while live; scheduled/final games render their own
+  // label client-side instead of trusting this string's shape.
+  const statusDetail: string | null = competition?.status?.type?.shortDetail ?? null;
   const homeScore = home.score != null ? parseInt(String(home.score), 10) : null;
   const awayScore = away.score != null ? parseInt(String(away.score), 10) : null;
 
@@ -185,12 +192,15 @@ function mapEvent(ev: any): MappedGame | null {
     bowl_name: headline,
     home_team: home.team.displayName,
     away_team: away.team.displayName,
+    home_team_abbr: home.team.abbreviation ?? null,
+    away_team_abbr: away.team.abbreviation ?? null,
     home_team_logo: home.team.logo ?? null,
     away_team_logo: away.team.logo ?? null,
     favorite_team: favoriteTeam,
     spread,
     kickoff_at: ev?.date ?? null,
     status,
+    status_detail: statusDetail,
     home_score: homeScore,
     away_score: awayScore,
     winner_team: winnerTeam,
@@ -303,7 +313,9 @@ Deno.serve(async (req) => {
         // to wpe-sync-games 2026-09-08 after a live 500 there.
         season, espn_event_id: game.espn_event_id, tier: game.tier, bowl_name: game.bowl_name,
         home_team: game.home_team, away_team: game.away_team,
+        home_team_abbr: game.home_team_abbr, away_team_abbr: game.away_team_abbr,
         status: game.status,
+        status_detail: game.status_detail,
         home_score: game.home_score,
         away_score: game.away_score,
         winner_team: game.winner_team,

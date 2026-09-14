@@ -178,7 +178,11 @@
 
         async function loadAndRender() {
             const [{ data: games }, { data: myPicks }, { data: myTiebreak }] = await Promise.all([
-                supabase.from('bpe_games').select('*').eq('season', currentSeason).order('kickoff_at', { ascending: true, nullsFirst: false }),
+                // Ties on the same kickoff slot (several bowls sometimes share
+                // one) broken alphabetically so this order is deterministic and
+                // agrees with every other view sorting the same games client-side.
+                supabase.from('bpe_games').select('*').eq('season', currentSeason)
+                    .order('kickoff_at', { ascending: true, nullsFirst: false }).order('away_team').order('home_team'),
                 supabase.from('bpe_picks').select('*').eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', currentUserId),
                 supabase.from('bpe_tiebreakers').select('*').eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', currentUserId).maybeSingle()
             ]);
@@ -237,7 +241,7 @@
                       <div class="conf-legend">
                         <span><i style="background:transparent; border:1px dashed var(--c-text-secondary);"></i>Available</span>
                         <span><i style="background:var(--c-accent-dim); border:1px solid var(--c-accent-border);"></i>Assigned</span>
-                        <span><i style="background:var(--c-surface-2); border:1px solid var(--c-border-strong);"></i>Locked/live</span>
+                        <span><i style="background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.3);"></i>Live</span>
                         <span><i style="background:var(--c-accent);"></i>Correct</span>
                         <span><i style="background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.25);"></i>Incorrect</span>
                       </div>
@@ -345,7 +349,7 @@
             if (g.status === 'final') {
                 kickHtml = `<div class="kline kline--final">Final</div>`;
             } else if (locked) {
-                kickHtml = `<div class="kline kline--live"><span class="status-dot"></span>Live${g.home_score != null ? ` · ${g.away_score}–${g.home_score}` : ''}</div>`;
+                kickHtml = `<div class="kline kline--live"><span class="status-dot"></span>${escapeHtml(g.status_detail || 'Live')}${g.home_score != null ? ` · ${g.away_score}–${g.home_score}` : ''}</div>`;
             } else {
                 kickHtml = `<div class="kline kline--muted">${fmtKickoff(g.kickoff_at) || 'Kickoff TBD'}</div>`;
             }
@@ -628,12 +632,26 @@
                 }
             }
 
-            if (countPill && openGames.length) {
-                const pickedCount = openGames.length - incomplete.length;
+            // Denominator/numerator here are the round's FULL game count, not
+            // openGames above (which excludes locked games) — a game doesn't
+            // stop counting once it locks, it just can't be edited anymore.
+            // Using openGames for this pill let a fully-caught-up round
+            // silently hide a game that locked with no pick on it. Save-button
+            // gating above stays scoped to openGames since locked games can't
+            // be acted on and shouldn't block the button.
+            if (countPill) {
+                const roundGames = allGames.filter(g => def.tiers.includes(g.tier));
+                if (!roundGames.length) { countPill.textContent = ''; return; }
+                const needsConf = bpeLeague.scoring_mode === 'confidence';
+                const savedCount = roundGames.filter(g => {
+                    const p = pending[g.id];
+                    return !!p?.picked_team && (!needsConf || p.confidence_points != null);
+                }).length;
                 const isSaved = incomplete.length === 0 && !isDirty;
-                countPill.textContent = isSaved ? `${pickedCount}/${openGames.length} saved` : `${pickedCount}/${openGames.length} picked`;
+                countPill.textContent = isSaved ? `${savedCount}/${roundGames.length} saved` : `${savedCount}/${roundGames.length} picked`;
                 countPill.classList.toggle('save-pill--done', isSaved);
-                countPill.classList.toggle('save-pill--partial', !isSaved && pickedCount > 0);
+                countPill.classList.toggle('save-pill--partial', !isSaved && savedCount > 0 && savedCount < roundGames.length);
+                countPill.classList.toggle('save-pill--empty', savedCount === 0);
             }
         }
 

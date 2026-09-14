@@ -59,7 +59,7 @@
                 <div class="section-title">Overall Standings</div>
                 <div class="section-sub">Click a name for their round-by-round breakdown. Tiebreaker locks at Championship kickoff − 5 min.</div>
                 <div class="table-wrap">
-                    <table class="data-table">
+                    <table class="data-table" id="standings-table">
                         <thead><tr><th>#</th><th>Team Name</th><th>Record</th><th>Points</th><th>Tiebreaker</th></tr></thead>
                         <tbody id="standings-body"><tr><td colspan="5" class="text-muted" style="padding:var(--space-4);">Loading…</td></tr></tbody>
                     </table>
@@ -68,10 +68,11 @@
 
             <div class="section-block">
                 <div class="section-title">Pick Comparison</div>
-                <div class="section-sub">Everyone's picks are hidden until that game locks — you can always see your own. Listed in kickoff order.</div>
+                <div class="section-sub">Everyone's picks are hidden until that game locks — you can always see your own.</div>
+                <div class="pill-toggle" id="pg-tier-toggle" style="margin-bottom:var(--space-3);"></div>
                 <div class="pg-wrap">
                     <table class="pg-table">
-                        <thead><tr id="pg-header-row"><th class="pg-matchup-th">Matchup</th></tr></thead>
+                        <thead><tr id="pg-header-row"><th class="pg-team-th">Team</th></tr></thead>
                         <tbody id="pg-body"><tr><td class="text-muted" style="padding:var(--space-4);">Loading…</td></tr></tbody>
                     </table>
                 </div>
@@ -128,6 +129,9 @@
         let leagueId = null;
         let currentSeason = null;
         let bpeLeague = null; // { pick_mode, scoring_mode }
+        let fullSlate = []; // every synced game for the season, deterministically ordered — shared by the
+                             // standings breakdown and the Pick Comparison grid
+        let currentComparisonTier = 'bowl';
 
         const TIER_LABEL = { bowl: 'Bowl', cfp_r1: 'CFP R1', cfp_qf: 'Quarterfinal', cfp_sf: 'Semifinal', cfp_championship: 'Championship' };
         const WAVE_LABEL = { w1: 'Bowls+R1', w2: 'Quarterfinals', w3: 'Semifinals', w4: 'Championship' };
@@ -285,7 +289,33 @@
             document.getElementById('league-sub').textContent =
                 `College Football Bowl Season Pick 'Em · ${bpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${bpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring`;
 
-            await Promise.all([loadSyncStatus(), loadStandings(), loadPickComparison(), updateInviteVisibility()]);
+            // Fetched once and shared by the standings breakdown and the Pick
+            // Comparison grid, rather than each re-querying its own slice —
+            // both need the same "every synced game this season" data, just
+            // filtered differently (by user's picks vs. by tier). Ties on the
+            // same kickoff slot broken alphabetically so this order is
+            // deterministic and agrees with the picks page's own ordering.
+            const { data: slate } = await supabase.from('bpe_games').select('*').eq('season', currentSeason)
+                .order('kickoff_at', { ascending: true, nullsFirst: false }).order('away_team').order('home_team');
+            fullSlate = slate || [];
+
+            renderTierToggle();
+            await Promise.all([loadSyncStatus(), loadStandings(), loadPickComparisonGrid(), updateInviteVisibility()]);
+        }
+
+        function renderTierToggle() {
+            const toggle = document.getElementById('pg-tier-toggle');
+            const tiers = ['bowl', 'cfp_r1', 'cfp_qf', 'cfp_sf', 'cfp_championship'];
+            toggle.innerHTML = tiers.map(t =>
+                `<button type="button" class="pill ${t === currentComparisonTier ? 'pill--green' : 'pill--muted'}" data-tier="${t}">${TIER_LABEL[t]}</button>`
+            ).join('');
+            toggle.onclick = (e) => {
+                const btn = e.target.closest('button[data-tier]');
+                if (!btn) return;
+                currentComparisonTier = btn.dataset.tier;
+                renderTierToggle();
+                loadPickComparisonGrid();
+            };
         }
 
         async function updateInviteVisibility() {
@@ -357,7 +387,7 @@
                 const tiebreakerCell = !canSeeTiebreaker ? '🔒' : (row.tiebreaker_guess ?? '—');
 
                 const tr = document.createElement('tr');
-                tr.className = isMe ? 'row--me' : '';
+                tr.className = `standings-row${isMe ? ' row--me' : ''}`;
                 tr.innerHTML = `
                   <td class="rank-cell ${rank === 1 ? 'rank-cell--top' : ''}">${rank}</td>
                   <td><div class="name-cell"><span class="caret">▸</span><div class="name-stack">
@@ -379,7 +409,7 @@
                     <div class="pick-chips" data-loaded="">Loading…</div>
                   </div></td>`;
 
-                tr.querySelector('.name-cell').addEventListener('click', async () => {
+                tr.addEventListener('click', async () => {
                     tr.classList.toggle('expanded');
                     // Refetch every expand rather than caching after the first — picks/results
                     // can change (new saves, games going final) while the row stays on-screen.
@@ -396,28 +426,38 @@
         async function renderUserBreakdown(userId, wavesEl, chipsEl) {
             const { data: picks } = await supabase
                 .from('bpe_picks')
-                .select('game_id, picked_team, confidence_points, bpe_games(bowl_name, tier, status, winner_team, ats_winner_team, kickoff_at)')
-                .eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', userId)
-                .order('bpe_games(kickoff_at)', { ascending: true });
+                .select('game_id, picked_team, confidence_points')
+                .eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', userId);
+            const pickByGameId = {};
+            (picks || []).forEach(p => { pickByGameId[p.game_id] = p; });
 
+            // Built from the FULL season slate (fullSlate), not just the games
+            // this user has a visible pick for. A chip never shows which team
+            // was picked, only the bowl name and an outcome color, so there's
+            // nothing to hide by always showing every game — a bowl someone
+            // skipped, or a locked game someone else declined to pick, now
+            // still shows up (red) instead of silently vanishing from the
+            // round entirely.
             const byWave = { w1: [], w2: [], w3: [], w4: [] };
-            (picks || []).forEach(p => {
-                const g = p.bpe_games;
-                if (!g) return;
+            fullSlate.forEach(g => {
                 const wave = waveForTier(g.tier);
-                const correct = isCorrect(p, g);
-                byWave[wave].push({
-                    label: abbrev(g.bowl_name),
-                    state: correct === null ? 'pending' : correct ? 'hit' : 'miss'
-                });
+                const pick = pickByGameId[g.id];
+                // No visible pick on a game that's already final reads as a
+                // miss — same as a wrong pick, since neither the viewer nor
+                // this UI need to distinguish "picked wrong" from "never
+                // picked" once the outcome is locked in.
+                const correct = pick ? isCorrect(pick, g) : (g.status === 'final' ? false : null);
+                const state = g.status === 'live' ? 'live' : correct === true ? 'hit' : correct === false ? 'miss' : 'pending';
+                byWave[wave].push({ label: abbrev(g.bowl_name), state });
             });
 
+            const CHIP_CLASS = { hit: 'pick-chip--hit', miss: 'pick-chip--miss', live: 'pick-chip--live' };
             let currentWave = 'w1';
             function renderChips() {
                 const list = byWave[currentWave];
                 chipsEl.innerHTML = list.length
-                    ? list.map(c => `<span class="pick-chip ${c.state === 'hit' ? 'pick-chip--hit' : c.state === 'miss' ? 'pick-chip--miss' : ''}">${c.label}</span>`).join('')
-                    : `<span class="text-muted text-xs">No visible picks in this round yet.</span>`;
+                    ? list.map(c => `<span class="pick-chip ${CHIP_CLASS[c.state] || ''}">${c.label}</span>`).join('')
+                    : `<span class="text-muted text-xs">No games synced for this round yet.</span>`;
 
                 // Left-align the chip strip with whichever wave box is active. Uses
                 // getBoundingClientRect (not offsetLeft, which measures against the
@@ -441,101 +481,94 @@
             });
         }
 
-        async function loadPickComparison() {
-            const [{ data: games }, { data: members }, { data: allPicks }] = await Promise.all([
-                supabase.from('bpe_games').select('*').eq('season', currentSeason).order('kickoff_at', { ascending: true, nullsFirst: false }),
-                supabase.from('league_members').select('user_id, team_name').eq('league_id', leagueId),
-                supabase.from('bpe_picks').select('user_id, game_id, picked_team, confidence_points').eq('league_id', leagueId).eq('season', currentSeason)
-            ]);
-
+        // Rows = people, columns = the selected tier's games — lets a member
+        // read their whole round left-to-right instead of scanning down a
+        // single narrow column. The Total column (pinned right) is a running
+        // sum of points actually earned so far within the selected tier only
+        // (final games only; live/pending picks contribute 0 until they
+        // resolve), not a full-season projection.
+        async function loadPickComparisonGrid() {
+            const games = fullSlate.filter(g => g.tier === currentComparisonTier);
             const headerRow = document.getElementById('pg-header-row');
-            const orderedMembers = (members || []).sort((a, b) => (a.user_id === currentUserId ? -1 : b.user_id === currentUserId ? 1 : 0));
-            orderedMembers.forEach(m => {
-                const th = document.createElement('th');
-                if (m.user_id === currentUserId) {
-                    th.className = 'pg-col--me';
-                    th.textContent = 'You';
-                } else {
-                    th.innerHTML = `<div class="pg-th-stack"><span class="pg-th-team">${escapeHtml(m.team_name || 'Unnamed')}</span></div>`;
-                }
-                headerRow.appendChild(th);
-            });
-
-            const picksByGameUser = {};
-            (allPicks || []).forEach(p => {
-                picksByGameUser[`${p.game_id}:${p.user_id}`] = p;
-            });
-
             const body = document.getElementById('pg-body');
-            body.innerHTML = '';
-            if (!games || games.length === 0) {
-                body.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No games synced yet.</td></tr>`;
+
+            if (!games.length) {
+                headerRow.innerHTML = '<th class="pg-team-th">Team</th>';
+                body.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No games synced for this round yet.</td></tr>`;
                 return;
             }
 
+            function muThHtml(g) {
+                const awayTag = g.spread != null && g.favorite_team ? (g.favorite_team === g.away_team ? `−${g.spread}` : `+${g.spread}`) : null;
+                const homeTag = g.spread != null && g.favorite_team ? (g.favorite_team === g.home_team ? `−${g.spread}` : `+${g.spread}`) : null;
+                function muLine(team, isWinner, spreadTag, logoUrl) {
+                    const logoHtml = logoUrl ? `<img class="team-logo" src="${escapeHtml(logoUrl)}" alt="" />` : '';
+                    return `<div class="mu-th-line${isWinner ? ' winner' : ''}">${logoHtml}<span>${escapeHtml(team)}</span>${spreadTag != null ? `<span class="t-spread">${spreadTag}</span>` : ''}</div>`;
+                }
+                const statusSuffix = g.status === 'final' ? ' · Final' : g.status === 'live' ? ' · ' + escapeHtml(g.status_detail || 'Live') : '';
+                return `<div class="mu-th-head">${escapeHtml(g.bowl_name)}${statusSuffix}</div>
+                  ${muLine(g.away_team, g.winner_team === g.away_team, awayTag, g.away_team_logo)}
+                  ${muLine(g.home_team, g.winner_team === g.home_team, homeTag, g.home_team_logo)}`;
+            }
+
+            headerRow.innerHTML = '<th class="pg-team-th">Team</th>'
+                + games.map(g => `<th class="pg-mu-th">${muThHtml(g)}</th>`).join('')
+                + '<th class="pg-total-th">Total</th>';
+
+            const [{ data: members }, { data: tierPicks }] = await Promise.all([
+                supabase.from('league_members').select('user_id, team_name').eq('league_id', leagueId),
+                supabase.from('bpe_picks').select('user_id, game_id, picked_team, confidence_points')
+                    .eq('league_id', leagueId).eq('season', currentSeason).in('game_id', games.map(g => g.id))
+            ]);
+            const orderedMembers = (members || []).sort((a, b) => (a.user_id === currentUserId ? -1 : b.user_id === currentUserId ? 1 : 0));
+            const picksByGameUser = {};
+            (tierPicks || []).forEach(p => { picksByGameUser[`${p.game_id}:${p.user_id}`] = p; });
+
             // Player result cell: logo + full team name (wraps rather than truncating,
-            // since unlike the abbreviation badge this now needs to read at a glance) +
-            // a result line once the pick's outcome is knowable. Games another member's
+            // since unlike an abbreviation badge this needs to read at a glance) + a
+            // result line once the pick's outcome is knowable. Games another member's
             // pick hasn't unlocked for yet render as 🔒 (see bpe_picks RLS in schema.sql —
             // the row is simply absent from picksByGameUser, not distinguishable client-side
             // from "no pick made", so isLocked(g) is what decides which empty state to show).
-            function pcellHtml(pick, g, isMe) {
+            function pcell(pick, g, isMe) {
                 if (!pick) {
-                    if (!isMe && !isLocked(g)) return `<div class="pcell pcell--hidden">🔒</div>`;
-                    return `<div class="pcell pcell--pending"><span class="pcell-name text-muted">—</span></div>`;
+                    if (!isMe && !isLocked(g)) return { html: `<div class="pcell pcell--hidden">🔒</div>`, pts: 0 };
+                    return { html: `<div class="pcell pcell--pending"><span class="pcell-name text-muted">—</span></div>`, pts: 0 };
                 }
                 const logoUrl = pick.picked_team === g.home_team ? g.home_team_logo : g.away_team_logo;
                 const logoHtml = logoUrl ? `<img class="pcell-logo" src="${escapeHtml(logoUrl)}" alt="" />` : '';
                 const nameHtml = `<span class="pcell-name">${escapeHtml(pick.picked_team)}</span>`;
                 if (g.status === 'live') {
-                    return `<div class="pcell pcell--live">${logoHtml}${nameHtml}<span class="pcell-result">Live</span></div>`;
+                    return { html: `<div class="pcell pcell--live">${logoHtml}${nameHtml}<span class="pcell-result">${escapeHtml(g.status_detail || 'Live')}</span></div>`, pts: 0 };
                 }
                 if (g.status !== 'final') {
-                    return `<div class="pcell pcell--pending">${logoHtml}${nameHtml}</div>`;
+                    return { html: `<div class="pcell pcell--pending">${logoHtml}${nameHtml}</div>`, pts: 0 };
                 }
                 const correct = isCorrect(pick, g);
                 if (correct === null) {
-                    return `<div class="pcell pcell--pending">${logoHtml}${nameHtml}<span class="pcell-result">Push</span></div>`;
+                    return { html: `<div class="pcell pcell--pending">${logoHtml}${nameHtml}<span class="pcell-result">Push</span></div>`, pts: 0 };
                 }
                 const pts = bpeLeague.scoring_mode === 'confidence' ? (pick.confidence_points ?? 0)
                     : { bowl: 1, cfp_r1: 2, cfp_qf: 3, cfp_sf: 4, cfp_championship: 5 }[g.tier];
                 return correct
-                    ? `<div class="pcell pcell--hit">${logoHtml}${nameHtml}<span class="pcell-result">✓ +${pts}</span></div>`
-                    : `<div class="pcell pcell--miss">${logoHtml}${nameHtml}<span class="pcell-result">✗ +0</span></div>`;
+                    ? { html: `<div class="pcell pcell--hit">${logoHtml}${nameHtml}<span class="pcell-result">✓ +${pts}</span></div>`, pts }
+                    : { html: `<div class="pcell pcell--miss">${logoHtml}${nameHtml}<span class="pcell-result">✗ +0</span></div>`, pts: 0 };
             }
 
-            let lastTier = null;
-            games.forEach(g => {
-                if (g.tier !== lastTier) {
-                    lastTier = g.tier;
-                    const tr = document.createElement('tr');
-                    tr.className = 'pg-round-row';
-                    tr.innerHTML = `<td colspan="${1 + orderedMembers.length}">${TIER_LABEL[g.tier]}</td>`;
-                    body.appendChild(tr);
-                }
-
+            body.innerHTML = '';
+            orderedMembers.forEach(m => {
+                const isMe = m.user_id === currentUserId;
                 const tr = document.createElement('tr');
-                const awayTag = g.spread != null && g.favorite_team ? (g.favorite_team === g.away_team ? `−${g.spread}` : `+${g.spread}`) : null;
-                const homeTag = g.spread != null && g.favorite_team ? (g.favorite_team === g.home_team ? `−${g.spread}` : `+${g.spread}`) : null;
-                // Matchup column is shared/informational now (picks live in each player's
-                // own cell), so the only highlight here is the actual winner, in green.
-                function muRow(team, isWinner, score, spreadTag, logoUrl) {
-                    const logoHtml = logoUrl ? `<img class="team-logo" src="${escapeHtml(logoUrl)}" alt="" />` : '';
-                    const rightHtml = `<span class="t-right">${score != null ? `<span class="t-score">${score}</span>` : ''}${spreadTag != null ? `<span class="t-spread">${spreadTag}</span>` : ''}</span>`;
-                    return `<div class="mu-team-row${isWinner ? ' winner' : ''}">${logoHtml}<span class="t-name">${escapeHtml(team)}</span>${rightHtml}</div>`;
-                }
-                const statusSuffix = g.status === 'final' ? ' · Final' : g.status === 'live' ? ' · Live' : '';
-                let matchupCell = `<div class="mu-head">${escapeHtml(g.bowl_name)}${statusSuffix}</div>
-                  ${muRow(g.away_team, g.winner_team === g.away_team, g.away_score, awayTag, g.away_team_logo)}
-                  ${muRow(g.home_team, g.winner_team === g.home_team, g.home_score, homeTag, g.home_team_logo)}`;
-                let row = `<td class="pg-matchup-cell">${matchupCell}</td>`;
+                tr.className = isMe ? 'pg-row--me' : '';
 
-                orderedMembers.forEach(m => {
-                    const key = `${g.id}:${m.user_id}`;
-                    const pick = picksByGameUser[key];
-                    const isMe = m.user_id === currentUserId;
-                    row += `<td${isMe ? ' class="pg-col--me"' : ''}>${pcellHtml(pick, g, isMe)}</td>`;
+                let tierTotal = 0;
+                let row = `<td class="pg-team-cell"><span class="pg-team-name">${escapeHtml(m.team_name || 'Unnamed Team')}</span>${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</td>`;
+                games.forEach(g => {
+                    const cell = pcell(picksByGameUser[`${g.id}:${m.user_id}`], g, isMe);
+                    tierTotal += cell.pts;
+                    row += `<td>${cell.html}</td>`;
                 });
+                row += `<td class="pg-total-cell">${tierTotal}</td>`;
 
                 tr.innerHTML = row;
                 body.appendChild(tr);
