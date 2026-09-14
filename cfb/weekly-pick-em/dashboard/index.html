@@ -655,7 +655,7 @@
                 }
                 const correct = isCorrect(pick, g);
                 if (correct === null) {
-                    return { html: `<div class="pcell pcell--pending">${logoHtml}${nameHtml}<span class="pcell-result">Push</span></div>`, pts: 0 };
+                    return { html: `<div class="pcell pcell--pending">${logoHtml}${nameHtml}<span class="pcell-result">Push +0</span></div>`, pts: 0 };
                 }
                 const pts = wpeLeague.scoring_mode === 'confidence' ? (pick.confidence_points ?? 0) : 1;
                 return correct

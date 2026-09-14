@@ -463,7 +463,7 @@
                 if (!pick) {
                     resultHtml = `<span class="text-muted">No pick</span>`;
                 } else if (correct === null) {
-                    resultHtml = `<span class="pill pill--muted">Push</span>`;
+                    resultHtml = `<span class="pill pill--muted">Push +0</span>`;
                 } else if (correct) {
                     const pts = wpeLeague.scoring_mode === 'confidence' ? (pick.confidence_points ?? 0) : 1;
                     resultHtml = `<span class="pill pill--green">✓ Correct +${pts}</span>`;
