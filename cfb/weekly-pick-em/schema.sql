@@ -1107,3 +1107,176 @@ SELECT cron.schedule(
   WHERE current_date BETWEEN DATE '2026-08-25' AND DATE '2026-12-13';
   $$
 );
+
+
+-- ------------------------------------------------------------
+-- 9. JOIN CUTOFF — no new members once the league's own first
+-- game has kicked off. Without this, someone could join partway
+-- through a week already in progress and end up compared against
+-- weeks they were never actually eligible to pick, which is the root
+-- reason Season Results / the standings breakdown don't otherwise try
+-- to track "when did this member join."
+-- ------------------------------------------------------------
+
+-- wpe_get_slate_unchecked: same scope-filter WHERE clause as
+-- wpe_get_slate above, MINUS its is_league_member() guard. Exists only
+-- for the two contexts below that need a league's slate with no real
+-- logged-in session to check membership against (auth.uid() is NULL
+-- for both): the join-cutoff trigger just below (fires BEFORE the
+-- joining user's own league_members row exists, so they aren't a
+-- member yet — wpe_get_slate would reject them) and the
+-- wpe-send-pick-reminders cron (a service-role job, not a user
+-- session). Deliberately NOT granted to `authenticated` — regular
+-- client code keeps going through wpe_get_slate's guarded version.
+-- Keep this WHERE clause in sync with wpe_get_slate's if scope-filter
+-- logic ever changes.
+CREATE OR REPLACE FUNCTION wpe_get_slate_unchecked(p_league_id uuid, p_season int, p_week int DEFAULT NULL)
+RETURNS SETOF wpe_games
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_league wpe_leagues%ROWTYPE;
+BEGIN
+  SELECT * INTO v_league FROM wpe_leagues WHERE league_id = p_league_id AND season = p_season;
+  IF v_league IS NULL THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+  SELECT g.*
+  FROM wpe_games g
+  WHERE g.season = p_season
+    AND (p_week IS NULL OR g.week = p_week)
+    AND (g.week != 0 OR v_league.include_week_zero)
+    AND (
+      (v_league.scope_mode = 'power4' AND (g.home_conference = ANY(wpe_power4_conferences()) OR g.away_conference = ANY(wpe_power4_conferences())))
+      OR (v_league.scope_mode = 'group_of_5' AND (g.home_conference = ANY(wpe_group_of_5_conferences()) OR g.away_conference = ANY(wpe_group_of_5_conferences())))
+      OR (v_league.scope_mode = 'all_fbs')
+      OR (v_league.scope_mode = 'sports_lobby_choice' AND g.sports_lobby_choice)
+      OR (v_league.scope_mode = 'custom' AND (
+            g.home_conference = ANY(v_league.conferences) OR g.away_conference = ANY(v_league.conferences)
+            OR (v_league.include_top25 AND ((g.home_rank BETWEEN 1 AND 25) OR (g.away_rank BETWEEN 1 AND 25)))
+         ))
+    )
+  ORDER BY g.week, g.kickoff_at NULLS LAST, g.away_team, g.home_team;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION wpe_get_slate_unchecked(uuid, int, int) TO service_role;
+
+-- Fires on every league_members insert platform-wide (it's the shared
+-- table every game type joins through — same reach as
+-- enforce_league_capacity in soccer/world-cup-bracket-challenge/schema.sql,
+-- which this mirrors), but early-returns for anything that isn't an
+-- active new CFB Weekly Pick 'Em join. Never re-blocks an existing
+-- member — join_league_by_invite_code() does an idempotent
+-- ON CONFLICT DO NOTHING insert, and a BEFORE INSERT trigger still
+-- fires even for a row that conflict resolution will end up skipping,
+-- so re-clicking your own invite link after kickoff must not error.
+CREATE OR REPLACE FUNCTION wpe_enforce_join_cutoff() RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_game_type text;
+  v_season int;
+  v_first_kickoff timestamptz;
+BEGIN
+  IF EXISTS (SELECT 1 FROM league_members WHERE league_id = NEW.league_id AND user_id = NEW.user_id) THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT game_type, current_season INTO v_game_type, v_season FROM leagues WHERE id = NEW.league_id;
+  IF v_game_type IS DISTINCT FROM 'cfb-weekly-pick-em' THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT MIN(kickoff_at) INTO v_first_kickoff FROM wpe_get_slate_unchecked(NEW.league_id, v_season);
+  IF v_first_kickoff IS NOT NULL AND now() >= v_first_kickoff - interval '5 minutes' THEN
+    RAISE EXCEPTION 'This league''s first game has already kicked off — new members can no longer join.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS wpe_join_cutoff ON league_members;
+CREATE TRIGGER wpe_join_cutoff
+  BEFORE INSERT ON league_members
+  FOR EACH ROW
+  EXECUTE FUNCTION wpe_enforce_join_cutoff();
+
+
+-- ------------------------------------------------------------
+-- 10. PICK REMINDERS — optional, per (league, member). No row (or
+-- hours_before IS NULL) means "no reminder," the default — asked but
+-- never required at the team-name step (see settings/index.html).
+-- Editable any time afterward from the same Settings page.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS wpe_reminder_prefs (
+  league_id      uuid NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  user_id        uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  hours_before   int, -- NULL = no reminder; otherwise one of 48 / 24 / 2
+  updated_at     timestamptz DEFAULT now(),
+  PRIMARY KEY (league_id, user_id),
+  CHECK (hours_before IS NULL OR hours_before IN (48, 24, 2))
+);
+
+ALTER TABLE wpe_reminder_prefs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Members manage their own reminder pref" ON wpe_reminder_prefs;
+CREATE POLICY "Members manage their own reminder pref" ON wpe_reminder_prefs FOR ALL
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid() AND is_league_member(league_id));
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON wpe_reminder_prefs TO authenticated;
+GRANT SELECT ON wpe_reminder_prefs TO service_role;
+
+-- wpe_reminder_log: one row per reminder actually sent, so
+-- wpe-send-pick-reminders (which polls every 15 min, not exactly at
+-- the trigger moment) sends each (league, member, week, interval)
+-- combination at most once. The unique constraint doubles as an
+-- atomic claim — the cron inserts-or-ignores first and only sends if
+-- its own insert wasn't the ignored one, so two overlapping cron runs
+-- can't double-send. Service-role only; members have no reason to
+-- read this directly.
+CREATE TABLE IF NOT EXISTS wpe_reminder_log (
+  league_id      uuid NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
+  user_id        uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  season         int  NOT NULL,
+  week           int  NOT NULL,
+  hours_before   int  NOT NULL,
+  sent_at        timestamptz DEFAULT now(),
+  PRIMARY KEY (league_id, user_id, season, week, hours_before)
+);
+
+ALTER TABLE wpe_reminder_log ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT ON wpe_reminder_log TO service_role;
+
+
+-- ------------------------------------------------------------
+-- 11. PICK REMINDER SCHEDULING (pg_cron + pg_net)
+-- Same pattern/reasoning as SECTION 8 — launches on pg_cron+pg_net
+-- directly rather than GitHub Actions. Every 15 min is more often than
+-- any reminder needs to fire, but wpe_reminder_log's unique constraint
+-- makes over-polling harmless (each combination sends once, ever).
+--
+-- NOTE: do not run this until wpe-send-pick-reminders has been
+-- deployed and smoke-tested.
+-- ------------------------------------------------------------
+SELECT cron.schedule(
+  'wpe-send-pick-reminders-cron',
+  '*/15 * * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://rjtlolzdwmrhctdatekj.supabase.co/functions/v1/wpe-send-pick-reminders',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'fcp_service_role_key')
+    ),
+    body := '{}'::jsonb
+  )
+  WHERE current_date BETWEEN DATE '2026-08-25' AND DATE '2026-12-13';
+  $$
+);

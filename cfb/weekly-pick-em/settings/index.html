@@ -49,6 +49,30 @@
             </form>
         </div>
 
+        <div class="card" style="width:100%; max-width:480px; margin-bottom:var(--space-4);">
+            <h3 class="mb-3">Pick Reminders</h3>
+            <p class="field-hint mb-3">Optional — one email per week if you still have games unpicked as the week's first kickoff approaches. Off by default; change any time.</p>
+            <div class="radio-group" id="reminder-radio-group">
+                <label class="radio-option">
+                    <input type="radio" name="reminder-pref" value="" onchange="saveReminderPref('')" />
+                    <span class="radio-label"><strong>No reminder</strong></span>
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="reminder-pref" value="48" onchange="saveReminderPref('48')" />
+                    <span class="radio-label"><strong>2 days before kickoff</strong></span>
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="reminder-pref" value="24" onchange="saveReminderPref('24')" />
+                    <span class="radio-label"><strong>1 day before kickoff</strong></span>
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="reminder-pref" value="2" onchange="saveReminderPref('2')" />
+                    <span class="radio-label"><strong>2 hours before kickoff</strong></span>
+                </label>
+            </div>
+            <p id="reminder-status" class="text-xs" style="margin-top:var(--space-3);"></p>
+        </div>
+
         <div class="card hidden" id="commissioner-card" style="width:100%; max-width:480px; margin-bottom:var(--space-4);">
             <h3 class="mb-3">League Rules</h3>
             <p class="field-hint mb-3" id="rules-lock-note"></p>
@@ -229,17 +253,40 @@
             document.getElementById('league-name').textContent = leagueRow?.name ?? 'League';
             currentSeason = leagueRow?.current_season;
 
-            const { data: memberRow } = await supabase
-                .from('league_members')
-                .select('team_name')
-                .eq('league_id', leagueId)
-                .eq('user_id', currentUserId)
-                .single();
+            const [{ data: memberRow }, { data: reminderRow }] = await Promise.all([
+                supabase.from('league_members').select('team_name').eq('league_id', leagueId).eq('user_id', currentUserId).single(),
+                supabase.from('wpe_reminder_prefs').select('hours_before').eq('league_id', leagueId).eq('user_id', currentUserId).maybeSingle()
+            ]);
             document.getElementById('team-name').value = memberRow?.team_name || '';
+
+            const reminderValue = reminderRow?.hours_before != null ? String(reminderRow.hours_before) : '';
+            const reminderInput = document.querySelector(`input[name="reminder-pref"][value="${reminderValue}"]`);
+            if (reminderInput) reminderInput.checked = true;
 
             if (leagueRow?.commissioner_id === currentUserId) {
                 await initCommissionerCard();
             }
+        }
+
+        async function saveReminderPref(value) {
+            const statusEl = document.getElementById('reminder-status');
+            statusEl.textContent = 'Saving…';
+            statusEl.className = 'text-xs';
+
+            const { error } = await supabase.from('wpe_reminder_prefs').upsert({
+                league_id: leagueId,
+                user_id: currentUserId,
+                hours_before: value === '' ? null : parseInt(value, 10),
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'league_id,user_id' });
+
+            if (error) {
+                statusEl.textContent = error.message;
+                statusEl.classList.add('text-danger');
+                return;
+            }
+            statusEl.textContent = 'Saved.';
+            statusEl.classList.add('text-accent');
         }
 
         async function initCommissionerCard() {
