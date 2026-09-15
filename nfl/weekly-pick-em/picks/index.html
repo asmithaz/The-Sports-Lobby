@@ -174,17 +174,16 @@
             return { saved, total: list.length };
         }
 
-        // Whether the week-nav dot should show for a week: ONLY true if
-        // there's still something actionable — an open (not yet locked)
-        // game with no complete pick. A past/locked week never flags,
-        // even with a missed pick, since there's nothing left to do there.
-        function weekNeedsAttention(week) {
-            const showConf = nwpeLeague.scoring_mode === 'confidence' && weekGames(week)[0]?.season_type !== 3;
-            return weekGames(week).some(g => {
-                if (isLocked(g)) return false;
-                const p = pending[g.id];
-                return !p?.picked_team || (showConf && p.confidence_points == null);
-            });
+        // Nav dot color for the CURRENT week only ('green'|'amber'|'red',
+        // or null for every other week / a week with no games at all) —
+        // green once every pick is in, red until any pick is made, amber
+        // in between. Based on the same counts as the "X/Y saved" pill.
+        function weekAttentionColor(week) {
+            const { saved, total } = weekPickCounts(week);
+            if (!total) return null;
+            if (saved === total) return 'green';
+            if (saved === 0) return 'red';
+            return 'amber';
         }
 
         // Mirrors nwpe_playoff_round_points() in schema.sql exactly.
@@ -307,10 +306,10 @@
         // columns, no min-width floor, so it never needs to wrap or
         // scroll). Current NFL week gets a subtle underline (not a filled
         // background — that's reserved for "this is the week you're
-        // viewing"); a small dot marks a week with an open, unpicked game
-        // (see weekNeedsAttention — a past/locked week never dots even
-        // with a missed pick). Click a cell to switch weeks, instead of
-        // scrolling through 18 stacked accordion sections.
+        // viewing") plus a colored dot for its pick progress (see
+        // weekAttentionColor); every other week is plain. Click a cell to
+        // switch weeks, instead of scrolling through 18 stacked accordion
+        // sections.
         function renderWeekNav() {
             const nav = document.getElementById('week-nav');
             nav.style.gridTemplateColumns = `repeat(${weeks.length}, minmax(0, 1fr))`;
@@ -319,7 +318,8 @@
                 const isSelected = w === selectedWeek;
                 const cls = ['wn-cell', isSelected ? 'wn-cell--selected' : '', isCurrent ? 'wn-cell--current' : '']
                     .filter(Boolean).join(' ');
-                const dot = weekNeedsAttention(w) ? '<span class="wn-dot"></span>' : '';
+                const color = isCurrent ? weekAttentionColor(w) : null;
+                const dot = color ? `<span class="wn-dot wn-dot--${color}"></span>` : '';
                 return `<button type="button" class="${cls}" data-week="${w}">${weekColLabel(w)}${dot}</button>`;
             }).join('');
             nav.onclick = (e) => {
