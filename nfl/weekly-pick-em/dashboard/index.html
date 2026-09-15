@@ -182,6 +182,14 @@
             const abbrevs = { 1: 'WC', 2: 'Div', 3: 'CC', 4: 'PB', 5: 'SB' };
             return abbrevs[week - 18] || `PO${week - 18}`;
         }
+        // Weeks with at least one final game — the whole season is synced
+        // up front now (nwpe-sync-games), so "has a game been synced" is no
+        // longer the same thing as "has this week actually started."
+        // Season Results and the standings breakdown both use this to stay
+        // a dash/empty instead of a fake 0 for a week nothing's played yet.
+        function startedWeeks() {
+            return seasonWeeks.filter(w => fullSlate.some(g => g.week === w && g.status === 'final'));
+        }
         // Mirrors nwpe_playoff_round_points() in schema.sql exactly.
         function playoffRoundPoints(week) {
             const round = week - 18;
@@ -488,14 +496,18 @@
             const pickByGameId = {};
             (picks || []).forEach(p => { pickByGameId[p.game_id] = p; });
 
-            // Built from the FULL slate of every opened week (fullSlate,
-            // filtered to comparisonWeeks), not just the games this user
-            // has a visible pick for. A chip never shows which team was
-            // picked, only the matchup and an outcome color, so a week
-            // someone skipped still shows up (red) instead of vanishing.
+            // Built from the FULL slate of every STARTED week (fullSlate,
+            // filtered to startedWeeks — not comparisonWeeks, which now
+            // includes the whole synced-ahead season), not just the games
+            // this user has a visible pick for. A chip never shows which
+            // team was picked, only the matchup and an outcome color, so a
+            // week someone skipped still shows up (red) instead of
+            // vanishing — but a week that hasn't kicked off at all doesn't
+            // show up as a fake "0/16" box.
+            const started = new Set(startedWeeks());
             const byWeek = {};
             fullSlate.forEach(g => {
-                if (!comparisonWeeks.includes(g.week)) return;
+                if (!started.has(g.week)) return;
                 const pick = pickByGameId[g.id];
                 const correct = pick ? isCorrect(pick, g) : (g.status === 'final' ? false : null);
                 const state = g.status === 'live' ? 'live' : correct === true ? 'hit' : correct === false ? 'miss' : 'pending';
@@ -538,7 +550,7 @@
                         .concat([`<div class="tb-cell tb-value tb-total-col">${totalWon}</div>`]);
                     tbSummaryEl.innerHTML = `
                         <div class="tiebreak-bar-heading">Tiebreaks Won</div>
-                        <div class="tiebreak-bar" style="grid-template-columns: repeat(${colCount}, minmax(64px, 1fr));">
+                        <div class="tiebreak-bar" style="grid-template-columns: repeat(${colCount}, minmax(0, 1fr));">
                             ${labels.join('')}${values.join('')}
                         </div>`;
                 }
@@ -760,15 +772,7 @@
                 return nwpeLeague.scoring_mode === 'confidence' ? (wk?.points ?? 0) : (wk?.correct ?? 0);
             }
 
-            // "Open" here means "at least one game in the week is final" —
-            // deliberately NOT comparisonWeeks (that's every synced week,
-            // including ones that haven't kicked off at all, now that the
-            // whole season is synced up front). A week with games still
-            // scheduled/live but none final yet stays a dash; the moment
-            // one game finishes it flips to a real (possibly 0) value.
-            const openWeeks = new Set(
-                seasonWeeks.filter(w => fullSlate.some(g => g.week === w && g.status === 'final'))
-            );
+            const openWeeks = new Set(startedWeeks());
 
             const weekMax = {};
             seasonWeeks.forEach(w => {

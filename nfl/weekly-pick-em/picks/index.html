@@ -45,6 +45,8 @@
 
         <p class="matchup-legend">The home team is always listed second. A highlighted row is your pick — green for correct, red for incorrect, amber while the game is live.</p>
 
+        <div class="pill-toggle week-nav" id="week-nav"></div>
+
         <div id="rounds-container">
             <p class="text-muted" style="padding:var(--space-4);">Loading…</p>
         </div>
@@ -81,6 +83,8 @@
         }
         let allGames = [];
         let gamesById = {};
+        let weeks = []; // every week with synced games, ascending
+        let selectedWeek = null; // which single week's table is currently shown
         // locksByGameId[gameId] = { locked_spread, locked_favorite_team, is_final, snapshotted_at }
         // — this league's own spread_lock_mode snapshot, only fetched in
         // spread pick_mode (see loadAndRender).
@@ -146,6 +150,27 @@
             if (week <= 18) return `Week ${week}`;
             const names = { 1: 'Wild Card', 2: 'Divisional', 3: 'Conference Championship', 4: 'Pro Bowl', 5: 'Super Bowl' };
             return names[week - 18] || `Playoff Round ${week - 18}`;
+        }
+
+        // Compact label for the week-nav pills — mirrors the dashboard's
+        // identical weekColLabel().
+        function weekColLabel(week) {
+            if (week <= 18) return `Wk ${week}`;
+            const abbrevs = { 1: 'WC', 2: 'Div', 3: 'CC', 4: 'PB', 5: 'SB' };
+            return abbrevs[week - 18] || `PO${week - 18}`;
+        }
+
+        // { saved, total } picks for a week — same denominator/criteria as
+        // the in-panel "X/Y saved" pill (refreshSaveState), so the nav dot
+        // and the panel never disagree.
+        function weekPickCounts(week) {
+            const list = weekGames(week);
+            const showConf = nwpeLeague.scoring_mode === 'confidence' && list[0]?.season_type !== 3;
+            const saved = list.filter(g => {
+                const p = pending[g.id];
+                return !!p?.picked_team && (!showConf || p.confidence_points != null);
+            }).length;
+            return { saved, total: list.length };
         }
 
         // Mirrors nwpe_playoff_round_points() in schema.sql exactly.
@@ -222,8 +247,9 @@
             for (const key in pending) delete pending[key];
             (myPicks || []).forEach(p => { pending[p.game_id] = { picked_team: p.picked_team, confidence_points: p.confidence_points }; });
 
-            const weeks = [...new Set(allGames.map(g => g.week))].sort((a, b) => a - b);
+            weeks = [...new Set(allGames.map(g => g.week))].sort((a, b) => a - b);
             const container = document.getElementById('rounds-container');
+            document.getElementById('week-nav').innerHTML = '';
             container.innerHTML = '';
 
             if (!weeks.length) {
@@ -251,15 +277,49 @@
                 (myGuesses || []).forEach(g => { tbGuessByWeek[g.week] = g; });
             }
 
-            const defaultOpenWeek = weeks.includes(currentWeekNum) ? currentWeekNum : weeks[weeks.length - 1];
-            weeks.forEach(w => container.appendChild(renderWeek(w, w !== defaultOpenWeek)));
+            if (selectedWeek == null || !weeks.includes(selectedWeek)) {
+                selectedWeek = weeks.includes(currentWeekNum) ? currentWeekNum : weeks[weeks.length - 1];
+            }
+            renderWeekNav();
+            renderSelectedWeek();
         }
 
         function weekGames(week) {
             return allGames.filter(g => g.week === week);
         }
 
-        function renderWeek(week, startCollapsed) {
+        // Row of week pills above the single open week's table — current
+        // week highlighted green, a small dot marks any week with at least
+        // one game still missing a pick (see weekPickCounts). Clicking a
+        // pill swaps which week's table renderSelectedWeek() shows, instead
+        // of scrolling through 18 stacked accordion sections.
+        function renderWeekNav() {
+            const nav = document.getElementById('week-nav');
+            nav.innerHTML = weeks.map(w => {
+                const { saved, total } = weekPickCounts(w);
+                const incomplete = total > 0 && saved < total;
+                const isCurrent = w === currentWeekNum;
+                const isSelected = w === selectedWeek;
+                const cls = ['pill', isCurrent ? 'pill--green' : 'pill--muted', isSelected ? 'pill--nav-selected' : '', incomplete ? 'pill--nav-incomplete' : '']
+                    .filter(Boolean).join(' ');
+                return `<button type="button" class="${cls}" data-week="${w}">${weekColLabel(w)}</button>`;
+            }).join('');
+            nav.onclick = (e) => {
+                const btn = e.target.closest('button[data-week]');
+                if (!btn) return;
+                selectedWeek = parseInt(btn.dataset.week, 10);
+                renderWeekNav();
+                renderSelectedWeek();
+            };
+        }
+
+        function renderSelectedWeek() {
+            const container = document.getElementById('rounds-container');
+            container.innerHTML = '';
+            container.appendChild(renderWeek(selectedWeek));
+        }
+
+        function renderWeek(week) {
             const games = weekGames(week);
             const isPlayoffWeek = games[0]?.season_type === 3;
 
@@ -269,7 +329,6 @@
             const block = document.createElement('div');
             block.className = 'round-block' + (showConf ? '' : ' round-block--compact') + (isPlayoffWeek ? ' round-block--playoff' : '');
             block.dataset.week = week;
-            if (startCollapsed) block.classList.add('collapsed');
 
             const openGames = games.filter(g => !isLocked(g));
             const confMax = games.length;
@@ -284,8 +343,8 @@
             const sortTh = (key, label, extraCls) => `<th class="sortable${extraCls ? ' ' + extraCls : ''}" data-sort-key="${key}" data-label="${label}">${label}</th>`;
 
             block.innerHTML = `
-              <div class="round-head" id="week-${week}-toggle">
-                <h2><span class="round-caret">▾</span>${weekLabel(week)}${week === currentWeekNum ? ' <span class="pill pill--muted">Current</span>' : ''}</h2>
+              <div class="round-head">
+                <h2>${weekLabel(week)}${week === currentWeekNum ? ' <span class="pill pill--muted">Current</span>' : ''}</h2>
                 <span class="round-count">${games.length} game${games.length === 1 ? '' : 's'}</span>
               </div>
               <div class="round-panel" id="week-${week}-panel">
@@ -336,9 +395,6 @@
 
             const tbody = block.querySelector(`#week-${week}-body`);
             games.forEach(g => tbody.appendChild(renderGameRow(g, confMax, isPlayoffWeek, roundPts)));
-
-            const toggle = block.querySelector(`#week-${week}-toggle`);
-            if (toggle) toggle.addEventListener('click', () => block.classList.toggle('collapsed'));
 
             wireWeekInteractions(week, block, confMax, showConf);
             wireTiebreakerCard(week, block);
@@ -782,19 +838,19 @@
                 msg.textContent = errorMsg ? `Failed to save: ${errorMsg}` : '';
                 if (bar) bar.style.display = errorMsg ? '' : 'none';
             }
+
+            // Same counts drive the nav pill's dot, kept in sync here so it
+            // never lags behind a pick made in the open panel below it.
+            const { saved: savedCount, total } = weekPickCounts(week);
+            const navBtn = document.querySelector(`#week-nav button[data-week="${week}"]`);
+            if (navBtn) navBtn.classList.toggle('pill--nav-incomplete', total > 0 && savedCount < total);
+
             if (errorMsg || !countPill) return;
+            if (!total) { countPill.textContent = ''; return; }
 
-            const weekGameList = weekGames(week);
-            if (!weekGameList.length) { countPill.textContent = ''; return; }
-
-            const savedCount = weekGameList.filter(g => {
-                const p = pending[g.id];
-                return !!p?.picked_team && (!showConf || p.confidence_points != null);
-            }).length;
-
-            countPill.textContent = `${savedCount}/${weekGameList.length} saved`;
-            countPill.classList.toggle('save-pill--done', savedCount === weekGameList.length);
-            countPill.classList.toggle('save-pill--partial', savedCount > 0 && savedCount < weekGameList.length);
+            countPill.textContent = `${savedCount}/${total} saved`;
+            countPill.classList.toggle('save-pill--done', savedCount === total);
+            countPill.classList.toggle('save-pill--partial', savedCount > 0 && savedCount < total);
             countPill.classList.toggle('save-pill--empty', savedCount === 0);
         }
 

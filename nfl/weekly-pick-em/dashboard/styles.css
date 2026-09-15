@@ -63,7 +63,7 @@ tr.expanded + tr .breakdown { display: block; }
 .tiebreak-bar-heading { font-size: var(--text-sm); font-weight: var(--weight-bold); color: var(--c-text-primary); margin-bottom: var(--space-2); }
 .tiebreak-bar { display: grid; background: var(--c-surface-2); border: 0.5px solid var(--c-border); border-radius: var(--radius-sm);
                  overflow-x: auto; margin-bottom: var(--space-4); }
-.tb-cell { padding: var(--space-2) var(--space-3); text-align: center; border-right: 0.5px solid var(--c-border); }
+.tb-cell { padding: var(--space-2) 4px; text-align: center; border-right: 0.5px solid var(--c-border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-label { font-size: var(--text-xs); color: var(--c-text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: var(--weight-medium); border-bottom: 0.5px solid var(--c-border); }
 .tb-value { font-family: var(--font-mono); font-size: var(--text-md); color: var(--c-text-primary); font-weight: var(--weight-bold); }
 .tb-total-col { background: var(--c-accent-dim); color: var(--c-accent); }

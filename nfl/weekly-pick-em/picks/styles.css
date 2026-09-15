@@ -8,24 +8,25 @@
 
 .matchup-legend { font-size: var(--text-xs); color: var(--c-text-muted); margin: 0 0 var(--space-4); }
 
-/* ---- round blocks (one per week) ---- */
+/* ---- week nav (pill row above the single open week) ---- */
+.week-nav { margin-bottom: var(--space-4); }
+.week-nav .pill--nav-selected { outline: 2px solid var(--c-text-primary); outline-offset: 1px; }
+.week-nav .pill--nav-incomplete::after {
+    content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--c-warning); margin-left: 6px; vertical-align: middle;
+}
+
+/* ---- round block (the one open week) ---- */
 .round-block { margin-bottom: var(--space-5); }
-.round-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
-              cursor: pointer; user-select: none; }
+.round-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .round-head h2 { font-size: var(--text-md); font-weight: var(--weight-bold); display: flex; align-items: center; gap: 6px; }
-.round-caret { color: var(--c-text-muted); font-size: 11px; display: inline-block; transition: transform var(--transition); }
-.round-block.collapsed .round-caret { transform: rotate(-90deg); }
 .round-count { font-size: var(--text-xs); color: var(--c-text-muted); }
 .round-hint { font-size: var(--text-sm); color: var(--c-text-secondary); margin-bottom: var(--space-3); }
 
 .round-panel { border: 0.5px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface);
                padding: var(--space-4); margin-top: var(--space-3); }
-.round-block.collapsed .round-panel { display: none; }
 .round-block--compact .round-head,
 .round-block--compact .round-panel { max-width: 900px; margin-left: auto; margin-right: auto; }
-
-.round-block--tbd .round-head { cursor: default; opacity: 0.6; }
-.round-block--tbd .round-head h2 { color: var(--c-text-secondary); }
 
 .round-block--playoff .round-head h2 { color: var(--c-accent); }
 
