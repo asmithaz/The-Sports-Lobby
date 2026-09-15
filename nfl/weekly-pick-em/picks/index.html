@@ -45,7 +45,7 @@
 
         <p class="matchup-legend">The home team is always listed second. A highlighted row is your pick — green for correct, red for incorrect, amber while the game is live.</p>
 
-        <div class="pill-toggle week-nav" id="week-nav"></div>
+        <div class="week-nav-grid" id="week-nav"></div>
 
         <div id="rounds-container">
             <p class="text-muted" style="padding:var(--space-4);">Loading…</p>
@@ -160,9 +160,10 @@
             return abbrevs[week - 18] || `PO${week - 18}`;
         }
 
-        // { saved, total } picks for a week — same denominator/criteria as
-        // the in-panel "X/Y saved" pill (refreshSaveState), so the nav dot
-        // and the panel never disagree.
+        // { saved, total } picks for a week — feeds the in-panel "X/Y
+        // saved" pill. Counts EVERY game in the week (including already-
+        // locked ones), so it's an accurate record even for a past week
+        // with a missed pick.
         function weekPickCounts(week) {
             const list = weekGames(week);
             const showConf = nwpeLeague.scoring_mode === 'confidence' && list[0]?.season_type !== 3;
@@ -171,6 +172,19 @@
                 return !!p?.picked_team && (!showConf || p.confidence_points != null);
             }).length;
             return { saved, total: list.length };
+        }
+
+        // Whether the week-nav dot should show for a week: ONLY true if
+        // there's still something actionable — an open (not yet locked)
+        // game with no complete pick. A past/locked week never flags,
+        // even with a missed pick, since there's nothing left to do there.
+        function weekNeedsAttention(week) {
+            const showConf = nwpeLeague.scoring_mode === 'confidence' && weekGames(week)[0]?.season_type !== 3;
+            return weekGames(week).some(g => {
+                if (isLocked(g)) return false;
+                const p = pending[g.id];
+                return !p?.picked_team || (showConf && p.confidence_points == null);
+            });
         }
 
         // Mirrors nwpe_playoff_round_points() in schema.sql exactly.
@@ -288,21 +302,25 @@
             return allGames.filter(g => g.week === week);
         }
 
-        // Row of week pills above the single open week's table — current
-        // week highlighted green, a small dot marks any week with at least
-        // one game still missing a pick (see weekPickCounts). Clicking a
-        // pill swaps which week's table renderSelectedWeek() shows, instead
-        // of scrolling through 18 stacked accordion sections.
+        // Single-row selectable grid of week cells above the open week's
+        // table — same fluid layout as the Tiebreaks Won bar (equal-width
+        // columns, no min-width floor, so it never needs to wrap or
+        // scroll). Current NFL week gets a subtle underline (not a filled
+        // background — that's reserved for "this is the week you're
+        // viewing"); a small dot marks a week with an open, unpicked game
+        // (see weekNeedsAttention — a past/locked week never dots even
+        // with a missed pick). Click a cell to switch weeks, instead of
+        // scrolling through 18 stacked accordion sections.
         function renderWeekNav() {
             const nav = document.getElementById('week-nav');
+            nav.style.gridTemplateColumns = `repeat(${weeks.length}, minmax(0, 1fr))`;
             nav.innerHTML = weeks.map(w => {
-                const { saved, total } = weekPickCounts(w);
-                const incomplete = total > 0 && saved < total;
                 const isCurrent = w === currentWeekNum;
                 const isSelected = w === selectedWeek;
-                const cls = ['pill', isCurrent ? 'pill--green' : 'pill--muted', isSelected ? 'pill--nav-selected' : '', incomplete ? 'pill--nav-incomplete' : '']
+                const cls = ['wn-cell', isSelected ? 'wn-cell--selected' : '', isCurrent ? 'wn-cell--current' : '']
                     .filter(Boolean).join(' ');
-                return `<button type="button" class="${cls}" data-week="${w}">${weekColLabel(w)}</button>`;
+                const dot = weekNeedsAttention(w) ? '<span class="wn-dot"></span>' : '';
+                return `<button type="button" class="${cls}" data-week="${w}">${weekColLabel(w)}${dot}</button>`;
             }).join('');
             nav.onclick = (e) => {
                 const btn = e.target.closest('button[data-week]');
@@ -839,13 +857,12 @@
                 if (bar) bar.style.display = errorMsg ? '' : 'none';
             }
 
-            // Same counts drive the nav pill's dot, kept in sync here so it
-            // never lags behind a pick made in the open panel below it.
-            const { saved: savedCount, total } = weekPickCounts(week);
-            const navBtn = document.querySelector(`#week-nav button[data-week="${week}"]`);
-            if (navBtn) navBtn.classList.toggle('pill--nav-incomplete', total > 0 && savedCount < total);
+            // Re-render the nav so its dot never lags behind a pick made
+            // in the open panel below it.
+            renderWeekNav();
 
             if (errorMsg || !countPill) return;
+            const { saved: savedCount, total } = weekPickCounts(week);
             if (!total) { countPill.textContent = ''; return; }
 
             countPill.textContent = `${savedCount}/${total} saved`;
