@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>League Settings — NFL Weekly Pick 'Em</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
+    <script src="/js/auth.js"></script>
+
+    <style>
+        /* Top-align the checkbox with the first line of its (often
+           multi-line) label text, instead of the browser default of
+           stretching/centering it against the whole paragraph block. */
+        .checkbox-option { display: flex; align-items: flex-start; gap: var(--space-2); cursor: pointer; }
+        .checkbox-option input { accent-color: var(--c-accent); flex-shrink: 0; margin-top: 3px; }
+    </style>
+</head>
+<body>
+
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">The Sports Lobby</a>
+        <div class="nav-links">
+            <a href="/nfl/index.html" class="nav-link">NFL</a>
+        </div>
+    </nav>
+
+    <main class="page-wrapper page-wrapper--center">
+        <h2 class="page-title mb-1" id="league-name">Loading…</h2>
+        <p class="page-subtitle mb-4">League Settings</p>
+
+        <div class="card" style="width:100%; max-width:480px; margin-bottom:var(--space-4);">
+            <h3 class="mb-3">Your Team Name</h3>
+            <p class="field-hint mb-3">Required for this league — it's what shows in standings instead of your account name.</p>
+            <form onsubmit="event.preventDefault(); saveTeamName();">
+                <div class="field">
+                    <label class="label" for="team-name">Team Name</label>
+                    <input class="input" type="text" id="team-name" name="team-name" maxlength="30" placeholder="e.g. Sunday Scaries" required />
+                </div>
+                <p id="team-name-status" class="text-xs mb-3"></p>
+                <button type="submit" class="btn btn--primary btn--block" id="team-name-save-btn">Save</button>
+            </form>
+        </div>
+
+        <div class="card" style="width:100%; max-width:480px; margin-bottom:var(--space-4);">
+            <h3 class="mb-3">Pick Reminders</h3>
+            <p class="field-hint mb-3">Optional — one email per week if you still have games unpicked as the week's first kickoff approaches. Off by default; change any time.</p>
+            <div class="radio-group" id="reminder-radio-group">
+                <label class="radio-option">
+                    <input type="radio" name="reminder-pref" value="" onchange="saveReminderPref('')" />
+                    <span class="radio-label"><strong>No reminder</strong></span>
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="reminder-pref" value="48" onchange="saveReminderPref('48')" />
+                    <span class="radio-label"><strong>2 days before kickoff</strong></span>
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="reminder-pref" value="24" onchange="saveReminderPref('24')" />
+                    <span class="radio-label"><strong>1 day before kickoff</strong></span>
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="reminder-pref" value="2" onchange="saveReminderPref('2')" />
+                    <span class="radio-label"><strong>2 hours before kickoff</strong></span>
+                </label>
+            </div>
+            <p id="reminder-status" class="text-xs" style="margin-top:var(--space-3);"></p>
+        </div>
+
+        <div class="card hidden" id="commissioner-card" style="width:100%; max-width:480px; margin-bottom:var(--space-4);">
+            <h3 class="mb-3">League Rules</h3>
+            <p class="field-hint mb-3" id="rules-lock-note"></p>
+            <form onsubmit="event.preventDefault(); saveLeagueSettings();">
+                <div class="field">
+                    <label class="label">Picking Against</label>
+                    <div class="radio-group">
+                        <label class="radio-option" id="pick-mode-straight-option">
+                            <input type="radio" name="pick-mode" value="straight_up" onchange="onPickModeChange(this.value)" />
+                            <span class="radio-label"><strong>Straight Up</strong></span>
+                        </label>
+                        <label class="radio-option" id="pick-mode-spread-option">
+                            <input type="radio" name="pick-mode" value="spread" onchange="onPickModeChange(this.value)" />
+                            <span class="radio-label"><strong>Against the Spread</strong></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="field hidden" id="spread-lock-field">
+                    <label class="label">Spread Lock Timing</label>
+                    <p class="field-hint mb-2">This one stays editable any time — it only affects how future weeks freeze their line, not weeks already locked.</p>
+                    <div class="radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="spread-lock-mode" value="week_reveal" />
+                            <span class="radio-label">
+                                <strong>Lock at Week Reveal</strong>
+                                <span>Freezes the moment a week's games first become visible/pickable</span>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="spread-lock-mode" value="day_before_kickoff" />
+                            <span class="radio-label">
+                                <strong>Lock 24 Hours Before Kickoff</strong>
+                                <span>The line updates daily and locks for the whole week 24 hours before that week's first kickoff</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label">Scoring</label>
+                    <div class="radio-group">
+                        <label class="radio-option" id="scoring-mode-flat-option">
+                            <input type="radio" name="scoring-mode" value="flat" />
+                            <span class="radio-label"><strong>Flat Points</strong></span>
+                        </label>
+                        <label class="radio-option" id="scoring-mode-confidence-option">
+                            <input type="radio" name="scoring-mode" value="confidence" />
+                            <span class="radio-label"><strong>Confidence Points</strong></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="tier-section">
+                    <label class="checkbox-option">
+                        <input type="checkbox" id="continue-to-playoffs" />
+                        <span>Include playoffs — note for Confidence leagues: playoff weeks score with fixed points per round instead - 1, 2, 3, 5. Editable any time.</span>
+                    </label>
+                </div>
+
+                <div class="tier-section">
+                    <label class="checkbox-option">
+                        <input type="checkbox" id="enable-tiebreakers" />
+                        <span>Enable tiebreakers — two per week (total score of a random game, plus the week's last game), used only to break weekly and season-long ties</span>
+                    </label>
+                </div>
+
+                <p id="rules-status" class="text-xs mb-3" style="margin-top:var(--space-4);"></p>
+                <button type="submit" class="btn btn--primary btn--block" id="rules-save-btn">Save</button>
+            </form>
+        </div>
+
+        <a href="/nfl/weekly-pick-em/dashboard/" class="btn btn--ghost mt-2">← Back to League Dashboard</a>
+    </main>
+
+    <footer class="site-footer">
+        <span>2026 The Sports Lobby. All rights reserved.</span>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/terms.html" class="footer-link">Terms</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
+    </footer>
+
+    <script>
+        let currentUserId = null;
+        let leagueId = null;
+        let currentSeason = null;
+        let redirectAfterSave = false;
+        let rulesLocked = false;
+
+        function resolveLeagueId() {
+            const fromUrl = new URLSearchParams(window.location.search).get('league_id');
+            if (fromUrl) { sessionStorage.setItem('league_id', fromUrl); return fromUrl; }
+            return sessionStorage.getItem('league_id');
+        }
+
+        // Spread lock timing only matters against the spread — hidden
+        // entirely in straight-up mode, same as the setup page.
+        function onPickModeChange(value) {
+            document.getElementById('spread-lock-field').classList.toggle('hidden', value !== 'spread');
+        }
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { window.location.href = '/login/index.html'; return; }
+            currentUserId = session.user.id;
+
+            leagueId = resolveLeagueId();
+            if (!leagueId) { window.location.href = '/nfl/index.html'; return; }
+
+            redirectAfterSave = new URLSearchParams(window.location.search).get('require') === 'team_name';
+
+            const { data: leagueRow } = await supabase
+                .from('leagues')
+                .select('name, commissioner_id, current_season')
+                .eq('id', leagueId)
+                .single();
+
+            document.getElementById('league-name').textContent = leagueRow?.name ?? 'League';
+            currentSeason = leagueRow?.current_season;
+
+            const [{ data: memberRow }, { data: reminderRow }] = await Promise.all([
+                supabase.from('league_members').select('team_name').eq('league_id', leagueId).eq('user_id', currentUserId).single(),
+                supabase.from('nwpe_reminder_prefs').select('hours_before').eq('league_id', leagueId).eq('user_id', currentUserId).maybeSingle()
+            ]);
+            document.getElementById('team-name').value = memberRow?.team_name || '';
+
+            const reminderValue = reminderRow?.hours_before != null ? String(reminderRow.hours_before) : '';
+            const reminderInput = document.querySelector(`input[name="reminder-pref"][value="${reminderValue}"]`);
+            if (reminderInput) reminderInput.checked = true;
+
+            if (leagueRow?.commissioner_id === currentUserId) {
+                await initCommissionerCard();
+            }
+        }
+
+        async function saveReminderPref(value) {
+            const statusEl = document.getElementById('reminder-status');
+            statusEl.textContent = 'Saving…';
+            statusEl.className = 'text-xs';
+
+            const { error } = await supabase.from('nwpe_reminder_prefs').upsert({
+                league_id: leagueId,
+                user_id: currentUserId,
+                hours_before: value === '' ? null : parseInt(value, 10),
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'league_id,user_id' });
+
+            if (error) {
+                statusEl.textContent = error.message;
+                statusEl.classList.add('text-danger');
+                return;
+            }
+            statusEl.textContent = 'Saved.';
+            statusEl.classList.add('text-accent');
+        }
+
+        async function initCommissionerCard() {
+            document.getElementById('commissioner-card').classList.remove('hidden');
+
+            const [{ data: nwpeLeague }, { count: pickCount }] = await Promise.all([
+                supabase.from('nwpe_leagues').select('pick_mode, scoring_mode, spread_lock_mode, continue_to_playoffs, tiebreakers_enabled').eq('league_id', leagueId).eq('season', currentSeason).single(),
+                supabase.from('nwpe_picks').select('id', { count: 'exact', head: true }).eq('league_id', leagueId).eq('season', currentSeason)
+            ]);
+
+            if (nwpeLeague) {
+                document.querySelector(`input[name="pick-mode"][value="${nwpeLeague.pick_mode}"]`).checked = true;
+                document.querySelector(`input[name="scoring-mode"][value="${nwpeLeague.scoring_mode}"]`).checked = true;
+                document.querySelector(`input[name="spread-lock-mode"][value="${nwpeLeague.spread_lock_mode}"]`).checked = true;
+                document.getElementById('continue-to-playoffs').checked = !!nwpeLeague.continue_to_playoffs;
+                document.getElementById('enable-tiebreakers').checked = nwpeLeague.tiebreakers_enabled !== false;
+                onPickModeChange(nwpeLeague.pick_mode);
+            }
+
+            rulesLocked = (pickCount ?? 0) > 0;
+            if (rulesLocked) {
+                document.querySelectorAll('#pick-mode-straight-option input, #pick-mode-spread-option input, #scoring-mode-flat-option input, #scoring-mode-confidence-option input')
+                    .forEach(el => el.disabled = true);
+                document.getElementById('rules-lock-note').textContent =
+                    "Pick/scoring mode lock once anyone has made a pick this season. Spread lock timing, playoff continuation, and tiebreakers stay editable any time — those only change future weeks, not already-scored picks.";
+            } else {
+                document.getElementById('rules-lock-note').textContent =
+                    "Pick/scoring mode lock as soon as the first pick is made this season. Spread lock timing, playoff continuation, and tiebreakers stay editable any time.";
+            }
+        }
+
+        async function saveTeamName() {
+            const input = document.getElementById('team-name');
+            const statusEl = document.getElementById('team-name-status');
+            const btn = document.getElementById('team-name-save-btn');
+            const value = input.value.trim();
+
+            statusEl.textContent = '';
+            statusEl.className = 'text-xs mb-3';
+
+            if (!value) {
+                statusEl.textContent = 'Team name cannot be empty.';
+                statusEl.classList.add('text-danger');
+                return;
+            }
+
+            btn.disabled = true;
+            const { error } = await supabase.rpc('set_team_name', {
+                p_league_id: leagueId,
+                p_team_name: value
+            });
+            btn.disabled = false;
+
+            if (error) {
+                statusEl.textContent = error.message;
+                statusEl.classList.add('text-danger');
+                return;
+            }
+
+            statusEl.textContent = redirectAfterSave ? 'Saved. Continuing…' : 'Saved.';
+            statusEl.classList.add('text-accent');
+            if (redirectAfterSave) {
+                const dest = new URLSearchParams(window.location.search).get('next') || '/nfl/weekly-pick-em/dashboard/';
+                setTimeout(() => { window.location.href = dest + (dest.includes('?') ? '&' : '?') + 'league_id=' + leagueId; }, 600);
+            }
+        }
+
+        async function saveLeagueSettings() {
+            const statusEl = document.getElementById('rules-status');
+            const btn = document.getElementById('rules-save-btn');
+            const pickMode = document.querySelector('input[name="pick-mode"]:checked').value;
+            const scoringMode = document.querySelector('input[name="scoring-mode"]:checked').value;
+            const spreadLockMode = document.querySelector('input[name="spread-lock-mode"]:checked').value;
+            const continueToPlayoffs = document.getElementById('continue-to-playoffs').checked;
+            const enableTiebreakers = document.getElementById('enable-tiebreakers').checked;
+
+            statusEl.textContent = '';
+            statusEl.className = 'text-xs mb-3';
+            btn.disabled = true;
+
+            const { error } = await supabase.rpc('nwpe_update_league_settings', {
+                p_league_id: leagueId,
+                p_pick_mode: pickMode,
+                p_scoring_mode: scoringMode,
+                p_spread_lock_mode: spreadLockMode,
+                p_continue_to_playoffs: continueToPlayoffs,
+                p_tiebreakers_enabled: enableTiebreakers
+            });
+            btn.disabled = false;
+
+            if (error) {
+                statusEl.textContent = error.message;
+                statusEl.classList.add('text-danger');
+                return;
+            }
+            statusEl.textContent = 'Saved.';
+            statusEl.classList.add('text-accent');
+        }
+
+        init();
+    </script>
+</body>
+</html>
