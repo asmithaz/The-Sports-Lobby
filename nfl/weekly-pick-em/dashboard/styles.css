@@ -96,9 +96,12 @@ body.tb-disabled .tiebreak-summary { display: none; }
 .pg-table thead th { position: sticky; top: 0; background: var(--c-surface); font-size: var(--text-xs); font-weight: var(--weight-bold);
                       letter-spacing: 0.05em; color: var(--c-text-muted); text-transform: uppercase; z-index: 3; border-bottom: 0.5px solid var(--c-border-strong); }
 
-/* Sticky first column — a person's team name — shared by both tables. */
+/* Sticky first column — a person's team name — shared by both tables.
+   border-right divides it from the total/matchup columns beside it —
+   without it, "Adam1" and the number right after it run together. */
 .pg-table th.pg-team-th, .pg-table td.pg-team-cell {
     position: sticky; left: 0; z-index: 2; background: var(--c-surface); text-align: left; min-width: 168px;
+    border-right: 0.5px solid var(--c-border-strong);
 }
 .pg-table thead th.pg-team-th { z-index: 5; background: var(--c-surface); }
 .pg-table tr.pg-row--me td.pg-team-cell { background: var(--c-accent-dim-solid); }
@@ -135,7 +138,16 @@ body.tb-disabled .tiebreak-summary { display: none; }
     position: sticky; right: 0; z-index: 2; background: var(--c-surface-2); border-left: 0.5px solid var(--c-border-strong);
     font-family: var(--font-mono); font-weight: var(--weight-bold); font-size: var(--text-md);
 }
-.pg-table thead th.pg-total-th { z-index: 5; color: var(--c-accent); }
+/* Header label stays the same plain uppercase font as every other
+   header (Team, Wk N) — only the VALUE cell below gets the bigger
+   mono/bold treatment. Without this reset the "Total" label itself
+   inherited that treatment too and looked like a different typeface
+   next to its neighbors. */
+.pg-table thead th.pg-total-th {
+    z-index: 5; color: var(--c-accent);
+    font-family: var(--font); font-size: var(--text-xs); font-weight: var(--weight-bold);
+    letter-spacing: 0.05em; text-transform: uppercase;
+}
 .pg-table tr.pg-row--me td.pg-total-cell { background: var(--c-accent-dim-solid); color: var(--c-accent); }
 
 /* -- season results: running total pinned right next to the team name;
@@ -146,7 +158,11 @@ body.tb-disabled .tiebreak-summary { display: none; }
     position: sticky; left: 168px; z-index: 2; background: var(--c-surface-2); border-right: 0.5px solid var(--c-border-strong);
     font-family: var(--font-mono); font-weight: var(--weight-bold); font-size: var(--text-md); width: 64px;
 }
-.wr-table thead th.wr-total-th { z-index: 5; }
+.wr-table thead th.wr-total-th {
+    z-index: 5;
+    font-family: var(--font); font-size: var(--text-xs); font-weight: var(--weight-bold);
+    letter-spacing: 0.05em; text-transform: uppercase;
+}
 .wr-table tr.pg-row--me td.wr-total-cell { background: var(--c-accent-dim-solid); color: var(--c-accent); }
 .wr-rank { font-family: var(--font-mono); color: var(--c-text-muted); font-size: var(--text-xs); display: inline-block; width: 16px; }
 .wr-rank--top { color: var(--c-accent); font-weight: var(--weight-bold); }
