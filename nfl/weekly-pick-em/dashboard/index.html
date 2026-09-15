@@ -67,6 +67,13 @@
                     <button type="button" class="pill pill--muted" data-view="results">Season Results</button>
                 </div>
 
+                <!-- One shared slot for both views' description, so switching
+                     tabs changes its TEXT rather than adding/removing the
+                     line — Weekly Grid had none of its own, so Season
+                     Results' extra line shifted the table below it every
+                     time you switched. -->
+                <div class="section-sub" id="pg-sub" style="margin-bottom:var(--space-3);"></div>
+
                 <div id="pg-view-grid">
                     <div class="week-nav-grid" id="week-toggle" style="margin-bottom:var(--space-3);"></div>
                     <div class="pg-wrap">
@@ -78,7 +85,6 @@
                 </div>
 
                 <div id="pg-view-results" style="display:none;">
-                    <div class="section-sub" id="wr-sub" style="margin-bottom:var(--space-3);">Each week's results, plus a running season total. Sorted the same as Overall Standings.</div>
                     <div class="pg-wrap">
                         <table class="pg-table wr-table">
                             <thead><tr id="wr-header-row"><th class="pg-team-th">Team</th><th class="wr-total-th">Total</th></tr></thead>
@@ -396,10 +402,19 @@
                 : '<th>#</th><th>Team Name</th><th>Record</th><th>Points</th><th id="tiebreak-th">Tiebreaks Won</th>';
         }
 
+        function updatePgSub(view) {
+            document.getElementById('pg-sub').textContent = view === 'results'
+                ? (nwpeLeague.scoring_mode === 'confidence'
+                    ? 'Points scored each week, plus a running season total. Playoff weeks always show fixed round points. Sorted the same as Overall Standings.'
+                    : 'Picks correct each week, plus a running season total. Sorted the same as Overall Standings.')
+                : 'Full matchup detail for one week at a time — use the tabs above to switch weeks.';
+        }
+
         function setupPgViewToggle() {
             const toggle = document.getElementById('pg-view-toggle');
             const gridView = document.getElementById('pg-view-grid');
             const resultsView = document.getElementById('pg-view-results');
+            updatePgSub('grid');
             toggle.addEventListener('click', (e) => {
                 const btn = e.target.closest('button[data-view]');
                 if (!btn) return;
@@ -411,6 +426,7 @@
                 });
                 gridView.style.display = view === 'grid' ? '' : 'none';
                 resultsView.style.display = view === 'results' ? '' : 'none';
+                updatePgSub(view);
                 // Refetched every time the tab is opened, not cached — scores
                 // and finished games can change while it sits off-screen,
                 // same reasoning as the standings breakdown's own refetch.
@@ -737,9 +753,6 @@
             wrHeader.innerHTML = '<th class="pg-team-th">Team</th><th class="wr-total-th">Total</th>'
                 + seasonWeeks.map(w => `<th>${weekColLabel(w)}</th>`).join('');
             wrBody.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">Loading…</td></tr>`;
-            document.getElementById('wr-sub').textContent = nwpeLeague.scoring_mode === 'confidence'
-                ? 'Points scored each week, plus a running season total. Playoff weeks always show fixed round points. Sorted the same as Overall Standings.'
-                : 'Picks correct each week, plus a running season total. Sorted the same as Overall Standings.';
 
             const [{ data: standings, error }, { data: picks }] = await Promise.all([
                 supabase.rpc('nwpe_get_standings', { p_league_id: leagueId }),
