@@ -160,8 +160,14 @@ body.tb-disabled .tiebreak-summary { display: none; }
 .wr-table td.pg-team-cell .pg-team-name { max-width: 96px; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle; white-space: nowrap; }
 .wr-table th.wr-total-th, .wr-table td.wr-total-cell {
     position: sticky; left: 168px; z-index: 2; background: var(--c-surface-2); border-right: 0.5px solid var(--c-border-strong);
-    font-family: var(--font-mono); font-weight: var(--weight-bold); font-size: var(--text-md); width: 64px;
+    width: 64px;
 }
+/* Total's value is the same pill as every week's value (.wr-cell) —
+   font-family/size/weight used to live on the bare td instead, so the
+   Total number rendered bigger and unboxed next to the small pills
+   beside it and never quite lined up with them. Only slightly bigger
+   here to keep it reading as the summary, not a plain 19th week. */
+.wr-cell--total { font-size: var(--text-md); color: var(--c-accent); background: var(--c-accent-dim); }
 .wr-table thead th.wr-total-th {
     z-index: 5;
     font-family: var(--font); font-size: var(--text-xs); font-weight: var(--weight-bold);

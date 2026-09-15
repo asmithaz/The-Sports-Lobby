@@ -796,7 +796,7 @@
                 tr.className = isMe ? 'pg-row--me' : '';
 
                 let html = `<td class="pg-team-cell"><span class="wr-rank${i === 0 ? ' wr-rank--top' : ''}">${i + 1}</span><span class="pg-team-name">${escapeHtml(row.team_name || 'Unnamed Team')}</span>${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</td>`;
-                html += `<td class="wr-total-cell">${row.total_points}</td>`;
+                html += `<td class="wr-total-cell"><span class="wr-cell wr-cell--total">${row.total_points}</span></td>`;
                 seasonWeeks.forEach(w => {
                     if (!openWeeks.has(w)) {
                         html += `<td><span class="wr-cell wr-cell--future">—</span></td>`;
