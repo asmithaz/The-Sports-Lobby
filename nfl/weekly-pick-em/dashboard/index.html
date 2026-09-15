@@ -760,7 +760,15 @@
                 return nwpeLeague.scoring_mode === 'confidence' ? (wk?.points ?? 0) : (wk?.correct ?? 0);
             }
 
-            const openWeeks = new Set(comparisonWeeks);
+            // "Open" here means "at least one game in the week is final" —
+            // deliberately NOT comparisonWeeks (that's every synced week,
+            // including ones that haven't kicked off at all, now that the
+            // whole season is synced up front). A week with games still
+            // scheduled/live but none final yet stays a dash; the moment
+            // one game finishes it flips to a real (possibly 0) value.
+            const openWeeks = new Set(
+                seasonWeeks.filter(w => fullSlate.some(g => g.week === w && g.status === 'final'))
+            );
 
             const weekMax = {};
             seasonWeeks.forEach(w => {
