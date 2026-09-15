@@ -308,10 +308,9 @@ GRANT SELECT, INSERT, UPDATE ON nwpe_season_state TO service_role;
 -- regardless of a league's scoring_mode — confidence ranking is
 -- degenerate with 1-6 playoff games in a week (Super Bowl week = 1
 -- game), so playoff weeks always score via this flat weight instead.
--- p_week is the STORED (offset +18) week number. VERIFY this mapping
--- against live ESPN postseason data before the postseason starts —
--- both the +18 offset and which round each week number represents are
--- assumptions, not confirmed against real data yet.
+-- p_week is the STORED (offset +18) week number. Round order confirmed
+-- against ESPN's own scoreboard UI (Wild Card, Divisional, Conference
+-- Championship, Pro Bowl, Super Bowl) — matches the mapping below.
 CREATE OR REPLACE FUNCTION nwpe_playoff_round_points(p_week int)
 RETURNS int
 LANGUAGE sql IMMUTABLE

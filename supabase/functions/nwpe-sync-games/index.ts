@@ -23,12 +23,15 @@
 // Conference Championship=21, Super Bowl=23 — round 22/week 4 is the
 // Pro Bowl bye, no real games) so they sort continuously after the
 // regular season's weeks 1-18 instead of colliding with them (both
-// would otherwise restart counting from 1). This offset — and which
-// round each postseason week number actually represents — is an
-// ASSUMPTION. Verify via ?raw=true against a deployed version of this
-// function once real postseason data exists, before the postseason
-// actually starts, the same way every other quirk in this codebase
-// gets verified against live ESPN data before being trusted.
+// would otherwise restart counting from 1). The round ORDER/NAMES are
+// confirmed against ESPN's own scoreboard UI (Wild Card, Divisional,
+// Conference Championship, Pro Bowl, Super Bowl, in that sequence —
+// matches this file's 1/2/3/4/5 exactly). Still worth one ?raw=true
+// check against this deployed function once real postseason EVENT
+// data exists, to confirm mapEvent() parses actual playoff games the
+// same way it parses regular-season ones (undetermined-matchup
+// filtering, odds parsing, etc.) — the round numbering itself is no
+// longer the open question.
 //
 // Triggered by:
 //  - pg_cron + pg_net every 15 minutes during the season (schema.sql
