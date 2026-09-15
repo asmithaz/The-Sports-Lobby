@@ -59,10 +59,16 @@ function scoreboardUrl(params: Record<string, string | number>) {
   return qs ? `${ESPN_SCOREBOARD}?${qs}` : ESPN_SCOREBOARD;
 }
 
-// How many weeks beyond "current" to sync proactively, so upcoming
-// weeks show up on the picks page as their own section (spread filled
-// in as ESPN posts it) instead of only appearing once "current". Same
-// rationale as CFB Weekly Pick'em's identical constant.
+// How many weeks beyond "current" to sync proactively during the
+// POSTSEASON, where matchups for a round aren't even determined until
+// the prior round finishes (mapEvent() filters those out anyway, so
+// this is mostly a cheap ceiling). During the REGULAR SEASON, ahead
+// sync instead runs all the way to REGULAR_SEASON_WEEKS in one shot —
+// the full schedule is public the whole season, so there's no reason
+// to trickle it out week by week; players can see and pick any
+// upcoming week's already-known matchups immediately (spread shows as
+// "no line yet" via nwpe_game_spread_locks until that week is
+// revealed — see schema.sql section 2).
 const LOOKAHEAD_WEEKS = 2;
 
 // How many weeks BEHIND "current" to keep re-fetching, so a straggler
@@ -346,7 +352,11 @@ Deno.serve(async (req) => {
       { events: primaryData?.events ?? [], espnWeek: espnWeekNumber },
     ];
     if (overrideWeek === undefined) {
-      const aheadWeeks = Array.from({ length: LOOKAHEAD_WEEKS }, (_, i) => espnWeekNumber + i + 1);
+      const maxAheadWeek = seasonType === 3 ? espnWeekNumber + LOOKAHEAD_WEEKS : REGULAR_SEASON_WEEKS;
+      const aheadWeeks = Array.from(
+        { length: Math.max(0, maxAheadWeek - espnWeekNumber) },
+        (_, i) => espnWeekNumber + i + 1,
+      );
       const behindWeeks = Array.from({ length: LOOKBACK_WEEKS }, (_, i) => espnWeekNumber - i - 1).filter((wk) => wk >= 1);
       const extras = await Promise.all(
         [...aheadWeeks, ...behindWeeks].map(async (wk) => {

@@ -582,9 +582,11 @@
                 supabase.from('nwpe_season_state').select('current_week').eq('season', currentSeason).maybeSingle()
             ]);
 
-            const currentWk = stateRow?.current_week ?? null;
+            // Includes weeks beyond "current" too — the schedule (and any
+            // already-published spread) is synced up front now, and pcell()
+            // already renders a locked/pending state correctly for games
+            // nobody's picked yet, so there's nothing to gate here.
             comparisonWeeks = [...new Set((slate || []).map(g => g.week))]
-                .filter(w => currentWk == null || w <= currentWk)
                 .sort((a, b) => a - b);
             if (!comparisonWeeks.length) {
                 document.getElementById('pg-body').innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No games synced yet.</td></tr>`;

@@ -232,15 +232,16 @@
             }
 
             // Tiebreakers: commissioner-configurable (nwpeLeague.tiebreakers_enabled)
-            // — skip entirely when off. One lazy-assign call per week that's
-            // actually open (current or past — see isFutureWeek), including
-            // playoff weeks (tiebreaker is one season-long metric that keeps
-            // accumulating through the postseason).
+            // — skip entirely when off. One lazy-assign call per synced week,
+            // including playoff weeks (tiebreaker is one season-long metric
+            // that keeps accumulating through the postseason) and weeks
+            // beyond "current" (the whole regular-season schedule is synced
+            // up front now — see nwpe-sync-games — so there's no reason to
+            // wait on assigning a week's tiebreaker games).
             for (const key in tbGamesByWeek) delete tbGamesByWeek[key];
             for (const key in tbGuessByWeek) delete tbGuessByWeek[key];
             if (nwpeLeague.tiebreakers_enabled !== false) {
-                const openWeeksForTiebreak = weeks.filter(w => !isFutureWeek(w));
-                await Promise.all(openWeeksForTiebreak.map(async (w) => {
+                await Promise.all(weeks.map(async (w) => {
                     const { data } = await supabase.rpc('nwpe_get_tiebreaker_games', { p_league_id: leagueId, p_season: currentSeason, p_week: w });
                     tbGamesByWeek[w] = data;
                 }));
@@ -258,26 +259,9 @@
             return allGames.filter(g => g.week === week);
         }
 
-        // A week beyond the current one is shown as a bare "TBD" header —
-        // no matchups, no picking — until it becomes the current week.
-        function isFutureWeek(week) {
-            return currentWeekNum != null && week > currentWeekNum;
-        }
-
         function renderWeek(week, startCollapsed) {
             const games = weekGames(week);
             const isPlayoffWeek = games[0]?.season_type === 3;
-
-            if (isFutureWeek(week)) {
-                const block = document.createElement('div');
-                block.className = 'round-block round-block--tbd' + (nwpeLeague.scoring_mode !== 'confidence' ? ' round-block--compact' : '');
-                block.dataset.week = week;
-                block.innerHTML = `
-                  <div class="round-head">
-                    <h2>${weekLabel(week)} <span class="pill pill--muted">TBD</span></h2>
-                  </div>`;
-                return block;
-            }
 
             // Playoff weeks never use confidence ranking, regardless of the
             // league's regular-season scoring_mode — see playoffRoundPoints.
