@@ -8,41 +8,37 @@
 
 .matchup-legend { font-size: var(--text-xs); color: var(--c-text-muted); margin: 0 0 var(--space-4); }
 
-/* ---- week nav: single-row selectable grid above the open week ----
-   Same visual language as the dashboard's Tiebreaks Won bar (bordered
-   cells, no min-width floor so it always fits one row, never wraps or
-   scrolls) but each cell is a clickable week selector. */
-.week-nav-grid { display: grid; background: var(--c-surface-2); border: 0.5px solid var(--c-border); border-radius: var(--radius-sm);
-                 overflow: hidden; margin-bottom: var(--space-4); }
-.wn-cell { appearance: none; font-family: inherit; cursor: pointer; background: transparent; border: none;
-           border-right: 0.5px solid var(--c-border); padding: var(--space-2) 4px;
-           font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--c-text-secondary);
+/* ---- week nav: underline tabs above the open week's card ----
+   Same visual language as this page's own Standings/My Picks tabs and
+   the homepage's Contest Formats tabs (.tabs/.tab in components.css) —
+   just built on a fluid single-row grid instead of flex, since a plain
+   flex row can't fit 18 items without wrapping or scrolling. The one
+   open week's card sits flush underneath it (see .round-block), the
+   same way .tab-panel sits flush under .tabs. */
+.week-nav-grid { display: grid; border-bottom: 0.5px solid var(--c-border); }
+.week-nav-grid--compact { max-width: 900px; margin-left: auto; margin-right: auto; }
+.wn-cell { appearance: none; font-family: inherit; cursor: pointer; background: transparent;
+           border: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+           padding: var(--space-2) 4px; font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--c-text-muted);
            display: flex; align-items: center; justify-content: center; gap: 4px;
-           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wn-cell:last-child { border-right: none; }
-.wn-cell:hover { background: rgba(255,255,255,0.06); color: var(--c-text-primary); }
-/* "Selected" (the week you're viewing) is a fill — "current" (the
-   actual live NFL week) is only a thin underline, so the two stay
-   visually distinct and current-but-not-selected reads as a hint, not
-   a second competing highlight. */
-.wn-cell--selected { background: var(--c-accent-dim); color: var(--c-accent); font-weight: var(--weight-bold); }
-.wn-cell--current { box-shadow: inset 0 -2px 0 0 var(--c-accent); }
+           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+           transition: color var(--transition), border-color var(--transition); }
+.wn-cell:hover { color: var(--c-text-secondary); }
+.wn-cell--selected { color: var(--c-text-primary); border-bottom-color: var(--c-accent); font-weight: var(--weight-bold); }
 .wn-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 .wn-dot--green { background: var(--c-accent); }
 .wn-dot--amber { background: var(--c-warning); }
 .wn-dot--red { background: var(--c-danger); }
 
-/* ---- round block (the one open week) ---- */
-.round-block { margin-bottom: var(--space-5); }
-.round-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+/* ---- round block: one card, flush against the tabs above it ---- */
+.round-block { border: 0.5px solid var(--c-border); border-top: none; border-radius: var(--radius-md); border-top-left-radius: 0; border-top-right-radius: 0;
+               background: var(--c-surface); padding: var(--space-4); margin-bottom: var(--space-5); }
+.round-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .round-head h2 { font-size: var(--text-md); font-weight: var(--weight-bold); display: flex; align-items: center; gap: 6px; }
 .round-count { font-size: var(--text-xs); color: var(--c-text-muted); }
 .round-hint { font-size: var(--text-sm); color: var(--c-text-secondary); margin-bottom: var(--space-3); }
 
-.round-panel { border: 0.5px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface);
-               padding: var(--space-4); margin-top: var(--space-3); }
-.round-block--compact .round-head,
-.round-block--compact .round-panel { max-width: 900px; margin-left: auto; margin-right: auto; }
+.round-block--compact { max-width: 900px; margin-left: auto; margin-right: auto; }
 
 .round-block--playoff .round-head h2 { color: var(--c-accent); }
 

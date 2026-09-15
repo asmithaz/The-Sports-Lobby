@@ -334,7 +334,13 @@
         function renderSelectedWeek() {
             const container = document.getElementById('rounds-container');
             container.innerHTML = '';
-            container.appendChild(renderWeek(selectedWeek));
+            const block = renderWeek(selectedWeek);
+            container.appendChild(block);
+            // Keep the tabs row's width matched to the card sitting flush
+            // beneath it — compact (non-confidence) weeks narrow the card
+            // to 900px, so the tabs need to narrow the same way or the
+            // flush seam between them looks misaligned.
+            document.getElementById('week-nav').classList.toggle('week-nav-grid--compact', block.classList.contains('round-block--compact'));
         }
 
         function renderWeek(week) {
@@ -365,9 +371,8 @@
                 <h2>${weekLabel(week)}${week === currentWeekNum ? ' <span class="pill pill--muted">Current</span>' : ''}</h2>
                 <span class="round-count">${games.length} game${games.length === 1 ? '' : 's'}</span>
               </div>
-              <div class="round-panel" id="week-${week}-panel">
-                <div class="round-hint">${hint}</div>
-                ${openGames.length > 0 ? `
+              <div class="round-hint">${hint}</div>
+              ${openGames.length > 0 ? `
                   <div class="quick-fill-row">
                     <span class="quick-fill-label">Quick fill:</span>
                     <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="favorites">Select All Favorites</button>
@@ -403,12 +408,11 @@
                     <tbody id="week-${week}-body"></tbody>
                   </table>
                 </div>
-                ${openGames.length > 0 ? `
-                  <div class="save-bar">
-                    <span class="save-bar__msg" id="week-${week}-save-msg"></span>
-                  </div>` : ''}
-                ${renderTiebreakerCard(week)}
-              </div>
+              ${openGames.length > 0 ? `
+                <div class="save-bar">
+                  <span class="save-bar__msg" id="week-${week}-save-msg"></span>
+                </div>` : ''}
+              ${renderTiebreakerCard(week)}
             `;
 
             const tbody = block.querySelector(`#week-${week}-body`);
@@ -587,7 +591,7 @@
             if (g.status === 'final') {
                 const correct = isCorrect(pick, g);
                 if (!pick) {
-                    resultHtml = `<span class="text-muted">No pick</span>`;
+                    resultHtml = `<span class="pill pill--danger">✗ No pick +0</span>`;
                 } else if (correct === null) {
                     resultHtml = `<span class="pill pill--muted">Push +0</span>`;
                 } else if (correct) {
