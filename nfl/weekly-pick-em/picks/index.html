@@ -271,16 +271,22 @@
             }
 
             // Tiebreakers: commissioner-configurable (nwpeLeague.tiebreakers_enabled)
-            // — skip entirely when off. One lazy-assign call per synced week,
-            // including playoff weeks (tiebreaker is one season-long metric
-            // that keeps accumulating through the postseason) and weeks
-            // beyond "current" (the whole regular-season schedule is synced
-            // up front now — see nwpe-sync-games — so there's no reason to
-            // wait on assigning a week's tiebreaker games).
+            // — skip entirely when off. One lazy-assign call per week that's
+            // actually open (current or past), including playoff weeks
+            // (tiebreaker is one season-long metric that keeps accumulating
+            // through the postseason) — but NOT a future week just because
+            // its games are now synced ahead of time (see nwpe-sync-games).
+            // nwpe_get_tiebreaker_games picks tb1 at random and tb2 as
+            // "latest kickoff" and freezes both forever on first call; a
+            // future week's kickoff order can still move (flex scheduling),
+            // so assigning it early risks locking in a tb2 pick against a
+            // game that's no longer actually last. Current-or-past weeks
+            // don't have that problem — their kickoff order is settled.
             for (const key in tbGamesByWeek) delete tbGamesByWeek[key];
             for (const key in tbGuessByWeek) delete tbGuessByWeek[key];
             if (nwpeLeague.tiebreakers_enabled !== false) {
-                await Promise.all(weeks.map(async (w) => {
+                const openWeeksForTiebreak = weeks.filter(w => currentWeekNum == null || w <= currentWeekNum);
+                await Promise.all(openWeeksForTiebreak.map(async (w) => {
                     const { data } = await supabase.rpc('nwpe_get_tiebreaker_games', { p_league_id: leagueId, p_season: currentSeason, p_week: w });
                     tbGamesByWeek[w] = data;
                 }));
@@ -316,8 +322,7 @@
             nav.innerHTML = weeks.map(w => {
                 const isCurrent = w === currentWeekNum;
                 const isSelected = w === selectedWeek;
-                const cls = ['wn-cell', isSelected ? 'wn-cell--selected' : '', isCurrent ? 'wn-cell--current' : '']
-                    .filter(Boolean).join(' ');
+                const cls = ['wn-cell', isSelected ? 'wn-cell--selected' : ''].filter(Boolean).join(' ');
                 const color = isCurrent ? weekAttentionColor(w) : null;
                 const dot = color ? `<span class="wn-dot wn-dot--${color}"></span>` : '';
                 return `<button type="button" class="${cls}" data-week="${w}">${weekColLabel(w)}${dot}</button>`;

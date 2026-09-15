@@ -517,6 +517,36 @@ body {
   filter: brightness(1.15);
 }
 
+/* Bordered tab cell for a fluid single-row grid (e.g. a week selector
+   with too many entries for .pill-toggle to fit without wrapping) —
+   container itself (.week-nav-grid or similar) is defined per-page
+   since its border/radius depends on what sits below it. Used by
+   nfl/weekly-pick-em/picks/styles.css and dashboard/styles.css; keep
+   both in sync with this if it changes. */
+.wn-cell {
+  appearance: none;
+  font-family: inherit;
+  cursor: pointer;
+  background: var(--c-surface-2);
+  border: none;
+  border-right: 0.5px solid var(--c-border);
+  padding: var(--space-2) 4px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--c-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background var(--transition), color var(--transition);
+}
+.wn-cell:last-child { border-right: none; }
+.wn-cell:hover { background: rgba(255,255,255,0.06); color: var(--c-text-primary); }
+.wn-cell--selected { background: var(--c-accent-dim); color: var(--c-accent); font-weight: var(--weight-bold); }
+
 
 /* ============================================================
    DATA TABLE

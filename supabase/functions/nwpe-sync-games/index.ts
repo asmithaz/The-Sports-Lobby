@@ -59,17 +59,26 @@ function scoreboardUrl(params: Record<string, string | number>) {
   return qs ? `${ESPN_SCOREBOARD}?${qs}` : ESPN_SCOREBOARD;
 }
 
-// How many weeks beyond "current" to sync proactively during the
-// POSTSEASON, where matchups for a round aren't even determined until
-// the prior round finishes (mapEvent() filters those out anyway, so
-// this is mostly a cheap ceiling). During the REGULAR SEASON, ahead
-// sync instead runs all the way to REGULAR_SEASON_WEEKS in one shot —
-// the full schedule is public the whole season, so there's no reason
-// to trickle it out week by week; players can see and pick any
-// upcoming week's already-known matchups immediately (spread shows as
-// "no line yet" via nwpe_game_spread_locks until that week is
-// revealed — see schema.sql section 2).
+// How many weeks beyond "current" to sync EVERY run, no staleness
+// check — these are close enough (live scores, imminent kickoffs,
+// injury-driven spread moves) that they need real 15-minute freshness.
 const LOOKAHEAD_WEEKS = 2;
+
+// Beyond LOOKAHEAD_WEEKS, regular-season ahead-sync still eventually
+// reaches all the way to REGULAR_SEASON_WEEKS (the full remaining
+// schedule, so players can see and pick any upcoming week's
+// already-known matchups immediately — spread shows as "no line yet"
+// via nwpe_game_spread_locks until that week is revealed, see
+// schema.sql section 2) but each FAR week is only re-fetched from ESPN
+// once its already-synced rows are older than this — a week 10+ out
+// doesn't need 15-minute freshness, and re-fetching all of them on
+// every single tick (up to 17 extra ESPN pages) risked exactly the
+// class of pg_net-timeout failure noted elsewhere in this file, for no
+// practical staleness benefit. Checked against nwpe_games.updated_at,
+// which the update path below always touches on a sync, whether or
+// not anything in the row actually changed. Override with ?wide=true
+// to force-refetch every far week regardless (manual backfill/testing).
+const FAR_WEEK_STALE_HOURS = 3;
 
 // How many weeks BEHIND "current" to keep re-fetching, so a straggler
 // Sunday/Monday-night game finishing after ESPN advances its own
@@ -343,23 +352,59 @@ Deno.serve(async (req) => {
     const espnWeekNumber = primaryData?.week?.number ?? overrideWeek ?? 1;
     const storedWeekNumber = seasonType === 3 ? REGULAR_SEASON_WEEKS + espnWeekNumber : espnWeekNumber;
 
-    // Sync ahead LOOKAHEAD_WEEKS and behind LOOKBACK_WEEKS, WITHIN the
-    // current season_type — once ESPN's own "current" pointer flips from
-    // regular season to postseason, lookahead/lookback naturally follow
-    // along inside the new season_type on the next run. Skipped when a
-    // caller explicitly pins a single week (manual backfill/testing).
+    // Created before dry_run's early return (rather than only once
+    // writes start, further down) because the far-week staleness check
+    // right below needs to read nwpe_games too, and dry_run should
+    // preview the same weeks a real run would actually fetch.
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // Sync ahead LOOKAHEAD_WEEKS (always) plus every FAR week whose
+    // existing data has gone stale, and behind LOOKBACK_WEEKS, WITHIN
+    // the current season_type — once ESPN's own "current" pointer
+    // flips from regular season to postseason, lookahead/lookback
+    // naturally follow along inside the new season_type on the next
+    // run. Skipped when a caller explicitly pins a single week (manual
+    // backfill/testing).
     const weeksToFetch: { events: any[]; espnWeek: number }[] = [
       { events: primaryData?.events ?? [], espnWeek: espnWeekNumber },
     ];
     if (overrideWeek === undefined) {
-      const maxAheadWeek = seasonType === 3 ? espnWeekNumber + LOOKAHEAD_WEEKS : REGULAR_SEASON_WEEKS;
-      const aheadWeeks = Array.from(
-        { length: Math.max(0, maxAheadWeek - espnWeekNumber) },
-        (_, i) => espnWeekNumber + i + 1,
-      );
+      const nearWeeks = Array.from({ length: LOOKAHEAD_WEEKS }, (_, i) => espnWeekNumber + i + 1);
+
+      let farWeeks: number[] = [];
+      if (seasonType !== 3) {
+        const allFarWeeks = Array.from(
+          { length: Math.max(0, REGULAR_SEASON_WEEKS - (espnWeekNumber + LOOKAHEAD_WEEKS)) },
+          (_, i) => espnWeekNumber + LOOKAHEAD_WEEKS + i + 1,
+        );
+        if (url.searchParams.get("wide") === "true" || allFarWeeks.length === 0) {
+          farWeeks = allFarWeeks;
+        } else {
+          const farStoredWeeks = allFarWeeks; // regular season: stored week === ESPN week
+          const { data: freshnessRows } = await supabase
+            .from("nwpe_games")
+            .select("week, updated_at")
+            .eq("season", seasonYear)
+            .in("week", farStoredWeeks);
+          const freshestByWeek = new Map<number, number>();
+          for (const r of freshnessRows ?? []) {
+            const t = new Date(r.updated_at).getTime();
+            const cur = freshestByWeek.get(r.week);
+            if (cur == null || t > cur) freshestByWeek.set(r.week, t);
+          }
+          const staleBefore = Date.now() - FAR_WEEK_STALE_HOURS * 60 * 60 * 1000;
+          farWeeks = allFarWeeks.filter((wk) => {
+            const freshest = freshestByWeek.get(wk);
+            return freshest == null || freshest < staleBefore;
+          });
+        }
+      }
+
       const behindWeeks = Array.from({ length: LOOKBACK_WEEKS }, (_, i) => espnWeekNumber - i - 1).filter((wk) => wk >= 1);
       const extras = await Promise.all(
-        [...aheadWeeks, ...behindWeeks].map(async (wk) => {
+        [...nearWeeks, ...farWeeks, ...behindWeeks].map(async (wk) => {
           try {
             const res = await fetch(scoreboardUrl({ limit: 100, week: wk, year: seasonYear, seasontype: seasonType }));
             if (!res.ok) return { events: [], espnWeek: wk };
@@ -391,10 +436,6 @@ Deno.serve(async (req) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { data: existingGames, error: existingErr } = await supabase
       .from("nwpe_games")

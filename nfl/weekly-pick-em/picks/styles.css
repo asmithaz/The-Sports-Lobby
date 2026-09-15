@@ -13,19 +13,11 @@
    18 weeks fit one row without wrapping/scrolling) styled as visible,
    individually-bordered tabs — a box per week, not a plain underline —
    with the open week's card sitting flush underneath (see .round-block),
-   like a folder tab attached to its page. */
+   like a folder tab attached to its page. Cell styling (.wn-cell) is
+   shared with the dashboard's week nav — see css/components.css. */
 .week-nav-grid { display: grid; border: 0.5px solid var(--c-border); border-bottom: none;
                  border-radius: var(--radius-sm) var(--radius-sm) 0 0; overflow: hidden; }
 .week-nav-grid--compact { max-width: 900px; margin-left: auto; margin-right: auto; }
-.wn-cell { appearance: none; font-family: inherit; cursor: pointer; background: var(--c-surface-2);
-           border: none; border-right: 0.5px solid var(--c-border);
-           padding: var(--space-2) 4px; font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--c-text-secondary);
-           display: flex; align-items: center; justify-content: center; gap: 4px;
-           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-           transition: background var(--transition), color var(--transition); }
-.wn-cell:last-child { border-right: none; }
-.wn-cell:hover { background: rgba(255,255,255,0.06); color: var(--c-text-primary); }
-.wn-cell--selected { background: var(--c-accent-dim); color: var(--c-accent); font-weight: var(--weight-bold); }
 .wn-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 .wn-dot--green { background: var(--c-accent); }
 .wn-dot--amber { background: var(--c-warning); }
