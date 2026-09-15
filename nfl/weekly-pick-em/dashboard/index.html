@@ -68,7 +68,7 @@
                 </div>
 
                 <div id="pg-view-grid">
-                    <div class="pill-toggle" id="week-toggle" style="margin-bottom:var(--space-3);"></div>
+                    <div class="week-nav-grid" id="week-toggle" style="margin-bottom:var(--space-3);"></div>
                     <div class="pg-wrap">
                         <table class="pg-table">
                             <thead><tr id="pg-header-row"><th class="pg-team-th">Team</th></tr></thead>
@@ -613,10 +613,16 @@
             await loadPickComparisonGrid();
         }
 
+        // Same bordered tab-strip as the picks page's week nav — a fluid
+        // single-row grid (see .week-nav-grid/.wn-cell in styles.css) so
+        // all of comparisonWeeks fits one row without wrapping, instead
+        // of the old pill-toggle list that wrapped to 2+ lines once the
+        // whole season was synced up front.
         function renderWeekToggle() {
             const toggle = document.getElementById('week-toggle');
+            toggle.style.gridTemplateColumns = `repeat(${comparisonWeeks.length}, minmax(0, 1fr))`;
             toggle.innerHTML = comparisonWeeks.map(w =>
-                `<button class="pill ${w === currentComparisonWeek ? 'pill--green' : 'pill--muted'}" data-week="${w}">${weekColLabel(w)}</button>`
+                `<button type="button" class="wn-cell${w === currentComparisonWeek ? ' wn-cell--selected' : ''}" data-week="${w}">${weekColLabel(w)}</button>`
             ).join('');
             toggle.onclick = (e) => {
                 const btn = e.target.closest('button[data-week]');

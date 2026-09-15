@@ -26,6 +26,21 @@
 .section-sub { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: var(--space-3); }
 .section-block { margin-bottom: var(--space-8); }
 
+/* ---- pick-comparison week nav: same bordered tab-strip as the picks
+   page's week nav (nfl/weekly-pick-em/picks/styles.css) — a fluid
+   single-row grid so 18 weeks fit one row without wrapping, styled as
+   individually-bordered tabs. */
+.week-nav-grid { display: grid; border: 0.5px solid var(--c-border); border-radius: var(--radius-sm); overflow: hidden; }
+.wn-cell { appearance: none; font-family: inherit; cursor: pointer; background: var(--c-surface-2);
+           border: none; border-right: 0.5px solid var(--c-border);
+           padding: var(--space-2) 4px; font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--c-text-secondary);
+           display: flex; align-items: center; justify-content: center; gap: 4px;
+           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+           transition: background var(--transition), color var(--transition); }
+.wn-cell:last-child { border-right: none; }
+.wn-cell:hover { background: rgba(255,255,255,0.06); color: var(--c-text-primary); }
+.wn-cell--selected { background: var(--c-accent-dim); color: var(--c-accent); font-weight: var(--weight-bold); }
+
 /* ---- standings: team-name-primary identity ---- */
 tr.standings-row { cursor: pointer; }
 .name-cell { display: flex; align-items: center; gap: var(--space-2); }
