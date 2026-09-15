@@ -138,12 +138,13 @@ body.tb-disabled .tiebreak-summary { display: none; }
 .pg-table thead th.pg-total-th { z-index: 5; color: var(--c-accent); }
 .pg-table tr.pg-row--me td.pg-total-cell { background: var(--c-accent-dim-solid); color: var(--c-accent); }
 
-/* -- season results: running total pinned right next to the team name; weeks scroll -- */
+/* -- season results: running total pinned right next to the team name;
+   week columns fill the rest via table-layout: fixed (see above) -- */
 .wr-table th.pg-team-th, .wr-table td.pg-team-cell { width: 168px; max-width: 168px; overflow: hidden; }
 .wr-table td.pg-team-cell .pg-team-name { max-width: 96px; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle; white-space: nowrap; }
 .wr-table th.wr-total-th, .wr-table td.wr-total-cell {
     position: sticky; left: 168px; z-index: 2; background: var(--c-surface-2); border-right: 0.5px solid var(--c-border-strong);
-    font-family: var(--font-mono); font-weight: var(--weight-bold); font-size: var(--text-md); min-width: 64px;
+    font-family: var(--font-mono); font-weight: var(--weight-bold); font-size: var(--text-md); width: 64px;
 }
 .wr-table thead th.wr-total-th { z-index: 5; }
 .wr-table tr.pg-row--me td.wr-total-cell { background: var(--c-accent-dim-solid); color: var(--c-accent); }
@@ -159,6 +160,15 @@ body.tb-disabled .tiebreak-summary { display: none; }
 
 /* Season Results fills the section's width instead of hugging its content
    like the weekly grid does — with only a handful of weeks synced early
-   in the season, hugging left columns wastes the row and cramps them. */
-#pg-view-results .pg-wrap { width: 100%; }
-#pg-view-results .pg-table { width: 100%; }
+   in the season, hugging left columns wastes the row and cramps them.
+   table-layout: fixed forces the week columns to actually divide up
+   that 100% instead of each claiming its natural nowrap content width
+   and pushing the table wider than the container (which is what forced
+   .pg-wrap's horizontal scrollbar once all 18 weeks were columns). */
+#pg-view-results .pg-wrap { width: 100%; overflow-x: hidden; }
+#pg-view-results .pg-table { width: 100%; table-layout: fixed; }
+#pg-view-results .pg-table th:not(.pg-team-th):not(.wr-total-th),
+#pg-view-results .pg-table td:not(.pg-team-cell):not(.wr-total-cell) {
+    padding-left: 4px; padding-right: 4px; overflow: hidden; text-overflow: ellipsis;
+}
+#pg-view-results .wr-cell { padding-left: 6px; padding-right: 6px; min-width: 0; }
