@@ -6,30 +6,51 @@
 .dash-header .sub { color: var(--c-text-muted); font-size: var(--text-sm); margin-top: 2px; }
 
 .matchup-legend { font-size: var(--text-xs); color: var(--c-text-muted); margin: 0 0 var(--space-4); }
+.nav-dot-legend { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-2); }
+.nav-dot-legend .legend-item { display: inline-flex; align-items: center; gap: 5px; }
 
-/* ---- round blocks ---- */
-.round-block { margin-bottom: var(--space-5); }
-.round-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
-              cursor: pointer; user-select: none; }
+/* ---- round nav: bordered tab strip above the open round's card ----
+   A fluid single-row grid (equal-width cells) fixed to ROUND_DEFS' 4
+   rounds, styled as visible, individually-bordered tabs — a box per
+   round, not a plain underline — with the open round's card sitting
+   flush underneath (see .round-block), like a folder tab attached to
+   its page. Cell styling (.wn-cell) is shared with Weekly Pick'em's
+   identical week nav — see css/components.css. Named round- (not
+   week-, unlike Weekly's identical component) since bowl rounds aren't
+   weeks; components.css's comment notes the container itself is
+   defined per-page for exactly this reason. */
+.round-nav-grid { display: grid; border: 0.5px solid var(--c-border); border-bottom: none;
+                  border-radius: var(--radius-sm) var(--radius-sm) 0 0; overflow: hidden; }
+.round-nav-grid--compact { max-width: 740px; margin-left: auto; margin-right: auto; }
+.wn-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.wn-dot--green { background: var(--c-accent); }
+.wn-dot--amber { background: var(--c-warning); }
+.wn-dot--red { background: var(--c-danger); }
+
+/* ---- round block: one card, flush against the tabs above it ---- */
+.round-block { border: 0.5px solid var(--c-border); border-top: none; border-radius: 0 0 var(--radius-md) var(--radius-md);
+               background: var(--c-surface); padding: var(--space-4); margin-bottom: var(--space-5); }
+.round-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .round-head h2 { font-size: var(--text-md); font-weight: var(--weight-bold); display: flex; align-items: center; gap: 6px; }
-.round-caret { color: var(--c-text-muted); font-size: 11px; display: inline-block; transition: transform var(--transition); }
-.round-block.collapsed .round-caret { transform: rotate(-90deg); }
 .round-count { font-size: var(--text-xs); color: var(--c-text-muted); }
 .round-hint { font-size: var(--text-sm); color: var(--c-text-secondary); margin-bottom: var(--space-3); }
 .round-block--locked { opacity: 0.5; }
 .round-block--locked .round-head h2 { color: var(--c-text-secondary); }
-.round-block--locked .round-head { cursor: default; }
+.round-block--locked .round-hint { margin-bottom: 0; }
 
-.round-panel { border: 0.5px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface);
-               padding: var(--space-4); margin-top: var(--space-3); }
-.round-block.collapsed .round-panel { display: none; }
-/* Flat-scoring rounds (no Conf. column): header + card both hug the table's
-   width and center in the available space, instead of the header spanning
-   full width while the (narrower) card sits stranded on the left below it.
-   Scoped to each round only — the page-level title/tabs stay full width to
-   match the Standings page, so switching tabs doesn't shift the top bar. */
-.round-block--compact .round-head,
-.round-block--compact .round-panel { max-width: 740px; margin-left: auto; margin-right: auto; }
+/* Flat-scoring rounds (no Conf. column): the whole card hugs the
+   table's width and centers in the available space, instead of
+   stretching full width with a narrower table stranded on the left.
+   Scoped to each round only — the page-level title/tabs stay full
+   width to match the Standings page, so switching tabs doesn't shift
+   the top bar. */
+.round-block--compact { max-width: 740px; margin-left: auto; margin-right: auto; }
+
+/* The tiebreaker card (renderTiebreakerCard) reuses .round-block but
+   sits on its own below #tiebreaker-container, not flush under a tab
+   strip like the 4 round cards — it needs its own full border/radius
+   back, not the top-edge cut the tab-linked cards rely on. */
+.round-block--standalone { border-top: 0.5px solid var(--c-border); border-radius: var(--radius-md); }
 
 
 /* ---- quick fill (Select All Favorites / Underdogs / Clear All) ---- */
@@ -58,9 +79,15 @@
 .conf-chip--hit { border-style: solid; background: var(--c-accent); border-color: var(--c-accent); color: #0f1117; font-weight: var(--weight-bold); }
 .conf-chip--miss { border-style: solid; background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.25); color: var(--c-danger); font-weight: var(--weight-bold); }
 
-/* ---- tier group label (Wave 1: Bowls vs CFP Round 1) ---- */
-.tier-group-label { font-size: var(--text-xs); font-weight: var(--weight-bold); color: var(--c-text-muted); text-transform: uppercase;
-                     letter-spacing: 0.08em; margin: var(--space-4) 0 var(--space-2); }
+/* ---- tier group label (Wave 1: Bowls vs CFP Round 1) ----
+   A small accent pill instead of plain muted text — Bowls and CFP
+   Round 1 share one table/confidence pool in this round, and the two
+   sub-groups read as one continuous list without something visually
+   louder marking where one ends and the other starts. */
+.tier-group-label { display: inline-flex; align-items: center; font-size: var(--text-xs); font-weight: var(--weight-bold);
+                     color: var(--c-accent); background: var(--c-accent-dim); border: 0.5px solid var(--c-accent-border);
+                     text-transform: uppercase; letter-spacing: 0.08em; padding: 3px var(--space-2); border-radius: var(--radius-sm);
+                     margin: var(--space-4) 0 var(--space-2); }
 .tier-group-label:first-of-type { margin-top: 0; }
 
 /* ---- picks table ---- */

@@ -533,6 +533,9 @@
             function pcell(pick, g, isMe) {
                 if (!pick) {
                     if (!isMe && !isLocked(g)) return { html: `<div class="pcell pcell--hidden">🔒</div>`, pts: 0 };
+                    if (g.status === 'final') {
+                        return { html: `<div class="pcell pcell--miss"><span class="pcell-result">✗ No pick +0</span></div>`, pts: 0 };
+                    }
                     return { html: `<div class="pcell pcell--pending"><span class="pcell-name text-muted">—</span></div>`, pts: 0 };
                 }
                 const logoUrl = pick.picked_team === g.home_team ? g.home_team_logo : g.away_team_logo;

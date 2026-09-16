@@ -45,9 +45,19 @@
 
         <p class="matchup-legend">The home team is always listed second. A highlighted row is your pick — green for correct, red for incorrect, amber while the game is live.</p>
 
+        <p class="matchup-legend nav-dot-legend">
+            <span class="legend-item"><span class="wn-dot wn-dot--green"></span>all picks in</span>
+            <span class="legend-item"><span class="wn-dot wn-dot--amber"></span>some picks in</span>
+            <span class="legend-item"><span class="wn-dot wn-dot--red"></span>no picks yet</span>
+        </p>
+
+        <div class="round-nav-grid" id="round-nav"></div>
+
         <div id="rounds-container">
             <p class="text-muted" style="padding:var(--space-4);">Loading…</p>
         </div>
+
+        <div id="tiebreaker-container"></div>
 
     </main>
 
@@ -110,6 +120,7 @@
         }
         let allGames = [];
         let gamesById = {};
+        let selectedRound = ROUND_DEFS[0].key; // which single round's table is currently shown
 
         function escapeHtml(str) {
             const d = document.createElement('div');
@@ -135,6 +146,40 @@
                 return pick.picked_team === game.ats_winner_team;
             }
             return pick.picked_team === game.winner_team;
+        }
+
+        // Short label for the round-nav tabs — the full ROUND_DEFS.title
+        // ("Bowls + CFP Round 1") is too long for a fluid tab cell.
+        const ROUND_TAB_LABEL = { w1: 'Bowls', w2: 'QF', w3: 'SF', w4: 'Champ' };
+
+        function roundGames(def) {
+            return allGames.filter(g => def.tiers.includes(g.tier));
+        }
+
+        // { saved, total } picks for a round — same counts refreshSaveState's
+        // "X/Y saved" pill already computes, reused here for the nav dot.
+        function roundPickCounts(def) {
+            const list = roundGames(def);
+            const needsConf = bpeLeague.scoring_mode === 'confidence';
+            const saved = list.filter(g => {
+                const p = pending[g.id];
+                return !!p?.picked_team && (!needsConf || p.confidence_points != null);
+            }).length;
+            return { saved, total: list.length };
+        }
+
+        // Nav dot color for every round with games ('green'|'amber'|'red',
+        // or null for a still-locked/empty round — nothing to flag there).
+        // Unlike Weekly Pick'em's single "current week" dot, every bowl
+        // round gets one: there's no equivalent "current round" concept
+        // (no season_state row), and a commissioner-visible round with an
+        // incomplete pick is worth flagging regardless of which one it is.
+        function roundAttentionColor(def) {
+            const { saved, total } = roundPickCounts(def);
+            if (!total) return null;
+            if (saved === total) return 'green';
+            if (saved === 0) return 'red';
+            return 'amber';
         }
 
         function resolveLeagueId() {
@@ -194,13 +239,50 @@
             (myPicks || []).forEach(p => { pending[p.game_id] = { picked_team: p.picked_team, confidence_points: p.confidence_points }; });
             for (const key in dirty) delete dirty[key];
 
-            const container = document.getElementById('rounds-container');
-            container.innerHTML = '';
-            ROUND_DEFS.forEach(def => container.appendChild(renderRound(def, myPicks || [])));
+            renderRoundNav();
+            renderSelectedRound();
             renderTiebreakerCard(myTiebreak);
         }
 
-        function renderRound(def, myPicks) {
+        // Single-row selectable grid of round cells above the open round's
+        // card — same fluid layout/visual language as Weekly Pick'em's
+        // week nav (see .round-nav-grid/.wn-cell in styles.css), just
+        // fixed to ROUND_DEFS' 4 rounds instead of a variable week count.
+        // A round's dot reflects its own pick progress (see
+        // roundAttentionColor); a still-locked/empty round gets none.
+        function renderRoundNav() {
+            const nav = document.getElementById('round-nav');
+            nav.style.gridTemplateColumns = `repeat(${ROUND_DEFS.length}, minmax(0, 1fr))`;
+            nav.innerHTML = ROUND_DEFS.map(def => {
+                const isSelected = def.key === selectedRound;
+                const cls = ['wn-cell', isSelected ? 'wn-cell--selected' : ''].filter(Boolean).join(' ');
+                const color = roundAttentionColor(def);
+                const dot = color ? `<span class="wn-dot wn-dot--${color}"></span>` : '';
+                return `<button type="button" class="${cls}" data-round="${def.key}">${ROUND_TAB_LABEL[def.key]}${dot}</button>`;
+            }).join('');
+            nav.onclick = (e) => {
+                const btn = e.target.closest('button[data-round]');
+                if (!btn) return;
+                selectedRound = btn.dataset.round;
+                renderRoundNav();
+                renderSelectedRound();
+            };
+        }
+
+        function renderSelectedRound() {
+            const container = document.getElementById('rounds-container');
+            container.innerHTML = '';
+            const def = ROUND_DEFS.find(r => r.key === selectedRound);
+            const block = renderRound(def);
+            container.appendChild(block);
+            // Keep the tabs row's width matched to the card sitting flush
+            // beneath it — a compact (non-confidence) round narrows the
+            // card to 740px, so the tabs need to narrow the same way or
+            // the flush seam between them looks misaligned.
+            document.getElementById('round-nav').classList.toggle('round-nav-grid--compact', block.classList.contains('round-block--compact'));
+        }
+
+        function renderRound(def) {
             const games = allGames.filter(g => def.tiers.includes(g.tier));
             const block = document.createElement('div');
             block.className = 'round-block' + (bpeLeague.scoring_mode !== 'confidence' ? ' round-block--compact' : '');
@@ -218,63 +300,61 @@
             const confCount = def.confKind === 'range' ? def.confMax : def.confValues.length;
 
             block.innerHTML = `
-              <div class="round-head" id="${def.key}-toggle">
-                <h2><span class="round-caret">▾</span>${def.title}</h2>
+              <div class="round-head">
+                <h2>${def.title}</h2>
                 <span class="round-count">${games.length} game${games.length === 1 ? '' : 's'}</span>
               </div>
-              <div class="round-panel" id="${def.key}-panel">
-                <div class="round-hint">${def.hint(bpeLeague.scoring_mode)}</div>
-                ${openGames.length > 0 ? `
-                  <div class="quick-fill-row">
-                    <span class="quick-fill-label">Quick fill:</span>
-                    <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="favorites">Select All Favorites</button>
-                    <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="underdogs">Select All Underdogs</button>
-                    ${bpeLeague.scoring_mode === 'confidence' && def.confKind !== 'forced' ? `<button type="button" class="btn btn--ghost btn--sm" data-fill-mode="randomize-confidence">Randomize Confidence</button>` : ''}
-                    <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="clear">Clear All Picks</button>
-                    <span class="save-pill" id="${def.key}-count"></span>
-                  </div>
-                  ${bpeLeague.pick_mode === 'spread' ? `<div class="quick-fill-note">For games with no spread available (pick'em) at the lock time, the home team counts as the favorite and the away team as the underdog.</div>` : ''}` : ''}
-                ${bpeLeague.scoring_mode === 'confidence' && def.confKind === 'range' ? `
-                  <div class="conf-tracker-box">
-                    <div class="conf-tracker-label">
-                      <span>Your confidence numbers</span>
-                      <div class="conf-legend">
-                        <span><i style="background:transparent; border:1px dashed var(--c-text-secondary);"></i>Available</span>
-                        <span><i style="background:var(--c-accent-dim); border:1px solid var(--c-accent-border);"></i>Assigned</span>
-                        <span><i style="background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.3);"></i>Live</span>
-                        <span><i style="background:var(--c-accent);"></i>Correct</span>
-                        <span><i style="background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.25);"></i>Incorrect</span>
-                      </div>
+              <div class="round-hint">${def.hint(bpeLeague.scoring_mode)}</div>
+              ${openGames.length > 0 ? `
+                <div class="quick-fill-row">
+                  <span class="quick-fill-label">Quick fill:</span>
+                  <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="favorites">Select All Favorites</button>
+                  <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="underdogs">Select All Underdogs</button>
+                  ${bpeLeague.scoring_mode === 'confidence' && def.confKind !== 'forced' ? `<button type="button" class="btn btn--ghost btn--sm" data-fill-mode="randomize-confidence">Randomize Confidence</button>` : ''}
+                  <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="clear">Clear All Picks</button>
+                  <span class="save-pill" id="${def.key}-count"></span>
+                </div>
+                ${bpeLeague.pick_mode === 'spread' ? `<div class="quick-fill-note">For games with no spread available (pick'em) at the lock time, the home team counts as the favorite and the away team as the underdog.</div>` : ''}` : ''}
+              ${bpeLeague.scoring_mode === 'confidence' && def.confKind === 'range' ? `
+                <div class="conf-tracker-box">
+                  <div class="conf-tracker-label">
+                    <span>Your confidence numbers</span>
+                    <div class="conf-legend">
+                      <span><i style="background:transparent; border:1px dashed var(--c-text-secondary);"></i>Available</span>
+                      <span><i style="background:var(--c-accent-dim); border:1px solid var(--c-accent-border);"></i>Assigned</span>
+                      <span><i style="background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.3);"></i>Live</span>
+                      <span><i style="background:var(--c-accent);"></i>Correct</span>
+                      <span><i style="background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.25);"></i>Incorrect</span>
                     </div>
-                    <div class="conf-tracker" id="${def.key}-tracker"></div>
-                  </div>` : ''}
-                ${def.tiers.map(tier => {
-                    const tierGames = games.filter(g => g.tier === tier);
-                    if (!tierGames.length) return '';
-                    const tierId = `${def.key}-body-${tier}`;
-                    const sortTh = (key, label, extraCls) => `<th class="sortable${extraCls ? ' ' + extraCls : ''}" data-sort-key="${key}" data-label="${label}">${label}</th>`;
-                    const showConf = bpeLeague.scoring_mode === 'confidence';
-                    return `
-                      ${def.tiers.length > 1 ? `<div class="tier-group-label">${TIER_GROUP_LABEL[tier] || tier}</div>` : ''}
-                      <div class="table-wrap">
-                        <table class="picks-table${showConf ? '' : ' picks-table--no-conf'}">
-                          <colgroup><col class="c-matchup"><col class="c-kick">${showConf ? '<col class="c-conf">' : ''}<col class="c-result"></colgroup>
-                          <thead><tr>
-                            ${sortTh('matchup', 'Matchup')}
-                            ${sortTh('date', 'Kickoff', 'col-kick')}
-                            ${showConf ? sortTh('conf', 'Conf.') : ''}
-                            ${sortTh('result', 'Result', 'col-result')}
-                          </tr></thead>
-                          <tbody id="${tierId}"></tbody>
-                        </table>
-                      </div>`;
-                }).join('')}
-                ${openGames.length > 0 ? `
-                  <div class="save-bar">
-                    <span class="save-bar__msg" id="${def.key}-save-msg"></span>
-                    <button class="btn btn--primary" id="${def.key}-save-btn" disabled>Save Picks</button>
-                  </div>` : ''}
-              </div>
+                  </div>
+                  <div class="conf-tracker" id="${def.key}-tracker"></div>
+                </div>` : ''}
+              ${def.tiers.map(tier => {
+                  const tierGames = games.filter(g => g.tier === tier);
+                  if (!tierGames.length) return '';
+                  const tierId = `${def.key}-body-${tier}`;
+                  const sortTh = (key, label, extraCls) => `<th class="sortable${extraCls ? ' ' + extraCls : ''}" data-sort-key="${key}" data-label="${label}">${label}</th>`;
+                  const showConf = bpeLeague.scoring_mode === 'confidence';
+                  return `
+                    ${def.tiers.length > 1 ? `<div class="tier-group-label">${TIER_GROUP_LABEL[tier] || tier}</div>` : ''}
+                    <div class="table-wrap">
+                      <table class="picks-table${showConf ? '' : ' picks-table--no-conf'}">
+                        <colgroup><col class="c-matchup"><col class="c-kick">${showConf ? '<col class="c-conf">' : ''}<col class="c-result"></colgroup>
+                        <thead><tr>
+                          ${sortTh('matchup', 'Matchup')}
+                          ${sortTh('date', 'Kickoff', 'col-kick')}
+                          ${showConf ? sortTh('conf', 'Conf.') : ''}
+                          ${sortTh('result', 'Result', 'col-result')}
+                        </tr></thead>
+                        <tbody id="${tierId}"></tbody>
+                      </table>
+                    </div>`;
+              }).join('')}
+              ${openGames.length > 0 ? `
+                <div class="save-bar">
+                  <span class="save-bar__msg" id="${def.key}-save-msg"></span>
+                  <button class="btn btn--primary" id="${def.key}-save-btn" disabled>Save Picks</button>
+                </div>` : ''}
             `;
 
             def.tiers.forEach(tier => {
@@ -282,9 +362,6 @@
                 if (!tbody) return;
                 games.filter(g => g.tier === tier).forEach(g => tbody.appendChild(renderGameRow(g, def)));
             });
-
-            const toggle = block.querySelector(`#${def.key}-toggle`);
-            if (toggle) toggle.addEventListener('click', () => block.classList.toggle('collapsed'));
 
             wireRoundInteractions(def, block);
             if (bpeLeague.scoring_mode === 'confidence' && def.confKind === 'range') refreshConfTracker(def, block);
@@ -599,6 +676,10 @@
         }
 
         function refreshSaveState(def, root) {
+            // Re-render the nav so its dot never lags behind a pick made
+            // in the open round below it.
+            renderRoundNav();
+
             const btn = (root || document).querySelector(`#${def.key}-save-btn`);
             const msg = (root || document).querySelector(`#${def.key}-save-msg`);
             const countPill = (root || document).querySelector(`#${def.key}-count`);
@@ -737,7 +818,11 @@
 
             el = document.createElement('div');
             el.id = 'tiebreak-block';
-            el.className = 'round-block';
+            // Same width as the round cards above it (round-block--compact
+            // — driven by the same league-wide scoring_mode check every
+            // round card uses, not anything tiebreaker-specific), so it
+            // doesn't sit full-width beneath a narrower flat-scoring card.
+            el.className = 'round-block round-block--standalone' + (bpeLeague.scoring_mode !== 'confidence' ? ' round-block--compact' : '');
             el.innerHTML = `
               <div class="round-head"><h2>Tiebreaker</h2><span class="round-count">Championship total score</span></div>
               <div class="round-hint">Guess the combined final score of both teams in the National Championship — closest guess breaks ties in the standings. Doesn't depend on knowing the matchup, so you can lock this in any time. Locks at Championship kickoff − 5 min, same as every other pick.</div>
@@ -747,7 +832,7 @@
                 <span class="tiebreak-status" id="tiebreak-status">${locked ? 'Locked' : existing ? `Saved: ${existing.guess_total_points}` : 'Not yet submitted'}</span>
               </div>
             `;
-            document.getElementById('rounds-container').appendChild(el);
+            document.getElementById('tiebreaker-container').appendChild(el);
 
             const saveBtn = document.getElementById('tiebreak-save');
             if (saveBtn) {
