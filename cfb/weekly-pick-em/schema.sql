@@ -343,6 +343,16 @@ BEGIN
   WHERE g.season = p_season
     AND (p_week IS NULL OR g.week = p_week)
     AND (g.week != 0 OR v_league.include_week_zero)
+    -- Army-Navy: week 15 = REGULAR_SEASON_LENGTH + 1 — same hand-
+    -- maintained hardcode as dashboard/index.html's REGULAR_SEASON_LENGTH
+    -- and wpe-sync-games/index.ts's REGULAR_SEASON_WEEKS; update all
+    -- three together at the start of each CFB season. wpe-sync-games
+    -- syncs this week into wpe_games regardless of any league's opt-in
+    -- (visibility is this function's job, not the sync's) — without this
+    -- clause every league would see the Army-Navy game every week once
+    -- it's synced, since include_army_navy_week was otherwise never
+    -- actually checked anywhere.
+    AND (g.week != 15 OR v_league.include_army_navy_week)
     AND (
       (v_league.scope_mode = 'power4' AND (g.home_conference = ANY(wpe_power4_conferences()) OR g.away_conference = ANY(wpe_power4_conferences())))
       OR (v_league.scope_mode = 'group_of_5' AND (g.home_conference = ANY(wpe_group_of_5_conferences()) OR g.away_conference = ANY(wpe_group_of_5_conferences())))
@@ -1150,6 +1160,7 @@ BEGIN
   WHERE g.season = p_season
     AND (p_week IS NULL OR g.week = p_week)
     AND (g.week != 0 OR v_league.include_week_zero)
+    AND (g.week != 15 OR v_league.include_army_navy_week) -- see wpe_get_slate's comment
     AND (
       (v_league.scope_mode = 'power4' AND (g.home_conference = ANY(wpe_power4_conferences()) OR g.away_conference = ANY(wpe_power4_conferences())))
       OR (v_league.scope_mode = 'group_of_5' AND (g.home_conference = ANY(wpe_group_of_5_conferences()) OR g.away_conference = ANY(wpe_group_of_5_conferences())))

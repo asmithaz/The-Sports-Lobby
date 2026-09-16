@@ -86,12 +86,36 @@ function scoreboardUrl(params: Record<string, string | number>) {
   return qs ? `${ESPN_SCOREBOARD}?${qs}` : ESPN_SCOREBOARD;
 }
 
-// How many weeks beyond "current" to sync proactively, so upcoming weeks
-// show up on the picks page as their own section (with spread/rank filled
-// in as ESPN posts them) instead of only appearing once they become
-// "current" — matches ESPN's own schedule availability, which is
-// typically known well ahead of kickoff even before odds are posted.
+// How many weeks beyond "current" to sync EVERY run, no staleness check —
+// these are close enough (live scores, imminent kickoffs, rank/spread
+// moves) that they need real 15-minute freshness.
 const LOOKAHEAD_WEEKS = 2;
+
+// Beyond LOOKAHEAD_WEEKS, regular-season ahead-sync still eventually
+// reaches all the way to REGULAR_SEASON_WEEKS (the full remaining
+// schedule, so players can see and pick any upcoming week's already-known
+// matchups immediately — spread shows as "no line yet" until that week is
+// revealed, see the freeze comment above) but each FAR week is only
+// re-fetched from ESPN once its already-synced rows are older than this —
+// a week 10+ out doesn't need 15-minute freshness, and re-fetching all of
+// them on every single tick risked exactly the class of pg_net-timeout
+// failure noted below (toUpdate/toInsert batching) for no practical
+// staleness benefit. Checked against wpe_games.updated_at, which the
+// update path always touches on a sync, whether or not anything in the
+// row actually changed. Override with ?wide=true to force-refetch every
+// far week regardless (manual backfill/testing). Mirrors NFL's identical
+// nwpe-sync-games constant.
+const FAR_WEEK_STALE_HOURS = 3;
+
+// REGULAR_SEASON_LENGTH is hand-maintained, not derived — same constant
+// (and same "update at the start of each CFB season" caveat) as
+// dashboard/index.html's REGULAR_SEASON_LENGTH; keep both in sync. +1
+// covers Army-Navy, the standalone week-after-conference-championships
+// game some leagues opt into (wpe_leagues.include_army_navy_week) — it's
+// synced here regardless of any given league's opt-in, since per-league
+// visibility is wpe_get_slate's job, not this function's.
+const REGULAR_SEASON_LENGTH = 14;
+const REGULAR_SEASON_WEEKS = REGULAR_SEASON_LENGTH + 1;
 
 // How many weeks BEHIND "current" to keep re-fetching, so a straggler game
 // still live/scheduled when ESPN flips its own "current" week pointer
@@ -462,19 +486,53 @@ Deno.serve(async (req) => {
     const seasonType = primaryData?.season?.type ?? overrideSeasontype ?? 2;
     const weekNumber = primaryData?.week?.number ?? overrideWeek ?? 1;
 
-    // Sync ahead LOOKAHEAD_WEEKS beyond current, so upcoming weeks appear
-    // on the picks page as their own (initially spread-less) section
-    // instead of only showing up once they become "current" — and sync
+    // Created before dry_run's early return (rather than only once writes
+    // start, further down) because the far-week staleness check right
+    // below needs to read wpe_games too, and dry_run should preview the
+    // same weeks a real run would actually fetch.
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // Sync ahead LOOKAHEAD_WEEKS (always) plus every FAR week whose
+    // existing data has gone stale, up to REGULAR_SEASON_WEEKS — and sync
     // behind LOOKBACK_WEEKS so a straggler game from a just-passed week
     // keeps getting its score/status updated (see LOOKBACK_WEEKS comment).
     // Skipped when a caller explicitly pins a single week (manual
     // backfill/testing).
     const weeksToFetch: { events: any[]; week: number }[] = [{ events: primaryData?.events ?? [], week: weekNumber }];
     if (overrideWeek === undefined) {
-      const aheadWeeks = Array.from({ length: LOOKAHEAD_WEEKS }, (_, i) => weekNumber + i + 1);
+      const nearWeeks = Array.from({ length: LOOKAHEAD_WEEKS }, (_, i) => weekNumber + i + 1);
+
+      const allFarWeeks = Array.from(
+        { length: Math.max(0, REGULAR_SEASON_WEEKS - (weekNumber + LOOKAHEAD_WEEKS)) },
+        (_, i) => weekNumber + LOOKAHEAD_WEEKS + i + 1,
+      );
+      let farWeeks: number[] = [];
+      if (url.searchParams.get("wide") === "true" || allFarWeeks.length === 0) {
+        farWeeks = allFarWeeks;
+      } else {
+        const { data: freshnessRows } = await supabase
+          .from("wpe_games")
+          .select("week, updated_at")
+          .eq("season", seasonYear)
+          .in("week", allFarWeeks);
+        const freshestByWeek = new Map<number, number>();
+        for (const r of freshnessRows ?? []) {
+          const t = new Date(r.updated_at).getTime();
+          const cur = freshestByWeek.get(r.week);
+          if (cur == null || t > cur) freshestByWeek.set(r.week, t);
+        }
+        const staleBefore = Date.now() - FAR_WEEK_STALE_HOURS * 60 * 60 * 1000;
+        farWeeks = allFarWeeks.filter((wk) => {
+          const freshest = freshestByWeek.get(wk);
+          return freshest == null || freshest < staleBefore;
+        });
+      }
+
       const behindWeeks = Array.from({ length: LOOKBACK_WEEKS }, (_, i) => weekNumber - i - 1).filter((wk) => wk >= 0);
       const extras = await Promise.all(
-        [...aheadWeeks, ...behindWeeks].map(async (wk) => {
+        [...nearWeeks, ...farWeeks, ...behindWeeks].map(async (wk) => {
           try {
             const res = await fetch(scoreboardUrl({ groups: 80, limit: 200, week: wk, year: seasonYear, seasontype: seasonType }));
             if (!res.ok) return { events: [], week: wk };
@@ -516,10 +574,6 @@ Deno.serve(async (req) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { data: existingGames, error: existingErr } = await supabase
       .from("wpe_games")

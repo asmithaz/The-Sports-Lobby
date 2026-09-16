@@ -517,12 +517,14 @@ body {
   filter: brightness(1.15);
 }
 
-/* Bordered tab cell for a fluid single-row grid (e.g. a week selector
-   with too many entries for .pill-toggle to fit without wrapping) —
-   container itself (.week-nav-grid or similar) is defined per-page
-   since its border/radius depends on what sits below it. Used by
-   nfl/weekly-pick-em/picks/styles.css and dashboard/styles.css; keep
-   both in sync with this if it changes. */
+/* Bordered tab cell for a fluid single-row grid (e.g. a week/round
+   selector with too many entries for .pill-toggle to fit without
+   wrapping) — container itself (.week-nav-grid, .round-nav-grid, or
+   similar) is defined per-page since its border/radius depends on
+   what sits below it. Used by nfl/weekly-pick-em's and
+   cfb/weekly-pick-em's picks/styles.css + dashboard/styles.css, and
+   cfb/bowl-season-pick-em's picks/styles.css; keep all in sync with
+   this if it changes. */
 .wn-cell {
   appearance: none;
   font-family: inherit;

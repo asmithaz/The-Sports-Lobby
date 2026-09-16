@@ -68,7 +68,7 @@
                 </div>
 
                 <div id="pg-view-grid">
-                    <div class="pill-toggle" id="week-toggle" style="margin-bottom:var(--space-3);"></div>
+                    <div class="week-nav-grid" id="week-toggle" style="margin-bottom:var(--space-3);"></div>
                     <div class="pg-wrap">
                         <table class="pg-table">
                             <thead><tr id="pg-header-row"><th class="pg-team-th">Team</th></tr></thead>
@@ -78,7 +78,6 @@
                 </div>
 
                 <div id="pg-view-results" style="display:none;">
-                    <div class="section-sub" id="wr-sub" style="margin-bottom:var(--space-3);">Each week's results, plus a running season total. Sorted the same as Overall Standings.</div>
                     <div class="pg-wrap">
                         <table class="pg-table wr-table">
                             <thead><tr id="wr-header-row"><th class="pg-team-th">Team</th><th class="wr-total-th">Total</th></tr></thead>
@@ -178,6 +177,15 @@
                 return pick.picked_team === game.ats_winner_team;
             }
             return pick.picked_team === game.winner_team;
+        }
+
+        // Weeks with at least one final game — the whole season is synced
+        // up front now (wpe-sync-games), so "has a game been synced" is no
+        // longer the same thing as "has this week actually started."
+        // Season Results and the standings breakdown both use this to stay
+        // a dash/empty instead of a fake 0 for a week nothing's played yet.
+        function startedWeeks() {
+            return seasonWeeks.filter(w => fullSlate.some(g => g.week === w && g.status === 'final'));
         }
 
         function resolveLeagueId() {
@@ -434,18 +442,18 @@
             const pickByGameId = {};
             (picks || []).forEach(p => { pickByGameId[p.game_id] = p; });
 
-            // Built from the FULL slate of every opened week (fullSlate,
-            // filtered to comparisonWeeks — the same "opened for picking"
-            // set the Weekly Grid/Season Results use), not just the games
+            // Built from the FULL slate of every STARTED week (fullSlate,
+            // filtered to startedWeeks — not comparisonWeeks, which now
+            // includes the whole synced-ahead season), not just the games
             // this user has a visible pick for. A chip never shows which
-            // team was picked, only the matchup and an outcome color, so
-            // there's nothing to hide by always showing every game — a
-            // week someone skipped, or a locked game someone else declined
-            // to pick, now still shows up (red) instead of silently
-            // vanishing from the week entirely.
+            // team was picked, only the matchup and an outcome color, so a
+            // week someone skipped still shows up (red) instead of
+            // vanishing — but a week that hasn't kicked off at all doesn't
+            // show up as a fake "0/16" box.
+            const started = new Set(startedWeeks());
             const byWeek = {};
             fullSlate.forEach(g => {
-                if (!comparisonWeeks.includes(g.week)) return;
+                if (!started.has(g.week)) return;
                 const pick = pickByGameId[g.id];
                 // No visible pick on a game that's already final reads as a
                 // miss — same as a wrong pick, since neither the viewer nor
@@ -510,7 +518,7 @@
                         .concat([`<div class="tb-cell tb-value tb-total-col">${totalWon}</div>`]);
                     tbSummaryEl.innerHTML = `
                         <div class="tiebreak-bar-heading">Tiebreaks Won</div>
-                        <div class="tiebreak-bar" style="grid-template-columns: repeat(${colCount}, minmax(64px, 1fr));">
+                        <div class="tiebreak-bar" style="grid-template-columns: repeat(${colCount}, minmax(0, 1fr));">
                             ${labels.join('')}${values.join('')}
                         </div>`;
                 }
@@ -559,12 +567,11 @@
                 supabase.from('wpe_season_state').select('current_week').eq('season', currentSeason).maybeSingle()
             ]);
 
-            // Future weeks aren't offered here at all — nothing to compare
-            // until a week is actually open for picking (matches the picks
-            // page's "TBD" treatment of weeks beyond the current one).
-            const currentWk = stateRow?.current_week ?? null;
+            // Includes weeks beyond "current" too — the schedule (and any
+            // already-published spread) is synced up front now, and pcell()
+            // already renders a locked/pending state correctly for games
+            // nobody's picked yet, so there's nothing to gate here.
             comparisonWeeks = [...new Set((slate || []).map(g => g.week))]
-                .filter(w => currentWk == null || w <= currentWk)
                 .sort((a, b) => a - b);
             if (!comparisonWeeks.length) {
                 document.getElementById('pg-body').innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No games synced yet.</td></tr>`;
@@ -579,10 +586,16 @@
             await loadPickComparisonGrid();
         }
 
+        // Same bordered tab-strip as the picks page's week nav — a fluid
+        // single-row grid (see .week-nav-grid/.wn-cell in styles.css) so
+        // all of comparisonWeeks fits one row without wrapping, instead
+        // of the old pill-toggle list that wrapped to 2+ lines once the
+        // whole season was synced up front.
         function renderWeekToggle() {
             const toggle = document.getElementById('week-toggle');
+            toggle.style.gridTemplateColumns = `repeat(${comparisonWeeks.length}, minmax(0, 1fr))`;
             toggle.innerHTML = comparisonWeeks.map(w =>
-                `<button class="pill ${w === currentComparisonWeek ? 'pill--green' : 'pill--muted'}" data-week="${w}">Wk ${w}</button>`
+                `<button type="button" class="wn-cell${w === currentComparisonWeek ? ' wn-cell--selected' : ''}" data-week="${w}">Wk ${w}</button>`
             ).join('');
             toggle.onclick = (e) => {
                 const btn = e.target.closest('button[data-week]');
@@ -642,6 +655,9 @@
             function pcell(pick, g, isMe) {
                 if (!pick) {
                     if (!isMe && !isLocked(g)) return { html: `<div class="pcell pcell--hidden">🔒</div>`, pts: 0 };
+                    if (g.status === 'final') {
+                        return { html: `<div class="pcell pcell--miss"><span class="pcell-result">✗ No pick +0</span></div>`, pts: 0 };
+                    }
                     return { html: `<div class="pcell pcell--pending"><span class="pcell-name text-muted">—</span></div>`, pts: 0 };
                 }
                 const logoUrl = pick.picked_team === g.home_team ? g.home_team_logo : g.away_team_logo;
@@ -695,9 +711,6 @@
             wrHeader.innerHTML = '<th class="pg-team-th">Team</th><th class="wr-total-th">Total</th>'
                 + seasonWeeks.map(w => `<th>Wk ${w}</th>`).join('');
             wrBody.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">Loading…</td></tr>`;
-            document.getElementById('wr-sub').textContent = wpeLeague.scoring_mode === 'confidence'
-                ? 'Points scored each week, plus a running season total. Sorted the same as Overall Standings.'
-                : 'Picks correct each week, plus a running season total. Sorted the same as Overall Standings.';
 
             const [{ data: standings, error }, { data: picks }] = await Promise.all([
                 supabase.rpc('wpe_get_standings', { p_league_id: leagueId }),
@@ -740,12 +753,7 @@
                 return wpeLeague.scoring_mode === 'confidence' ? (wk?.points ?? 0) : (wk?.correct ?? 0);
             }
 
-            // A week is "open" (shows 0 for no correct picks rather than —)
-            // once it's been offered for picking, same weeks the Weekly Grid
-            // toggle offers — not just once it has a visible correct pick,
-            // otherwise a 0-for-the-week performance would misleadingly
-            // look identical to a week that hasn't started yet.
-            const openWeeks = new Set(comparisonWeeks);
+            const openWeeks = new Set(startedWeeks());
 
             // The week's high score, so the leader can be highlighted —
             // computed from the same value being displayed (points in
@@ -763,7 +771,7 @@
                 tr.className = isMe ? 'pg-row--me' : '';
 
                 let html = `<td class="pg-team-cell"><span class="wr-rank${i === 0 ? ' wr-rank--top' : ''}">${i + 1}</span><span class="pg-team-name">${escapeHtml(row.team_name || 'Unnamed Team')}</span>${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</td>`;
-                html += `<td class="wr-total-cell">${row.total_points}</td>`;
+                html += `<td class="wr-total-cell"><span class="wr-cell wr-cell--total">${row.total_points}</span></td>`;
                 seasonWeeks.forEach(w => {
                     if (!openWeeks.has(w)) {
                         html += `<td><span class="wr-cell wr-cell--future">—</span></td>`;

@@ -45,6 +45,8 @@
 
         <p class="matchup-legend">The home team is always listed second. A highlighted row is your pick — green for correct, red for incorrect, amber while the game is live.</p>
 
+        <div class="week-nav-grid" id="week-nav"></div>
+
         <div id="rounds-container">
             <p class="text-muted" style="padding:var(--space-4);">Loading…</p>
         </div>
@@ -81,6 +83,8 @@
         }
         let allGames = [];
         let gamesById = {};
+        let weeks = []; // every week with synced games, ascending
+        let selectedWeek = null; // which single week's table is currently shown
         // tbGamesByWeek[week] = { tb1_game_id, tb2_game_id } — this league's
         // frozen tiebreaker assignment for that week (see wpe_get_tiebreaker_games).
         const tbGamesByWeek = {};
@@ -111,6 +115,32 @@
                 return pick.picked_team === game.ats_winner_team;
             }
             return pick.picked_team === game.winner_team;
+        }
+
+        // { saved, total } picks for a week — feeds the in-panel "X/Y
+        // saved" pill. Counts EVERY game in the week (including already-
+        // locked ones), so it's an accurate record even for a past week
+        // with a missed pick.
+        function weekPickCounts(week) {
+            const list = weekGames(week);
+            const showConf = wpeLeague.scoring_mode === 'confidence';
+            const saved = list.filter(g => {
+                const p = pending[g.id];
+                return !!p?.picked_team && (!showConf || p.confidence_points != null);
+            }).length;
+            return { saved, total: list.length };
+        }
+
+        // Nav dot color for the CURRENT week only ('green'|'amber'|'red',
+        // or null for every other week / a week with no games at all) —
+        // green once every pick is in, red until any pick is made, amber
+        // in between. Based on the same counts as the "X/Y saved" pill.
+        function weekAttentionColor(week) {
+            const { saved, total } = weekPickCounts(week);
+            if (!total) return null;
+            if (saved === total) return 'green';
+            if (saved === 0) return 'red';
+            return 'amber';
         }
 
         function resolveLeagueId() {
@@ -166,8 +196,9 @@
             for (const key in pending) delete pending[key];
             (myPicks || []).forEach(p => { pending[p.game_id] = { picked_team: p.picked_team, confidence_points: p.confidence_points }; });
 
-            const weeks = [...new Set(allGames.map(g => g.week))].sort((a, b) => a - b);
+            weeks = [...new Set(allGames.map(g => g.week))].sort((a, b) => a - b);
             const container = document.getElementById('rounds-container');
+            document.getElementById('week-nav').innerHTML = '';
             container.innerHTML = '';
 
             if (!weeks.length) {
@@ -177,14 +208,17 @@
 
             // Tiebreakers: commissioner-configurable (wpeLeague.tiebreakers_enabled)
             // — skip entirely when off, so no games get lazily frozen for a
-            // league that never wanted this. One lazy-assign call per week
-            // that's actually open (current or past — see isFutureWeek) — no
-            // reason to freeze a random tiebreaker game for a week nobody can
-            // pick yet.
+            // league that never wanted this. One lazy-assign call per
+            // week that's current or past ONLY — wpe_get_tiebreaker_games
+            // picks tb1 at random and tb2 as "latest kickoff" and freezes
+            // both forever on first call, so assigning it for a week the
+            // full-season sync has synced far ahead of time risks locking
+            // in a tb2 pick against a game that isn't actually last once
+            // real kickoff times/flex scheduling settle in.
             for (const key in tbGamesByWeek) delete tbGamesByWeek[key];
             for (const key in tbGuessByWeek) delete tbGuessByWeek[key];
             if (wpeLeague.tiebreakers_enabled !== false) {
-                const openWeeksForTiebreak = weeks.filter(w => !isFutureWeek(w));
+                const openWeeksForTiebreak = weeks.filter(w => currentWeekNum == null || w <= currentWeekNum);
                 await Promise.all(openWeeksForTiebreak.map(async (w) => {
                     const { data } = await supabase.rpc('wpe_get_tiebreaker_games', { p_league_id: leagueId, p_season: currentSeason, p_week: w });
                     tbGamesByWeek[w] = data;
@@ -195,40 +229,63 @@
                 (myGuesses || []).forEach(g => { tbGuessByWeek[g.week] = g; });
             }
 
-            const defaultOpenWeek = weeks.includes(currentWeekNum) ? currentWeekNum : weeks[weeks.length - 1];
-            weeks.forEach(w => container.appendChild(renderWeek(w, w !== defaultOpenWeek)));
+            if (selectedWeek == null || !weeks.includes(selectedWeek)) {
+                selectedWeek = weeks.includes(currentWeekNum) ? currentWeekNum : weeks[weeks.length - 1];
+            }
+            renderWeekNav();
+            renderSelectedWeek();
         }
 
         function weekGames(week) {
             return allGames.filter(g => g.week === week);
         }
 
-        // A week beyond the current one is shown as a bare "TBD" header —
-        // no matchups, no picking — until it becomes the current week.
-        // Matchups/spreads can be synced ahead of time, but showing them
-        // early read as broken/incomplete rather than "early."
-        function isFutureWeek(week) {
-            return currentWeekNum != null && week > currentWeekNum;
+        // Single-row selectable grid of week cells above the open week's
+        // table — same fluid layout as the dashboard's Tiebreaks Won bar
+        // (equal-width columns, no min-width floor, so it never needs to
+        // wrap or scroll). Current week gets a subtle underline (not a
+        // filled background — that's reserved for "this is the week
+        // you're viewing") plus a colored dot for its pick progress (see
+        // weekAttentionColor); every other week is plain. Click a cell to
+        // switch weeks.
+        function renderWeekNav() {
+            const nav = document.getElementById('week-nav');
+            nav.style.gridTemplateColumns = `repeat(${weeks.length}, minmax(0, 1fr))`;
+            nav.innerHTML = weeks.map(w => {
+                const isCurrent = w === currentWeekNum;
+                const isSelected = w === selectedWeek;
+                const cls = ['wn-cell', isSelected ? 'wn-cell--selected' : ''].filter(Boolean).join(' ');
+                const color = isCurrent ? weekAttentionColor(w) : null;
+                const dot = color ? `<span class="wn-dot wn-dot--${color}"></span>` : '';
+                return `<button type="button" class="${cls}" data-week="${w}">Wk ${w}${dot}</button>`;
+            }).join('');
+            nav.onclick = (e) => {
+                const btn = e.target.closest('button[data-week]');
+                if (!btn) return;
+                selectedWeek = parseInt(btn.dataset.week, 10);
+                renderWeekNav();
+                renderSelectedWeek();
+            };
         }
 
-        function renderWeek(week, startCollapsed) {
-            const games = weekGames(week);
+        function renderSelectedWeek() {
+            const container = document.getElementById('rounds-container');
+            container.innerHTML = '';
+            const block = renderWeek(selectedWeek);
+            container.appendChild(block);
+            // Keep the tabs row's width matched to the card sitting flush
+            // beneath it — a compact (non-confidence) week narrows the
+            // card to 900px, so the tabs need to narrow the same way or
+            // the flush seam between them looks misaligned.
+            document.getElementById('week-nav').classList.toggle('week-nav-grid--compact', block.classList.contains('round-block--compact'));
+        }
 
-            if (isFutureWeek(week)) {
-                const block = document.createElement('div');
-                block.className = 'round-block round-block--tbd' + (wpeLeague.scoring_mode !== 'confidence' ? ' round-block--compact' : '');
-                block.dataset.week = week;
-                block.innerHTML = `
-                  <div class="round-head">
-                    <h2>Week ${week} <span class="pill pill--muted">TBD</span></h2>
-                  </div>`;
-                return block;
-            }
+        function renderWeek(week) {
+            const games = weekGames(week);
 
             const block = document.createElement('div');
             block.className = 'round-block' + (wpeLeague.scoring_mode !== 'confidence' ? ' round-block--compact' : '');
             block.dataset.week = week;
-            if (startCollapsed) block.classList.add('collapsed');
 
             const openGames = games.filter(g => !isLocked(g));
             const confMax = games.length;
@@ -241,61 +298,56 @@
             const sortTh = (key, label, extraCls) => `<th class="sortable${extraCls ? ' ' + extraCls : ''}" data-sort-key="${key}" data-label="${label}">${label}</th>`;
 
             block.innerHTML = `
-              <div class="round-head" id="week-${week}-toggle">
-                <h2><span class="round-caret">▾</span>Week ${week}${week === currentWeekNum ? ' <span class="pill pill--muted">Current</span>' : ''}</h2>
+              <div class="round-head">
+                <h2>Week ${week}${week === currentWeekNum ? ' <span class="pill pill--muted">Current</span>' : ''}</h2>
                 <span class="round-count">${games.length} game${games.length === 1 ? '' : 's'}</span>
               </div>
-              <div class="round-panel" id="week-${week}-panel">
-                <div class="round-hint">${hint}</div>
-                ${openGames.length > 0 ? `
-                  <div class="quick-fill-row">
-                    <span class="quick-fill-label">Quick fill:</span>
-                    <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="favorites">Select All Favorites</button>
-                    <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="underdogs">Select All Underdogs</button>
-                    ${showConf ? `<button type="button" class="btn btn--ghost btn--sm" data-fill-mode="randomize-confidence">Randomize Confidence</button>` : ''}
-                    <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="clear">Clear All Picks</button>
-                    <span class="save-pill" id="week-${week}-count"></span>
-                  </div>
-                  ${wpeLeague.pick_mode === 'spread' ? `<div class="quick-fill-note">For games with no spread available (pick'em) at the lock time, the home team counts as the favorite and the away team as the underdog.</div>` : ''}` : ''}
-                ${showConf ? `
-                  <div class="conf-tracker-box">
-                    <div class="conf-tracker-label">
-                      <span>Your confidence numbers</span>
-                      <div class="conf-legend">
-                        <span><i style="background:transparent; border:1px dashed var(--c-text-secondary);"></i>Available</span>
-                        <span><i style="background:var(--c-accent-dim); border:1px solid var(--c-accent-border);"></i>Assigned</span>
-                        <span><i style="background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.3);"></i>Live</span>
-                        <span><i style="background:var(--c-accent);"></i>Correct</span>
-                        <span><i style="background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.25);"></i>Incorrect</span>
-                      </div>
-                    </div>
-                    <div class="conf-tracker" id="week-${week}-tracker"></div>
-                  </div>` : ''}
-                <div class="table-wrap">
-                  <table class="picks-table${showConf ? '' : ' picks-table--no-conf'}">
-                    <colgroup><col class="c-matchup"><col class="c-kick">${showConf ? '<col class="c-conf">' : ''}<col class="c-result"></colgroup>
-                    <thead><tr>
-                      ${sortTh('matchup', 'Matchup')}
-                      ${sortTh('date', 'Kickoff', 'col-kick')}
-                      ${showConf ? sortTh('conf', 'Conf.') : ''}
-                      ${sortTh('result', 'Result', 'col-result')}
-                    </tr></thead>
-                    <tbody id="week-${week}-body"></tbody>
-                  </table>
+              <div class="round-hint">${hint}</div>
+              ${openGames.length > 0 ? `
+                <div class="quick-fill-row">
+                  <span class="quick-fill-label">Quick fill:</span>
+                  <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="favorites">Select All Favorites</button>
+                  <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="underdogs">Select All Underdogs</button>
+                  ${showConf ? `<button type="button" class="btn btn--ghost btn--sm" data-fill-mode="randomize-confidence">Randomize Confidence</button>` : ''}
+                  <button type="button" class="btn btn--ghost btn--sm" data-fill-mode="clear">Clear All Picks</button>
+                  <span class="save-pill" id="week-${week}-count"></span>
                 </div>
-                ${openGames.length > 0 ? `
-                  <div class="save-bar">
-                    <span class="save-bar__msg" id="week-${week}-save-msg"></span>
-                  </div>` : ''}
-                ${renderTiebreakerCard(week)}
+                ${wpeLeague.pick_mode === 'spread' ? `<div class="quick-fill-note">For games with no spread available (pick'em) at the lock time, the home team counts as the favorite and the away team as the underdog.</div>` : ''}` : ''}
+              ${showConf ? `
+                <div class="conf-tracker-box">
+                  <div class="conf-tracker-label">
+                    <span>Your confidence numbers</span>
+                    <div class="conf-legend">
+                      <span><i style="background:transparent; border:1px dashed var(--c-text-secondary);"></i>Available</span>
+                      <span><i style="background:var(--c-accent-dim); border:1px solid var(--c-accent-border);"></i>Assigned</span>
+                      <span><i style="background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.3);"></i>Live</span>
+                      <span><i style="background:var(--c-accent);"></i>Correct</span>
+                      <span><i style="background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.25);"></i>Incorrect</span>
+                    </div>
+                  </div>
+                  <div class="conf-tracker" id="week-${week}-tracker"></div>
+                </div>` : ''}
+              <div class="table-wrap">
+                <table class="picks-table${showConf ? '' : ' picks-table--no-conf'}">
+                  <colgroup><col class="c-matchup"><col class="c-kick">${showConf ? '<col class="c-conf">' : ''}<col class="c-result"></colgroup>
+                  <thead><tr>
+                    ${sortTh('matchup', 'Matchup')}
+                    ${sortTh('date', 'Kickoff', 'col-kick')}
+                    ${showConf ? sortTh('conf', 'Conf.') : ''}
+                    ${sortTh('result', 'Result', 'col-result')}
+                  </tr></thead>
+                  <tbody id="week-${week}-body"></tbody>
+                </table>
               </div>
+              ${openGames.length > 0 ? `
+                <div class="save-bar">
+                  <span class="save-bar__msg" id="week-${week}-save-msg"></span>
+                </div>` : ''}
+              ${renderTiebreakerCard(week)}
             `;
 
             const tbody = block.querySelector(`#week-${week}-body`);
             games.forEach(g => tbody.appendChild(renderGameRow(g, confMax)));
-
-            const toggle = block.querySelector(`#week-${week}-toggle`);
-            if (toggle) toggle.addEventListener('click', () => block.classList.toggle('collapsed'));
 
             wireWeekInteractions(week, block, confMax);
             wireTiebreakerCard(week, block);
@@ -461,7 +513,7 @@
             if (g.status === 'final') {
                 const correct = isCorrect(pick, g);
                 if (!pick) {
-                    resultHtml = `<span class="text-muted">No pick</span>`;
+                    resultHtml = `<span class="pill pill--danger">✗ No pick +0</span>`;
                 } else if (correct === null) {
                     resultHtml = `<span class="pill pill--muted">Push +0</span>`;
                 } else if (correct) {
@@ -739,25 +791,18 @@
                 msg.textContent = errorMsg ? `Failed to save: ${errorMsg}` : '';
                 if (bar) bar.style.display = errorMsg ? '' : 'none';
             }
+
+            // Re-render the nav so its dot never lags behind a pick made
+            // in the open panel below it.
+            renderWeekNav();
+
             if (errorMsg || !countPill) return;
+            const { saved: savedCount, total } = weekPickCounts(week);
+            if (!total) { countPill.textContent = ''; return; }
 
-            // Denominator is always every game in the week, not just the
-            // still-open ones — a game doesn't stop counting once it
-            // locks. The pill doesn't distinguish a still-open game from
-            // one that locked with no pick on it; either way it's just
-            // not counted, same as the standings breakdown treats it.
-            const weekGameList = weekGames(week);
-            if (!weekGameList.length) { countPill.textContent = ''; return; }
-
-            const needsConf = wpeLeague.scoring_mode === 'confidence';
-            const savedCount = weekGameList.filter(g => {
-                const p = pending[g.id];
-                return !!p?.picked_team && (!needsConf || p.confidence_points != null);
-            }).length;
-
-            countPill.textContent = `${savedCount}/${weekGameList.length} saved`;
-            countPill.classList.toggle('save-pill--done', savedCount === weekGameList.length);
-            countPill.classList.toggle('save-pill--partial', savedCount > 0 && savedCount < weekGameList.length);
+            countPill.textContent = `${savedCount}/${total} saved`;
+            countPill.classList.toggle('save-pill--done', savedCount === total);
+            countPill.classList.toggle('save-pill--partial', savedCount > 0 && savedCount < total);
             countPill.classList.toggle('save-pill--empty', savedCount === 0);
         }
 
