@@ -30,8 +30,15 @@
    page's week nav (nfl/weekly-pick-em/picks/styles.css) — a fluid
    single-row grid so 18 weeks fit one row without wrapping, styled as
    individually-bordered tabs. Cell styling (.wn-cell) is shared —
-   see css/components.css. */
-.week-nav-grid { display: grid; border: 0.5px solid var(--c-border); border-radius: var(--radius-sm); overflow: hidden; }
+   see css/components.css. Flush against the pg-wrap below it (see
+   #pg-view-grid .pg-wrap) — border-bottom removed, radius squared off
+   on the bottom, matching the picks page's identical nav-to-round-block
+   seam. background matches .wn-cell's own fill, guarding against a
+   hairline sub-pixel gap between grid columns or at the rounded corner
+   showing the page background bleeding through. */
+.week-nav-grid { display: grid; border: 0.5px solid var(--c-border); border-bottom: none;
+                 border-radius: var(--radius-sm) var(--radius-sm) 0 0; overflow: hidden;
+                 background: var(--c-surface-2); }
 
 /* ---- standings: team-name-primary identity ---- */
 tr.standings-row { cursor: pointer; }
@@ -83,6 +90,12 @@ body.tb-disabled .tiebreak-summary { display: none; }
 /* ---- pick comparison: shared table shell (weekly grid + season results) ---- */
 .pg-wrap { border: 0.5px solid var(--c-border); border-radius: var(--radius-md); overflow: auto; max-height: 560px; -webkit-overflow-scrolling: touch;
            width: fit-content; max-width: 100%; margin: 0 auto; }
+/* Weekly Grid's pg-wrap sits flush under .week-nav-grid — needs its
+   own top border/radius removed (picking up the nav's instead) AND
+   width: 100% instead of fit-content, so its left/right edges actually
+   line up with the full-width nav strip above it rather than centering
+   narrower and leaving the tabs looking disconnected from the box below. */
+#pg-view-grid .pg-wrap { width: 100%; border-top: none; border-radius: 0 0 var(--radius-md) var(--radius-md); }
 .pg-table { border-collapse: collapse; font-size: var(--text-sm); }
 /* vertical-align defaults to baseline on td/th, not middle — without an
    explicit middle here, a bare number (Total) and a padded pill span

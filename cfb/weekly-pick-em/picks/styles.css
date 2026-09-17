@@ -16,8 +16,13 @@
    .round-block), like a folder tab attached to its page. Cell styling
    (.wn-cell) is shared with the dashboard's week nav — see
    css/components.css. */
+/* background matches .wn-cell's own fill — CSS Grid columns dividing a
+   non-round pixel width can leave a hairline sub-pixel gap between
+   cells or at the rounded corner; without a matching background here,
+   that gap shows the page background bleeding through instead. */
 .week-nav-grid { display: grid; border: 0.5px solid var(--c-border); border-bottom: none;
-                 border-radius: var(--radius-sm) var(--radius-sm) 0 0; overflow: hidden; }
+                 border-radius: var(--radius-sm) var(--radius-sm) 0 0; overflow: hidden;
+                 background: var(--c-surface-2); }
 .week-nav-grid--compact { max-width: 900px; margin-left: auto; margin-right: auto; }
 .wn-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 .wn-dot--green { background: var(--c-accent); }
