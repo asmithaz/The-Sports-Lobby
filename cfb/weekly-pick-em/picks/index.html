@@ -70,7 +70,44 @@
         let leagueId = null;
         let currentSeason = null;
         let currentWeekNum = null;
-        let wpeLeague = null; // { pick_mode, scoring_mode, scope_mode }
+        let wpeLeague = null; // { pick_mode, scoring_mode, scope_mode, conferences }
+
+        // Conference Championship week — same hand-maintained hardcode as
+        // dashboard/index.html's REGULAR_SEASON_LENGTH and wpe-sync-games's
+        // REGULAR_SEASON_WEEKS; update all three together at the start of
+        // each CFB season. Real matchups for this week aren't determined
+        // until the last regular-season week's games finish (unlike every
+        // other week, where ESPN already knows the two teams — only the
+        // spread is ever genuinely "TBD" elsewhere), so ESPN has nothing to
+        // sync here until then. See relevantChampionshipConferences() below
+        // for the placeholder rows that fill the gap in the meantime.
+        const REGULAR_SEASON_LENGTH = 14;
+
+        // Conferences confirmed to hold a real championship game — see
+        // https://fbschedules.com/college-football-conference-championship-games/.
+        // Independents (no conference) and the current small-membership
+        // Pac-12 don't have one, so they're deliberately left out here even
+        // though wpe_power4_conferences()/wpe_group_of_5_conferences() (and
+        // this file's own scope_mode filtering) track more conferences than
+        // this list.
+        const CHAMPIONSHIP_CONFERENCES = ['ACC', 'Big Ten', 'Big 12', 'SEC', 'American', 'Conference USA', 'MAC', 'Mountain West', 'Sun Belt'];
+        const POWER4_CONFERENCES = ['ACC', 'Big 12', 'Big Ten', 'SEC'];
+        const GROUP_OF_5_CONFERENCES = ['American', 'Conference USA', 'MAC', 'Mountain West', 'Sun Belt'];
+
+        // Mirrors wpe_get_slate's scope_mode branching (schema.sql), applied
+        // to the fixed CHAMPIONSHIP_CONFERENCES list instead of actual
+        // synced games — there's no real game row yet to filter by
+        // conference the normal way until matchups are set. sports_lobby_choice
+        // isn't a real conference filter server-side (it's a per-game score
+        // computed at sync time), but every conference championship is
+        // guaranteed marquee content (~10 total games that week, well under
+        // the 25-slot cap), so it's treated the same as all_fbs here.
+        function relevantChampionshipConferences() {
+            if (wpeLeague.scope_mode === 'power4') return CHAMPIONSHIP_CONFERENCES.filter(c => POWER4_CONFERENCES.includes(c));
+            if (wpeLeague.scope_mode === 'group_of_5') return CHAMPIONSHIP_CONFERENCES.filter(c => GROUP_OF_5_CONFERENCES.includes(c));
+            if (wpeLeague.scope_mode === 'custom') return CHAMPIONSHIP_CONFERENCES.filter(c => (wpeLeague.conferences || []).includes(c));
+            return CHAMPIONSHIP_CONFERENCES;
+        }
 
         // pending[gameId] = { picked_team, confidence_points } — local edit
         // state, seeded from existing picks. Auto-saved to the server as
@@ -174,8 +211,8 @@
             }
 
             const { data: wpeLeagueRow } = await supabase
-                .from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode, tiebreakers_enabled').eq('league_id', leagueId).eq('season', currentSeason).single();
-            wpeLeague = wpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat', scope_mode: 'sports_lobby_choice', tiebreakers_enabled: true };
+                .from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode, conferences, tiebreakers_enabled').eq('league_id', leagueId).eq('season', currentSeason).single();
+            wpeLeague = wpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat', scope_mode: 'sports_lobby_choice', conferences: [], tiebreakers_enabled: true };
             document.getElementById('league-sub').textContent =
                 `College Football Weekly Pick 'Em · ${wpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${wpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring`;
 
@@ -196,7 +233,17 @@
             for (const key in pending) delete pending[key];
             (myPicks || []).forEach(p => { pending[p.game_id] = { picked_team: p.picked_team, confidence_points: p.confidence_points }; });
 
-            weeks = [...new Set(allGames.map(g => g.week))].sort((a, b) => a - b);
+            // Always includes REGULAR_SEASON_LENGTH (Conference Championship
+            // week) even before ESPN has any real games synced for it —
+            // renderWeek() fills the gap with per-conference "TBD"
+            // placeholder rows so the week is still visible/browsable
+            // instead of vanishing from the nav entirely until matchups
+            // are set. Skipped only if this league's scope has no
+            // championship-holding conference in it at all (an edge case
+            // for a narrow custom scope) — nothing to placeholder either.
+            const weekList = allGames.map(g => g.week);
+            if (relevantChampionshipConferences().length > 0) weekList.push(REGULAR_SEASON_LENGTH);
+            weeks = [...new Set(weekList)].sort((a, b) => a - b);
             const container = document.getElementById('rounds-container');
             document.getElementById('week-nav').innerHTML = '';
             container.innerHTML = '';
@@ -289,9 +336,17 @@
 
             const openGames = games.filter(g => !isLocked(g));
             const confMax = games.length;
-            const showConf = wpeLeague.scoring_mode === 'confidence';
+            // Guards against a real-but-degenerate 0-game state, only
+            // reachable for REGULAR_SEASON_LENGTH before any Conference
+            // Championship matchups are set (every other week only ever
+            // enters `weeks` once it already has >=1 real game — see
+            // loadAndRender) — an empty confidence tracker/column would
+            // otherwise render for nothing to rank yet.
+            const showConf = wpeLeague.scoring_mode === 'confidence' && games.length > 0;
 
-            const hint = showConf
+            const hint = games.length === 0
+                ? 'Matchups for these championship games are set once the regular season\'s final results decide each conference\'s field — check back once earlier games wrap up.'
+                : showConf
                 ? `Rank every pick's confidence from 1 (least sure) to ${confMax} (most sure) — each number can only be used once. Picks save automatically as soon as both a team and a rank are set.`
                 : 'Pick a winner for every game this week — picks save automatically as soon as you click a team.';
 
@@ -299,8 +354,8 @@
 
             block.innerHTML = `
               <div class="round-head">
-                <h2>Week ${week}${week === currentWeekNum ? ' <span class="pill pill--muted">Current</span>' : ''}</h2>
-                <span class="round-count">${games.length} game${games.length === 1 ? '' : 's'}</span>
+                <h2>Week ${week}${week === REGULAR_SEASON_LENGTH ? ' — Conference Championship' : ''}${week === currentWeekNum ? ' <span class="pill pill--muted">Current</span>' : ''}</h2>
+                <span class="round-count">${games.length > 0 ? `${games.length} game${games.length === 1 ? '' : 's'}` : 'Matchups TBD'}</span>
               </div>
               <div class="round-hint">${hint}</div>
               ${openGames.length > 0 ? `
@@ -348,6 +403,12 @@
 
             const tbody = block.querySelector(`#week-${week}-body`);
             games.forEach(g => tbody.appendChild(renderGameRow(g, confMax)));
+            if (week === REGULAR_SEASON_LENGTH) {
+                const coveredConfs = new Set(games.flatMap(g => [g.home_conference, g.away_conference]).filter(Boolean));
+                relevantChampionshipConferences()
+                    .filter(conf => !coveredConfs.has(conf))
+                    .forEach(conf => tbody.appendChild(renderChampionshipPlaceholderRow(conf, showConf)));
+            }
 
             wireWeekInteractions(week, block, confMax);
             wireTiebreakerCard(week, block);
@@ -420,6 +481,29 @@
                     statusEl.classList.add('tiebreak-status--saved');
                 });
             });
+        }
+
+        // A non-interactive stand-in for a Conference Championship game
+        // whose participants aren't decided yet — no team to select, no
+        // confidence to assign, no score to grade, so this deliberately
+        // doesn't reuse renderGameRow's pick-wiring at all. data-state
+        // "placeholder" (not "open") keeps it out of
+        // wireWeekInteractions' `tr[data-state="open"]` selector; sort
+        // fields push it to the bottom of every sort (kickoff date
+        // unknown, result not applicable).
+        function renderChampionshipPlaceholderRow(conf, showConf) {
+            const tr = document.createElement('tr');
+            tr.dataset.date = '9999-12-31';
+            tr.dataset.matchup = conf;
+            tr.dataset.state = 'placeholder';
+            tr.dataset.result = '4';
+            const matchupHtml = `
+              <div class="mu-head"><span>${escapeHtml(conf)} Championship</span></div>
+              <div class="mu-team-row plain"><span class="t-name"><span class="t-name-label">TBD</span></span></div>
+              <div class="mu-team-row plain"><span class="t-name"><span class="t-name-label">TBD</span></span></div>
+            `;
+            tr.innerHTML = `<td>${matchupHtml}</td><td class="kick-block"><div class="kline kline--muted">Matchup TBD</div></td>${showConf ? '<td><span class="text-muted">—</span></td>' : ''}<td class="col-result"><span class="text-muted">—</span></td>`;
+            return tr;
         }
 
         function renderGameRow(g, confMax) {

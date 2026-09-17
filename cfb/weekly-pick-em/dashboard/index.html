@@ -68,7 +68,7 @@
                 </div>
 
                 <div id="pg-view-grid">
-                    <div class="week-nav-grid" id="week-toggle" style="margin-bottom:var(--space-3);"></div>
+                    <div class="week-nav-grid" id="week-toggle"></div>
                     <div class="pg-wrap">
                         <table class="pg-table">
                             <thead><tr id="pg-header-row"><th class="pg-team-th">Team</th></tr></thead>
@@ -137,7 +137,7 @@
         let currentUserId = null;
         let leagueId = null;
         let currentSeason = null;
-        let wpeLeague = null; // { pick_mode, scoring_mode, scope_mode }
+        let wpeLeague = null; // { pick_mode, scoring_mode, scope_mode, conferences }
         let comparisonWeeks = [];
         let currentComparisonWeek = null;
         let seasonWeeks = []; // every week in the season's synced schedule, including future ones — for the tiebreak table
@@ -147,6 +147,34 @@
             power4: 'Power 4', group_of_5: 'Group of 5', all_fbs: 'All FBS',
             sports_lobby_choice: 'Sports Lobby Choice', custom: 'Custom conferences'
         };
+
+        // Conference Championship week — same hand-maintained hardcode as
+        // picks/index.html's REGULAR_SEASON_LENGTH and wpe-sync-games's
+        // REGULAR_SEASON_WEEKS; update all three together at the start of
+        // each CFB season. See relevantChampionshipConferences() below.
+        const REGULAR_SEASON_LENGTH = 14;
+
+        // Conferences confirmed to hold a real championship game — see
+        // https://fbschedules.com/college-football-conference-championship-games/.
+        // Independents and the current small-membership Pac-12 don't have
+        // one, so they're deliberately left out here even though this
+        // league's own conference tracking covers more conferences than
+        // this list.
+        const CHAMPIONSHIP_CONFERENCES = ['ACC', 'Big Ten', 'Big 12', 'SEC', 'American', 'Conference USA', 'MAC', 'Mountain West', 'Sun Belt'];
+        const POWER4_CONFERENCES = ['ACC', 'Big 12', 'Big Ten', 'SEC'];
+        const GROUP_OF_5_CONFERENCES = ['American', 'Conference USA', 'MAC', 'Mountain West', 'Sun Belt'];
+
+        // Mirrors wpe_get_slate's scope_mode branching (schema.sql), applied
+        // to the fixed CHAMPIONSHIP_CONFERENCES list — see picks/index.html's
+        // identical helper for the full reasoning (sports_lobby_choice
+        // treated the same as all_fbs: every conference championship is
+        // guaranteed marquee content).
+        function relevantChampionshipConferences() {
+            if (wpeLeague.scope_mode === 'power4') return CHAMPIONSHIP_CONFERENCES.filter(c => POWER4_CONFERENCES.includes(c));
+            if (wpeLeague.scope_mode === 'group_of_5') return CHAMPIONSHIP_CONFERENCES.filter(c => GROUP_OF_5_CONFERENCES.includes(c));
+            if (wpeLeague.scope_mode === 'custom') return CHAMPIONSHIP_CONFERENCES.filter(c => (wpeLeague.conferences || []).includes(c));
+            return CHAMPIONSHIP_CONFERENCES;
+        }
 
         function abbrev(name) {
             return (name || '').replace(/[^A-Za-z ]/g, '').split(' ').filter(Boolean)
@@ -310,8 +338,8 @@
             }
 
             const { data: wpeLeagueRow } = await supabase
-                .from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode, tiebreakers_enabled, include_army_navy_week').eq('league_id', leagueId).eq('season', currentSeason).single();
-            wpeLeague = wpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat', scope_mode: 'sports_lobby_choice', tiebreakers_enabled: true, include_army_navy_week: false };
+                .from('wpe_leagues').select('pick_mode, scoring_mode, scope_mode, conferences, tiebreakers_enabled, include_army_navy_week').eq('league_id', leagueId).eq('season', currentSeason).single();
+            wpeLeague = wpeLeagueRow || { pick_mode: 'straight_up', scoring_mode: 'flat', scope_mode: 'sports_lobby_choice', conferences: [], tiebreakers_enabled: true, include_army_navy_week: false };
             document.getElementById('league-sub').textContent =
                 `College Football Weekly Pick 'Em · ${SCOPE_LABEL[wpeLeague.scope_mode] || 'Custom'} · ${wpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${wpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring`;
 
@@ -326,16 +354,10 @@
             // change as the season progresses. wpe_get_slate only returns
             // weeks ESPN has already published/synced, which lags behind
             // the real season length early in the year, so union it with
-            // the known regular-season week count rather than relying on
-            // it alone. Computed unconditionally (not just when tiebreakers
-            // are on) since Season Results needs it regardless.
-            //
-            // REGULAR_SEASON_LENGTH is hand-maintained, not derived —
-            // update this constant at the start of each CFB season
-            // (14 for 2026; verify against that year's actual
-            // conference-championship-week number, ESPN's schedule
-            // API is blocked from this sandbox to check directly).
-            const REGULAR_SEASON_LENGTH = 14;
+            // the known regular-season week count (REGULAR_SEASON_LENGTH,
+            // module-level above) rather than relying on it alone. Computed
+            // unconditionally (not just when tiebreakers are on) since
+            // Season Results needs it regardless.
             const { data: slate } = await supabase.rpc('wpe_get_slate', { p_league_id: leagueId, p_season: currentSeason });
             fullSlate = slate || [];
             const syncedWeeks = fullSlate.map(g => g.week);
@@ -570,9 +592,15 @@
             // Includes weeks beyond "current" too — the schedule (and any
             // already-published spread) is synced up front now, and pcell()
             // already renders a locked/pending state correctly for games
-            // nobody's picked yet, so there's nothing to gate here.
-            comparisonWeeks = [...new Set((slate || []).map(g => g.week))]
-                .sort((a, b) => a - b);
+            // nobody's picked yet, so there's nothing to gate here. Also
+            // always includes REGULAR_SEASON_LENGTH (Conference
+            // Championship week) even with zero real games synced yet —
+            // loadPickComparisonGrid() fills the gap with per-conference
+            // "TBD" placeholder columns — unless this league's scope has no
+            // championship-holding conference in it at all.
+            const weekList = (slate || []).map(g => g.week);
+            if (relevantChampionshipConferences().length > 0) weekList.push(REGULAR_SEASON_LENGTH);
+            comparisonWeeks = [...new Set(weekList)].sort((a, b) => a - b);
             if (!comparisonWeeks.length) {
                 document.getElementById('pg-body').innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No games synced yet.</td></tr>`;
                 return;
@@ -612,7 +640,7 @@
         // actually earned so far (final games only; live/pending picks
         // contribute 0 until they resolve), not a score projection.
         async function loadPickComparisonGrid() {
-            const [{ data: games }, { data: members }, { data: weekPicks }] = await Promise.all([
+            const [{ data: realGames }, { data: members }, { data: weekPicks }] = await Promise.all([
                 supabase.rpc('wpe_get_slate', { p_league_id: leagueId, p_season: currentSeason, p_week: currentComparisonWeek }),
                 supabase.from('league_members').select('user_id, team_name').eq('league_id', leagueId),
                 supabase.from('wpe_picks').select('user_id, game_id, picked_team, confidence_points')
@@ -622,13 +650,33 @@
             const body = document.getElementById('pg-body');
             const headerRow = document.getElementById('pg-header-row');
 
-            if (!games || games.length === 0) {
+            // Conference Championship week: fill in a synthetic placeholder
+            // column (isPlaceholder: true) for every relevant conference
+            // that doesn't already have a real game this week — same gap
+            // this fills on the picks page. muThHtml/pcell below both
+            // special-case isPlaceholder before touching any real-game
+            // field (spread, winner_team, kickoff_at, etc., all null/absent
+            // on a placeholder).
+            let games = realGames || [];
+            if (currentComparisonWeek === REGULAR_SEASON_LENGTH) {
+                const coveredConfs = new Set(games.flatMap(g => [g.home_conference, g.away_conference]).filter(Boolean));
+                const placeholders = relevantChampionshipConferences()
+                    .filter(conf => !coveredConfs.has(conf))
+                    .map(conf => ({ id: `placeholder-${conf}`, isPlaceholder: true, conference: conf }));
+                games = [...games, ...placeholders];
+            }
+
+            if (!games.length) {
                 headerRow.innerHTML = '<th class="pg-team-th">Team</th>';
                 body.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No games in this week's slate.</td></tr>`;
                 return;
             }
 
             function muThHtml(g) {
+                if (g.isPlaceholder) {
+                    return `<div class="mu-th-head">Matchup TBD</div>
+                      <div class="mu-th-line">${escapeHtml(g.conference)} Championship</div>`;
+                }
                 const awayTag = g.spread != null && g.favorite_team ? (g.favorite_team === g.away_team ? `−${g.spread}` : `+${g.spread}`) : null;
                 const homeTag = g.spread != null && g.favorite_team ? (g.favorite_team === g.home_team ? `−${g.spread}` : `+${g.spread}`) : null;
                 function muLine(team, isWinner, spreadTag, logoUrl) {
@@ -653,6 +701,7 @@
             });
 
             function pcell(pick, g, isMe) {
+                if (g.isPlaceholder) return { html: `<div class="pcell pcell--pending"><span class="pcell-name text-muted">—</span></div>`, pts: 0 };
                 if (!pick) {
                     if (!isMe && !isLocked(g)) return { html: `<div class="pcell pcell--hidden">🔒</div>`, pts: 0 };
                     if (g.status === 'final') {
