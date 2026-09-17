@@ -226,4 +226,11 @@ body.tb-disabled .tiebreak-summary { display: none; }
 #pg-view-results .pg-table td:not(.pg-team-cell):not(.wr-total-cell) {
     padding-left: 4px; padding-right: 4px; overflow: hidden; text-overflow: ellipsis;
 }
+/* Per-week header cells (Wk 1, Wk 2, …) match the week-nav tabs'
+   font/color (.wn-cell) instead of the bold-uppercase-muted style
+   every other table header uses — Team/Total keep that treatment,
+   since they're not week labels. */
+#pg-view-results .pg-table th:not(.pg-team-th):not(.wr-total-th) {
+    font-weight: var(--weight-medium); color: var(--c-text-secondary); text-transform: none;
+}
 #pg-view-results .wr-cell { padding-left: 6px; padding-right: 6px; min-width: 0; }
