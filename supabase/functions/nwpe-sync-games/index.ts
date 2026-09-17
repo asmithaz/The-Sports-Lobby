@@ -20,18 +20,18 @@
 //
 // WEEK NUMBERING: postseason weeks are stored as 18 + ESPN's own
 // postseason week number (so Wild Card=19, Divisional=20,
-// Conference Championship=21, Super Bowl=23 — round 22/week 4 is the
-// Pro Bowl bye, no real games) so they sort continuously after the
-// regular season's weeks 1-18 instead of colliding with them (both
-// would otherwise restart counting from 1). The round ORDER/NAMES are
-// confirmed against ESPN's own scoreboard UI (Wild Card, Divisional,
-// Conference Championship, Pro Bowl, Super Bowl, in that sequence —
-// matches this file's 1/2/3/4/5 exactly). Still worth one ?raw=true
-// check against this deployed function once real postseason EVENT
-// data exists, to confirm mapEvent() parses actual playoff games the
-// same way it parses regular-season ones (undetermined-matchup
-// filtering, odds parsing, etc.) — the round numbering itself is no
-// longer the open question.
+// Conference Championship=21, Super Bowl=23 — week 22/round 4 is
+// deliberately skipped, see PRO_BOWL_ESPN_WEEK below) so they sort
+// continuously after the regular season's weeks 1-18 instead of
+// colliding with them (both would otherwise restart counting from 1).
+// The round ORDER/NAMES are confirmed against ESPN's own scoreboard UI
+// (Wild Card, Divisional, Conference Championship, Pro Bowl, Super
+// Bowl, in that sequence — matches this file's 1/2/3/4/5 exactly).
+// Still worth one ?raw=true check against this deployed function once
+// real postseason EVENT data exists, to confirm mapEvent() parses
+// actual playoff games the same way it parses regular-season ones
+// (undetermined-matchup filtering, odds parsing, etc.) — the round
+// numbering itself is no longer the open question.
 //
 // Triggered by:
 //  - pg_cron + pg_net every 15 minutes during the season (schema.sql
@@ -97,6 +97,12 @@ const LOOKBACK_WEEKS = 1;
 // CFB's hand-maintained per-year regular-season-length constant, this
 // one is safe to hardcode.
 const REGULAR_SEASON_WEEKS = 18;
+
+// ESPN's own postseason week number for the Pro Bowl — an exhibition
+// with no real spread/pick sense, deliberately never synced into
+// nwpe_games (no tab, no placeholder — just skipped, per round order
+// confirmed against ESPN's UI: 1=WC, 2=Div, 3=CC, 4=Pro Bowl, 5=SB).
+const PRO_BOWL_ESPN_WEEK = 4;
 
 interface MappedGame {
   espn_event_id: string;
@@ -423,6 +429,7 @@ Deno.serve(async (req) => {
 
     const mapped: MappedGame[] = weeksToFetch
       .flatMap(({ events, espnWeek }) => {
+        if (seasonType === 3 && espnWeek === PRO_BOWL_ESPN_WEEK) return []; // never synced, see PRO_BOWL_ESPN_WEEK
         const storedWeek = seasonType === 3 ? REGULAR_SEASON_WEEKS + espnWeek : espnWeek;
         return events.map((ev: any) => mapEvent(ev, storedWeek, seasonType));
       })

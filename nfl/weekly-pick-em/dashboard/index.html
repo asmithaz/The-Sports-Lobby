@@ -62,9 +62,15 @@
                 <div class="section-title">Pick Comparison</div>
                 <div class="section-sub">Everyone's picks are hidden until that game locks — you can always see your own.</div>
 
-                <div class="pill-toggle" id="pg-view-toggle" style="margin-bottom:var(--space-3);">
-                    <button type="button" class="pill pill--green" data-view="grid">Weekly Grid</button>
-                    <button type="button" class="pill pill--muted" data-view="results">Season Results</button>
+                <div class="pg-controls-row">
+                    <div class="season-toggle" id="season-toggle" style="display:none;">
+                        <button type="button" class="season-toggle__btn" data-mode="regular">Regular Season</button>
+                        <button type="button" class="season-toggle__btn" data-mode="playoffs">Playoffs</button>
+                    </div>
+                    <div class="pill-toggle" id="pg-view-toggle">
+                        <button type="button" class="pill pill--green" data-view="grid">Weekly Grid</button>
+                        <button type="button" class="pill pill--muted" data-view="results">Season Results</button>
+                    </div>
                 </div>
 
                 <div id="pg-view-grid">
@@ -142,6 +148,10 @@
         let currentComparisonWeek = null;
         let seasonWeeks = []; // every week in the season's synced schedule, including future ones — for the tiebreak table
         let fullSlate = []; // every synced game for the season (every week, unfiltered by week) — for the standings breakdown
+        let currentWeekNum = null;
+        let regularSeasonCompleteAt = null;
+        let seasonMode = null; // 'regular' | 'playoffs' — drives Pick Comparison + Season Results, NOT the standings breakdown's own tiebreak bar (small enough to just show every week)
+        let hasPlayoffWeeks = false; // true once any synced week > 18 exists
         // locksByGameId[gameId] = { locked_spread, locked_favorite_team, is_final } —
         // this league's own spread_lock_mode snapshot, only fetched in spread pick_mode.
         let locksByGameId = {};
@@ -173,13 +183,22 @@
         }
         function weekLabel(week) {
             if (week <= 18) return `Week ${week}`;
-            const names = { 1: 'Wild Card', 2: 'Divisional', 3: 'Conference Championship', 4: 'Pro Bowl', 5: 'Super Bowl' };
+            const names = { 1: 'Wild Card', 2: 'Divisional', 3: 'Conference Championship', 5: 'Super Bowl' };
             return names[week - 18] || `Playoff Round ${week - 18}`;
         }
         function weekColLabel(week) {
             if (week <= 18) return `Wk ${week}`;
-            const abbrevs = { 1: 'WC', 2: 'Div', 3: 'CC', 4: 'PB', 5: 'SB' };
+            const abbrevs = { 1: 'WC', 2: 'Div', 3: 'CC', 5: 'SB' };
             return abbrevs[week - 18] || `PO${week - 18}`;
+        }
+        // Which of comparisonWeeks/seasonWeeks the current season-toggle
+        // mode should show. Regular Season = 1-18, Playoffs = anything
+        // synced past that.
+        function visibleComparisonWeeks() {
+            return comparisonWeeks.filter(w => seasonMode === 'playoffs' ? w > 18 : w <= 18);
+        }
+        function visibleSeasonWeeks() {
+            return seasonWeeks.filter(w => seasonMode === 'playoffs' ? w > 18 : w <= 18);
         }
         // Weeks with at least one final game — the whole season is synced
         // up front now (nwpe-sync-games), so "has a game been synced" is no
@@ -369,10 +388,33 @@
             // hand-maintained per-year constant, this one is safe to
             // hardcode.
             const REGULAR_SEASON_WEEKS = Array.from({ length: 18 }, (_, i) => i + 1);
-            const { data: slate } = await supabase.rpc('nwpe_get_slate', { p_league_id: leagueId, p_season: currentSeason });
+            const [{ data: slate }, { data: stateRow }] = await Promise.all([
+                supabase.rpc('nwpe_get_slate', { p_league_id: leagueId, p_season: currentSeason }),
+                supabase.from('nwpe_season_state').select('current_week, regular_season_complete_at').eq('season', currentSeason).maybeSingle()
+            ]);
             fullSlate = slate || [];
             const syncedWeeks = fullSlate.map(g => g.week);
             seasonWeeks = [...new Set([...REGULAR_SEASON_WEEKS, ...syncedWeeks])].sort((a, b) => a - b);
+            currentWeekNum = stateRow?.current_week ?? null;
+            regularSeasonCompleteAt = stateRow?.regular_season_complete_at ?? null;
+            hasPlayoffWeeks = syncedWeeks.some(w => w > 18);
+            // Same rule as the picks page: only defaults to Playoffs once
+            // Week 18 is actually done, not merely because a postseason
+            // row synced (ESPN posts a round's broadcast windows before
+            // its matchups are seeded).
+            seasonMode = (hasPlayoffWeeks && regularSeasonCompleteAt) ? 'playoffs' : 'regular';
+
+            document.getElementById('season-toggle').addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-mode]');
+                if (!btn || btn.dataset.mode === seasonMode) return;
+                seasonMode = btn.dataset.mode;
+                const vis = visibleComparisonWeeks();
+                currentComparisonWeek = vis.includes(currentWeekNum) ? currentWeekNum : (vis[vis.length - 1] ?? comparisonWeeks[comparisonWeeks.length - 1]);
+                renderSeasonToggle();
+                renderWeekToggle();
+                loadPickComparisonGrid();
+                if (document.getElementById('pg-view-results').style.display !== 'none') loadWeeklyResults();
+            });
 
             locksByGameId = {};
             if (nwpeLeague.pick_mode === 'spread' && fullSlate.length) {
@@ -588,28 +630,32 @@
         }
 
         async function loadPickComparisonInit() {
-            const [{ data: slate }, { data: stateRow }] = await Promise.all([
-                supabase.rpc('nwpe_get_slate', { p_league_id: leagueId, p_season: currentSeason }),
-                supabase.from('nwpe_season_state').select('current_week').eq('season', currentSeason).maybeSingle()
-            ]);
-
-            // Includes weeks beyond "current" too — the schedule (and any
-            // already-published spread) is synced up front now, and pcell()
-            // already renders a locked/pending state correctly for games
-            // nobody's picked yet, so there's nothing to gate here.
-            comparisonWeeks = [...new Set((slate || []).map(g => g.week))]
-                .sort((a, b) => a - b);
+            // Reuses fullSlate/currentWeekNum from init() instead of a
+            // second nwpe_get_slate round-trip — includes weeks beyond
+            // "current" too, since the schedule (and any already-published
+            // spread) is synced up front now, and pcell() already renders
+            // a locked/pending state correctly for games nobody's picked
+            // yet, so there's nothing to gate here.
+            comparisonWeeks = [...new Set(fullSlate.map(g => g.week))].sort((a, b) => a - b);
             if (!comparisonWeeks.length) {
                 document.getElementById('pg-body').innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No games synced yet.</td></tr>`;
                 return;
             }
 
-            currentComparisonWeek = comparisonWeeks.includes(stateRow?.current_week)
-                ? stateRow.current_week
-                : comparisonWeeks[comparisonWeeks.length - 1];
+            const vis = visibleComparisonWeeks();
+            currentComparisonWeek = vis.includes(currentWeekNum) ? currentWeekNum : (vis[vis.length - 1] ?? comparisonWeeks[comparisonWeeks.length - 1]);
 
+            renderSeasonToggle();
             renderWeekToggle();
             await loadPickComparisonGrid();
+        }
+
+        function renderSeasonToggle() {
+            const toggle = document.getElementById('season-toggle');
+            toggle.style.display = hasPlayoffWeeks ? 'inline-flex' : 'none';
+            toggle.querySelectorAll('.season-toggle__btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === seasonMode);
+            });
         }
 
         // Same bordered tab-strip as the picks page's week nav — a fluid
@@ -619,8 +665,9 @@
         // whole season was synced up front.
         function renderWeekToggle() {
             const toggle = document.getElementById('week-toggle');
-            toggle.style.gridTemplateColumns = `repeat(${comparisonWeeks.length}, minmax(0, 1fr))`;
-            toggle.innerHTML = comparisonWeeks.map(w =>
+            const vis = visibleComparisonWeeks();
+            toggle.style.gridTemplateColumns = `repeat(${vis.length}, minmax(0, 1fr))`;
+            toggle.innerHTML = vis.map(w =>
                 `<button type="button" class="wn-cell${w === currentComparisonWeek ? ' wn-cell--selected' : ''}" data-week="${w}">${weekColLabel(w)}</button>`
             ).join('');
             toggle.onclick = (e) => {
@@ -733,8 +780,9 @@
         async function loadWeeklyResults() {
             const wrBody = document.getElementById('wr-body');
             const wrHeader = document.getElementById('wr-header-row');
+            const visWeeks = visibleSeasonWeeks();
             wrHeader.innerHTML = '<th class="pg-team-th">Team</th><th class="wr-total-th">Total</th>'
-                + seasonWeeks.map(w => `<th>${weekColLabel(w)}</th>`).join('');
+                + visWeeks.map(w => `<th>${weekColLabel(w)}</th>`).join('');
             wrBody.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">Loading…</td></tr>`;
 
             const [{ data: standings, error }, { data: picks }] = await Promise.all([
@@ -780,7 +828,7 @@
             const openWeeks = new Set(startedWeeks());
 
             const weekMax = {};
-            seasonWeeks.forEach(w => {
+            visWeeks.forEach(w => {
                 if (!openWeeks.has(w)) return;
                 weekMax[w] = Math.max(0, ...standings.map(row => weekValue(row.user_id, w)));
             });
@@ -793,7 +841,7 @@
 
                 let html = `<td class="pg-team-cell"><span class="wr-rank${i === 0 ? ' wr-rank--top' : ''}">${i + 1}</span><span class="pg-team-name">${escapeHtml(row.team_name || 'Unnamed Team')}</span>${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</td>`;
                 html += `<td class="wr-total-cell"><span class="wr-cell wr-cell--total">${row.total_points}</span></td>`;
-                seasonWeeks.forEach(w => {
+                visWeeks.forEach(w => {
                     if (!openWeeks.has(w)) {
                         html += `<td><span class="wr-cell wr-cell--future">—</span></td>`;
                         return;

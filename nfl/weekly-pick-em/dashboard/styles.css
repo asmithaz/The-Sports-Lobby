@@ -26,6 +26,14 @@
 .section-sub { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: var(--space-3); }
 .section-block { margin-bottom: var(--space-8); }
 
+/* Season toggle (left) + Weekly Grid/Season Results pills (right), on
+   one row — the season toggle is display:none until the league has a
+   synced postseason week, so pg-view-toggle stays flush right on its
+   own via margin-left:auto rather than depending on space-between
+   with a hidden sibling. */
+.pg-controls-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.pg-controls-row .pill-toggle { margin-left: auto; }
+
 /* ---- pick-comparison week nav: same bordered tab-strip as the picks
    page's week nav (nfl/weekly-pick-em/picks/styles.css) — a fluid
    single-row grid so 18 weeks fit one row without wrapping, styled as

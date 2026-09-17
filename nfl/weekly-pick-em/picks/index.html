@@ -45,6 +45,11 @@
 
         <p class="matchup-legend">The home team is always listed second. A highlighted row is your pick — green for correct, red for incorrect, amber while the game is live.</p>
 
+        <div class="season-toggle" id="season-toggle" style="display:none; margin-bottom:var(--space-2);">
+            <button type="button" class="season-toggle__btn" data-mode="regular">Regular Season</button>
+            <button type="button" class="season-toggle__btn" data-mode="playoffs">Playoffs</button>
+        </div>
+
         <div class="week-nav-grid" id="week-nav"></div>
 
         <div id="rounds-container">
@@ -85,6 +90,8 @@
         let gamesById = {};
         let weeks = []; // every week with synced games, ascending
         let selectedWeek = null; // which single week's table is currently shown
+        let seasonMode = null; // 'regular' | 'playoffs' — null until the first load sets a default
+        let hasPlayoffWeeks = false; // true once any week > 18 has synced games
         // locksByGameId[gameId] = { locked_spread, locked_favorite_team, is_final, snapshotted_at }
         // — this league's own spread_lock_mode snapshot, only fetched in
         // spread pick_mode (see loadAndRender).
@@ -142,13 +149,13 @@
         }
 
         // Round labels for the postseason's +18-offset weeks — see the
-        // WEEK NUMBERING note in schema.sql. UNVERIFIED against real
-        // postseason data yet (round 4 assumed to be the Pro Bowl bye,
-        // no real games — but since weeks with zero games never appear
-        // in `weeks` below, that round simply never renders regardless).
+        // WEEK NUMBERING note in schema.sql. Round 4 (Pro Bowl) is
+        // deliberately never synced (see PRO_BOWL_ESPN_WEEK in
+        // nwpe-sync-games) so it never appears here at all. UNVERIFIED
+        // against real postseason data yet for the other rounds.
         function weekLabel(week) {
             if (week <= 18) return `Week ${week}`;
-            const names = { 1: 'Wild Card', 2: 'Divisional', 3: 'Conference Championship', 4: 'Pro Bowl', 5: 'Super Bowl' };
+            const names = { 1: 'Wild Card', 2: 'Divisional', 3: 'Conference Championship', 5: 'Super Bowl' };
             return names[week - 18] || `Playoff Round ${week - 18}`;
         }
 
@@ -156,8 +163,14 @@
         // identical weekColLabel().
         function weekColLabel(week) {
             if (week <= 18) return `Wk ${week}`;
-            const abbrevs = { 1: 'WC', 2: 'Div', 3: 'CC', 4: 'PB', 5: 'SB' };
+            const abbrevs = { 1: 'WC', 2: 'Div', 3: 'CC', 5: 'SB' };
             return abbrevs[week - 18] || `PO${week - 18}`;
+        }
+
+        // Which weeks the season-toggle's current mode should show —
+        // Regular Season = 1-18, Playoffs = anything synced past that.
+        function visibleWeeks() {
+            return weeks.filter(w => seasonMode === 'playoffs' ? w > 18 : w <= 18);
         }
 
         // { saved, total } picks for a week — feeds the in-panel "X/Y
@@ -233,6 +246,16 @@
             document.getElementById('league-sub').textContent =
                 `NFL Weekly Pick 'Em · ${nwpeLeague.pick_mode === 'spread' ? 'Spread' : 'Straight Up'} · ${nwpeLeague.scoring_mode === 'confidence' ? 'Confidence' : 'Flat'} scoring${nwpeLeague.continue_to_playoffs ? ' · Continues into playoffs' : ''}`;
 
+            document.getElementById('season-toggle').addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-mode]');
+                if (!btn || btn.dataset.mode === seasonMode) return;
+                seasonMode = btn.dataset.mode;
+                const vis = visibleWeeks();
+                selectedWeek = vis.includes(currentWeekNum) ? currentWeekNum : vis[vis.length - 1];
+                renderWeekNav();
+                renderSelectedWeek();
+            });
+
             await loadAndRender();
         }
 
@@ -240,12 +263,13 @@
             const [{ data: games }, { data: myPicks }, { data: stateRow }] = await Promise.all([
                 supabase.rpc('nwpe_get_slate', { p_league_id: leagueId, p_season: currentSeason }),
                 supabase.from('nwpe_picks').select('*').eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', currentUserId),
-                supabase.from('nwpe_season_state').select('current_week').eq('season', currentSeason).maybeSingle()
+                supabase.from('nwpe_season_state').select('current_week, regular_season_complete_at').eq('season', currentSeason).maybeSingle()
             ]);
 
             allGames = games || [];
             gamesById = Object.fromEntries(allGames.map(g => [g.id, g]));
             currentWeekNum = stateRow?.current_week ?? null;
+            const regularSeasonCompleteAt = stateRow?.regular_season_complete_at ?? null;
 
             locksByGameId = {};
             if (nwpeLeague.pick_mode === 'spread' && allGames.length) {
@@ -261,11 +285,24 @@
             (myPicks || []).forEach(p => { pending[p.game_id] = { picked_team: p.picked_team, confidence_points: p.confidence_points }; });
 
             weeks = [...new Set(allGames.map(g => g.week))].sort((a, b) => a - b);
+            hasPlayoffWeeks = weeks.some(w => w > 18);
+            // Auto-selects Playoffs once it's real — but only once Week 18
+            // is actually done (regular_season_complete_at), not merely
+            // because a postseason row synced. ESPN posts broadcast
+            // windows for a round before its matchups are seeded, so a
+            // playoff week can exist here while the regular season is
+            // still being played; only preserves a choice the user already
+            // made (seasonMode stays non-null across re-renders).
+            if (seasonMode == null) {
+                seasonMode = (hasPlayoffWeeks && regularSeasonCompleteAt) ? 'playoffs' : 'regular';
+            }
+
             const container = document.getElementById('rounds-container');
             document.getElementById('week-nav').innerHTML = '';
             container.innerHTML = '';
 
             if (!weeks.length) {
+                document.getElementById('season-toggle').style.display = 'none';
                 container.innerHTML = `<p class="text-muted" style="padding:var(--space-4);">No games in your league's weekly slate yet — check back once this week's games are posted.</p>`;
                 return;
             }
@@ -296,8 +333,9 @@
                 (myGuesses || []).forEach(g => { tbGuessByWeek[g.week] = g; });
             }
 
-            if (selectedWeek == null || !weeks.includes(selectedWeek)) {
-                selectedWeek = weeks.includes(currentWeekNum) ? currentWeekNum : weeks[weeks.length - 1];
+            const vis = visibleWeeks();
+            if (selectedWeek == null || !vis.includes(selectedWeek)) {
+                selectedWeek = vis.includes(currentWeekNum) ? currentWeekNum : vis[vis.length - 1];
             }
             renderWeekNav();
             renderSelectedWeek();
@@ -317,9 +355,16 @@
         // switch weeks, instead of scrolling through 18 stacked accordion
         // sections.
         function renderWeekNav() {
+            const toggle = document.getElementById('season-toggle');
+            toggle.style.display = hasPlayoffWeeks ? 'inline-flex' : 'none';
+            toggle.querySelectorAll('.season-toggle__btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === seasonMode);
+            });
+
+            const vis = visibleWeeks();
             const nav = document.getElementById('week-nav');
-            nav.style.gridTemplateColumns = `repeat(${weeks.length}, minmax(0, 1fr))`;
-            nav.innerHTML = weeks.map(w => {
+            nav.style.gridTemplateColumns = `repeat(${vis.length}, minmax(0, 1fr))`;
+            nav.innerHTML = vis.map(w => {
                 const isCurrent = w === currentWeekNum;
                 const isSelected = w === selectedWeek;
                 const cls = ['wn-cell', isSelected ? 'wn-cell--selected' : ''].filter(Boolean).join(' ');

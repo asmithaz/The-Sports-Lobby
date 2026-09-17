@@ -549,6 +549,40 @@ body {
 .wn-cell:hover { background: rgba(255,255,255,0.06); color: var(--c-text-primary); }
 .wn-cell--selected { background: var(--c-accent-dim); color: var(--c-accent); font-weight: var(--weight-bold); }
 
+/* Regular Season / Playoffs segmented control, shown above a
+   week/round nav strip (.week-nav-grid) once a league has at least one
+   synced postseason week — hidden entirely for a league that hasn't
+   reached (or opted into) the postseason. The active Playoffs state
+   gets its own amber tint instead of the usual accent green, so the
+   two modes never look interchangeable at a glance. Used by
+   nfl/weekly-pick-em's picks/styles.css + dashboard/styles.css; keep
+   in sync here if it's ported to cfb/weekly-pick-em or
+   cfb/bowl-season-pick-em later. */
+.season-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--c-surface-2);
+  border: 0.5px solid var(--c-border);
+  border-radius: var(--radius-sm);
+}
+.season-toggle__btn {
+  appearance: none;
+  font-family: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 14px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--c-text-secondary);
+  transition: background var(--transition), color var(--transition);
+}
+.season-toggle__btn:hover:not(.active) { color: var(--c-text-primary); }
+.season-toggle__btn.active { background: var(--c-accent-dim); color: var(--c-accent); }
+.season-toggle__btn.active[data-mode="playoffs"] { background: rgba(251,191,36,0.12); color: var(--c-warning); }
+
 
 /* ============================================================
    DATA TABLE
