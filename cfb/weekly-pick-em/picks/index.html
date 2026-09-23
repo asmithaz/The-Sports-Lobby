@@ -45,6 +45,14 @@
 
         <p class="matchup-legend">The home team is always listed second. A highlighted row is your pick — green for correct, red for incorrect, amber while the game is live.</p>
 
+        <div class="status-bar status-bar--warning mb-4 hidden" id="kickoff-banner">
+            <div class="status-bar__left">
+                <span class="status-dot status-dot--warning"></span>
+                <span class="status-bar__text" id="kickoff-banner-text"></span>
+            </div>
+            <a href="#" id="kickoff-banner-link" class="btn btn--ghost">View Standings →</a>
+        </div>
+
         <div class="week-nav-grid" id="week-nav"></div>
 
         <div id="rounds-container">
@@ -142,6 +150,31 @@
             if (!game.kickoff_at) return false;
             return new Date() >= new Date(new Date(game.kickoff_at).getTime() - 5 * 60 * 1000);
         }
+        function weekEarliestKickoff(week) {
+            const kicks = weekGames(week).map(g => g.kickoff_at).filter(Boolean).map(k => new Date(k).getTime());
+            return kicks.length ? Math.min(...kicks) : null;
+        }
+        // "Saturday at 12:00 PM EDT" — deliberately doesn't say picks are
+        // "locked", since only the games that have actually kicked off are;
+        // later games this same week can still be open (see isLocked).
+        function fmtBannerKickoff(ms) {
+            const d = new Date(ms);
+            const day = d.toLocaleDateString(undefined, { weekday: 'long' });
+            const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+            return `${day} at ${time}`;
+        }
+        // Shown only for the CURRENT week, and only once its first game has
+        // actually kicked off — nudges toward Standings instead of an
+        // auto-redirect, reusing kickoff_at already loaded for isLocked()
+        // above rather than firing an extra query.
+        function updateKickoffBanner(week) {
+            const banner = document.getElementById('kickoff-banner');
+            const earliest = week === currentWeekNum ? weekEarliestKickoff(week) : null;
+            if (earliest == null || Date.now() < earliest) { banner.classList.add('hidden'); return; }
+            const label = week === REGULAR_SEASON_LENGTH ? 'Conference Championship week' : `Week ${week}`;
+            document.getElementById('kickoff-banner-text').innerHTML = `<b>${label}</b> kicked off ${fmtBannerKickoff(earliest)}.`;
+            banner.classList.remove('hidden');
+        }
         function isCorrect(pick, game) {
             if (!pick || game.status !== 'final') return null;
             if (wpeLeague.pick_mode === 'spread') {
@@ -195,6 +228,7 @@
             if (!leagueId) { window.location.href = '/cfb/index.html'; return; }
 
             document.getElementById('standings-tab-link').href = `/cfb/weekly-pick-em/dashboard/?league_id=${leagueId}`;
+            document.getElementById('kickoff-banner-link').href = `/cfb/weekly-pick-em/dashboard/?league_id=${leagueId}`;
             document.getElementById('history-link').href = `/cfb/weekly-pick-em/history/?league_id=${leagueId}`;
             document.getElementById('settings-link').href = `/cfb/weekly-pick-em/settings/?league_id=${leagueId}`;
 
@@ -323,8 +357,13 @@
             // Keep the tabs row's width matched to the card sitting flush
             // beneath it — a compact (non-confidence) week narrows the
             // card to 900px, so the tabs need to narrow the same way or
-            // the flush seam between them looks misaligned.
-            document.getElementById('week-nav').classList.toggle('week-nav-grid--compact', block.classList.contains('round-block--compact'));
+            // the flush seam between them looks misaligned. The banner
+            // above it needs the same treatment, or it stays full-width
+            // while the card below it narrows.
+            const isCompact = block.classList.contains('round-block--compact');
+            document.getElementById('week-nav').classList.toggle('week-nav-grid--compact', isCompact);
+            document.getElementById('kickoff-banner').classList.toggle('kickoff-banner--compact', isCompact);
+            updateKickoffBanner(selectedWeek);
         }
 
         function renderWeek(week) {

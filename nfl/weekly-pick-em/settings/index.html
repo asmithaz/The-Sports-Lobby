@@ -143,7 +143,7 @@
             </form>
         </div>
 
-        <a href="/nfl/weekly-pick-em/dashboard/" class="btn btn--ghost mt-2">← Back to League Dashboard</a>
+        <a href="/nfl/weekly-pick-em/picks/" class="btn btn--ghost mt-2">← Back to My Picks</a>
     </main>
 
     <footer class="site-footer">
@@ -292,7 +292,7 @@
             statusEl.textContent = redirectAfterSave ? 'Saved. Continuing…' : 'Saved.';
             statusEl.classList.add('text-accent');
             if (redirectAfterSave) {
-                const dest = new URLSearchParams(window.location.search).get('next') || '/nfl/weekly-pick-em/dashboard/';
+                const dest = new URLSearchParams(window.location.search).get('next') || '/nfl/weekly-pick-em/picks/';
                 setTimeout(() => { window.location.href = dest + (dest.includes('?') ? '&' : '?') + 'league_id=' + leagueId; }, 600);
             }
         }
