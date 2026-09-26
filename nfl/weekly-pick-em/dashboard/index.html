@@ -148,6 +148,19 @@
         let currentComparisonWeek = null;
         let seasonWeeks = []; // every week in the season's synced schedule, including future ones — for the tiebreak table
         let fullSlate = []; // every synced game for the season (every week, unfiltered by week) — for the standings breakdown
+
+        // Shared across Overall Standings, Weekly Grid, and Season Results
+        // so a member's owner name (account display name, shown under
+        // their team name — see .owner-name) is only ever fetched once per
+        // page load, not re-queried every time a different view renders it.
+        const ownerNameByUserId = {};
+        async function ensureOwnerNames(userIds) {
+            const missing = [...new Set(userIds)].filter(id => id && !(id in ownerNameByUserId));
+            if (!missing.length) return;
+            const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', missing);
+            missing.forEach(id => { ownerNameByUserId[id] = null; });
+            (profiles || []).forEach(p => { ownerNameByUserId[p.id] = p.display_name; });
+        }
         let currentWeekNum = null;
         let regularSeasonCompleteAt = null;
         let seasonMode = null; // 'regular' | 'playoffs' — drives Pick Comparison + Season Results, NOT the standings breakdown's own tiebreak bar (small enough to just show every week)
@@ -469,19 +482,14 @@
                 return;
             }
 
-            const userIds = rows.map(row => row.user_id);
-            const profileMap = {};
-            if (userIds.length) {
-                const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', userIds);
-                (profiles || []).forEach(p => { profileMap[p.id] = p; });
-            }
+            await ensureOwnerNames(rows.map(row => row.user_id));
 
             tbody.innerHTML = '';
             rows.forEach((row, i) => {
                 const rank = i + 1;
                 const record = `${row.wins}–${row.losses}`;
                 const isMe = row.user_id === currentUserId;
-                const ownerName = profileMap[row.user_id]?.display_name;
+                const ownerName = ownerNameByUserId[row.user_id];
 
                 const pointsCells = nwpeLeague.continue_to_playoffs
                     ? `<td class="num">${row.regular_season_points}</td><td class="num">${row.playoff_points}</td><td class="num num--score">${row.total_points}</td>`
@@ -719,6 +727,7 @@
                 + '<th class="pg-total-th">Wk&nbsp;Total</th>';
 
             const orderedMembers = (members || []).sort((a, b) => (a.user_id === currentUserId ? -1 : b.user_id === currentUserId ? 1 : 0));
+            await ensureOwnerNames(orderedMembers.map(m => m.user_id));
 
             const picksByGameUser = {};
             (weekPicks || []).forEach(p => {
@@ -759,7 +768,11 @@
                 tr.className = isMe ? 'pg-row--me' : '';
 
                 let weekTotal = 0;
-                let row = `<td class="pg-team-cell"><span class="pg-team-name">${escapeHtml(m.team_name || 'Unnamed Team')}</span>${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</td>`;
+                const ownerName = ownerNameByUserId[m.user_id];
+                let row = `<td class="pg-team-cell"><div class="name-stack">
+                    <span class="pg-team-name">${escapeHtml(m.team_name || 'Unnamed Team')}${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</span>
+                    ${ownerName ? `<span class="owner-name">${escapeHtml(ownerName)}</span>` : ''}
+                  </div></td>`;
                 games.forEach(g => {
                     const cell = pcell(picksByGameUser[`${g.id}:${m.user_id}`], g, isMe);
                     weekTotal += cell.pts;
@@ -796,6 +809,7 @@
                 console.error(error);
                 return;
             }
+            await ensureOwnerNames(standings.map(row => row.user_id));
 
             // seen = picks visible to me for that user/week (own always,
             // others once their games lock).
@@ -839,7 +853,11 @@
                 const tr = document.createElement('tr');
                 tr.className = isMe ? 'pg-row--me' : '';
 
-                let html = `<td class="pg-team-cell"><span class="wr-rank${i === 0 ? ' wr-rank--top' : ''}">${i + 1}</span><span class="pg-team-name">${escapeHtml(row.team_name || 'Unnamed Team')}</span>${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</td>`;
+                const ownerName = ownerNameByUserId[row.user_id];
+                let html = `<td class="pg-team-cell"><div class="pg-name-row"><span class="wr-rank${i === 0 ? ' wr-rank--top' : ''}">${i + 1}</span><div class="name-stack">
+                    <span class="pg-team-name">${escapeHtml(row.team_name || 'Unnamed Team')}${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</span>
+                    ${ownerName ? `<span class="owner-name">${escapeHtml(ownerName)}</span>` : ''}
+                  </div></div></td>`;
                 html += `<td class="wr-total-cell"><span class="wr-cell wr-cell--total">${row.total_points}</span></td>`;
                 visWeeks.forEach(w => {
                     if (!openWeeks.has(w)) {

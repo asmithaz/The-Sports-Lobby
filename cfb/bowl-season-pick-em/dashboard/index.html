@@ -133,6 +133,18 @@
                              // standings breakdown and the Pick Comparison grid
         let currentComparisonTier = 'bowl';
 
+        // Shared across Overall Standings and the Pick Comparison grid so a
+        // member's owner name (account display name, shown under their team
+        // name — see .owner-name) is only ever fetched once per page load.
+        const ownerNameByUserId = {};
+        async function ensureOwnerNames(userIds) {
+            const missing = [...new Set(userIds)].filter(id => id && !(id in ownerNameByUserId));
+            if (!missing.length) return;
+            const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', missing);
+            missing.forEach(id => { ownerNameByUserId[id] = null; });
+            (profiles || []).forEach(p => { ownerNameByUserId[p.id] = p.display_name; });
+        }
+
         const TIER_LABEL = { bowl: 'Bowl', cfp_r1: 'CFP R1', cfp_qf: 'Quarterfinal', cfp_sf: 'Semifinal', cfp_championship: 'Championship' };
         const WAVE_LABEL = { w1: 'Bowls+R1', w2: 'Quarterfinals', w3: 'Semifinals', w4: 'Championship' };
         function waveForTier(tier) {
@@ -368,12 +380,7 @@
                 return;
             }
 
-            const userIds = rows.map(row => row.user_id);
-            const profileMap = {};
-            if (userIds.length) {
-                const { data: profiles } = await supabase.from('profiles').select('id, display_name').in('id', userIds);
-                (profiles || []).forEach(p => { profileMap[p.id] = p; });
-            }
+            await ensureOwnerNames(rows.map(row => row.user_id));
 
             const tiebreakerRevealed = isLocked(champGame);
 
@@ -382,7 +389,7 @@
                 const rank = i + 1;
                 const record = `${row.wins}–${row.losses}`;
                 const isMe = row.user_id === currentUserId;
-                const ownerName = profileMap[row.user_id]?.display_name;
+                const ownerName = ownerNameByUserId[row.user_id];
                 const canSeeTiebreaker = tiebreakerRevealed || isMe;
                 const tiebreakerCell = !canSeeTiebreaker ? '🔒' : (row.tiebreaker_guess ?? '—');
 
@@ -521,6 +528,7 @@
                     .eq('league_id', leagueId).eq('season', currentSeason).in('game_id', games.map(g => g.id))
             ]);
             const orderedMembers = (members || []).sort((a, b) => (a.user_id === currentUserId ? -1 : b.user_id === currentUserId ? 1 : 0));
+            await ensureOwnerNames(orderedMembers.map(m => m.user_id));
             const picksByGameUser = {};
             (tierPicks || []).forEach(p => { picksByGameUser[`${p.game_id}:${p.user_id}`] = p; });
 
@@ -565,7 +573,11 @@
                 tr.className = isMe ? 'pg-row--me' : '';
 
                 let tierTotal = 0;
-                let row = `<td class="pg-team-cell"><span class="pg-team-name">${escapeHtml(m.team_name || 'Unnamed Team')}</span>${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</td>`;
+                const ownerName = ownerNameByUserId[m.user_id];
+                let row = `<td class="pg-team-cell"><div class="name-stack">
+                    <span class="pg-team-name">${escapeHtml(m.team_name || 'Unnamed Team')}${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</span>
+                    ${ownerName ? `<span class="owner-name">${escapeHtml(ownerName)}</span>` : ''}
+                  </div></td>`;
                 games.forEach(g => {
                     const cell = pcell(picksByGameUser[`${g.id}:${m.user_id}`], g, isMe);
                     tierTotal += cell.pts;

@@ -183,7 +183,11 @@ body.tb-disabled .tiebreak-summary { display: none; }
    team name growing the column wider would knock the Total column out
    of alignment with it. */
 .wr-table th.pg-team-th, .wr-table td.pg-team-cell { width: 168px; max-width: 168px; overflow: hidden; }
+/* Rank + name-stack side by side — a block-level .name-stack after an
+   inline-block .wr-rank would otherwise wrap to its own line. */
+.pg-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .wr-table td.pg-team-cell .pg-team-name { max-width: 96px; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle; white-space: nowrap; }
+.wr-table td.pg-team-cell .owner-name { max-width: 96px; overflow: hidden; text-overflow: ellipsis; display: block; white-space: nowrap; }
 .wr-table th.wr-total-th, .wr-table td.wr-total-cell {
     position: sticky; left: 168px; z-index: 2; background: var(--c-surface-2); border-right: 0.5px solid var(--c-border-strong);
     width: 64px;
