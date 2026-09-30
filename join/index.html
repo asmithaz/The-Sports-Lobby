@@ -13,7 +13,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
     <script src="/js/error-logging.js"></script>
-    <script src="/js/email-templates.js"></script>
 </head>
 <body class="join-body">
 
@@ -23,18 +22,9 @@
 </div>
 
 <script>
-function escapeHtml(str) {
-    const d = document.createElement('div');
-    d.appendChild(document.createTextNode(str ?? ''));
-    return d.innerHTML;
-}
-
-async function sendJoinConfirmation(toEmail, leagueName) {
-    const subject = `You've joined ${leagueName} on The Sports Lobby`;
-    const body = `<p>You're in! You've successfully joined <strong>${escapeHtml(leagueName)}</strong>.</p>`;
-    const html = wrapEmail("You're in!", body);
+async function sendJoinConfirmation(leagueId) {
     const { error } = await supabase.functions.invoke('send-email', {
-        body: { to: toEmail, subject, html }
+        body: { kind: 'join_confirmation', league_id: leagueId }
     });
     if (error) throw error;
 }
@@ -95,7 +85,7 @@ async function joinFlow() {
     sessionStorage.setItem('league_visibility',  data.visibility);
 
     // Fire-and-forget confirmation email — doesn't block the redirect below.
-    sendJoinConfirmation(session.user.email, data.name).catch(err =>
+    sendJoinConfirmation(data.id).catch(err =>
         console.error('Failed to send join confirmation:', err));
 
     show(`
@@ -116,6 +106,8 @@ async function joinFlow() {
             window.location.href = '/cfb/weekly-pick-em/picks/';
         } else if (data.game_type === 'nfl-weekly-pick-em') {
             window.location.href = '/nfl/weekly-pick-em/picks/';
+        } else if (data.game_type === 'nfl-survivor') {
+            window.location.href = '/nfl/survivor/picks/';
         } else if (data.league_type === 'knockout-only') {
             window.location.href = '/soccer/world-cup-bracket-challenge/bracket/';
         } else {

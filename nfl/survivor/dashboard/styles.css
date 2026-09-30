@@ -1,0 +1,177 @@
+/* NFL Survivor Pool — Dashboard */
+
+/* Overrides the site's normal 1100px page cap (css/components.css)
+   just on this page — Pick History can run to 22+ week columns once
+   playoffs are included, and even with the narrow team-logo cells
+   below, that still doesn't comfortably fit the standard width
+   without .table-wrap's overflow-x:auto kicking in. Loads after
+   components.css, so this plain single-class rule wins on source
+   order without needing !important. */
+.page-wrapper {
+    max-width: 1500px;
+}
+
+/* Missing here unlike every sibling dashboard (nfl/weekly-pick-em,
+   cfb/weekly-pick-em, cfb/bowl-season-pick-em) — without these, the
+   Invite modal has no fixed/centered overlay positioning at all, so it
+   renders inline at the bottom of the page instead of as a dialog. */
+.join-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center;
+                 justify-content: center; z-index: 1000; padding: var(--space-4); }
+.join-panel { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-lg);
+              padding: var(--space-6); width: 100%; max-width: 440px; }
+.join-panel h3 { margin: 0 0 var(--space-2); font-size: var(--text-lg); font-weight: var(--weight-bold); color: var(--c-text-primary); }
+
+/* Also missing here unlike every sibling dashboard — without these,
+   "Standings" and "Pick History" render as unstyled plain text with no
+   visual separation between the two sections. */
+.section-title { font-size: var(--text-md); font-weight: var(--weight-bold); margin-bottom: 2px; }
+.section-sub { font-size: var(--text-xs); color: var(--c-text-muted); margin-bottom: var(--space-3); }
+.section-block { margin-bottom: var(--space-8); }
+
+.row--me {
+    background: var(--c-accent-dim);
+}
+
+/* Standings defaults to css/components.css' .data-table right-alignment
+   (a plain table of numbers) — an ID selector beats that regardless of
+   source order, so its columns (This Week/% Picked/Status/etc, all
+   short pills or small numbers) read better centered under their
+   headers, same as Pick History below it. Team stays left-aligned, same
+   reason a label column always does. */
+#standings-table thead th, #standings-table td {
+    text-align: center;
+}
+#standings-table thead th:first-child, #standings-table td:first-child {
+    text-align: left;
+}
+
+/* Pick History has its own per-cell green/red/amber result dots now, so
+   a full-row green wash for "this is you" would wash out against them —
+   it already had almost nothing left to contrast against once every
+   cell became a plain team logo. Scoped to just this table (Standings
+   keeps the normal full-row .row--me tint, which has no such
+   collision) and swapped for a left accent border + bold sticky name
+   instead. */
+.sv-history-table tr.row--me {
+    background: transparent;
+}
+.sv-history-table tr.row--me td:first-child {
+    border-left: 3px solid var(--c-accent);
+    color: var(--c-accent);
+}
+
+/* .data-table thead th (css/components.css) is more specific than a
+   single extra class, so a plain ".sv-history-table th" rule loses to
+   it and the header stays right-aligned while the cells beneath center
+   — matching "thead" in the selector here brings this to equal
+   specificity, and this file loads after components.css so it wins the
+   tie. */
+.sv-history-table thead th, .sv-history-table td {
+    text-align: center;
+    white-space: nowrap;
+}
+.sv-history-table thead th:first-child, .sv-history-table td:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background: var(--c-surface);
+}
+
+.sv-cell {
+    font-size: var(--text-sm, 13px);
+    padding: 6px 8px;
+}
+/* The exact week a member was eliminated, called out per the section's
+   own caption ("A red cell is the week that member was eliminated") —
+   independent of the green/red/amber result dot on the pick itself. */
+.sv-cell--elim {
+    background: color-mix(in srgb, var(--c-danger) 16%, transparent);
+}
+
+/* Same tinted-chip + checkmark language as CFB Weekly Pick'em's .pcell
+   cards (cfb/weekly-pick-em/dashboard/styles.css), just sized down to a
+   chip around the logo instead of that grid's full 116px logo+name+
+   result card — this table needs to stay narrow across 18-22 weeks. */
+.sv-history-pick {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-sm);
+    border: 0.5px solid var(--c-border);
+    background: var(--c-surface-2);
+}
+.sv-history-pick--green { background: var(--c-accent-dim); border-color: var(--c-accent-border); }
+.sv-history-pick--red { background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.25); }
+.sv-history-pick--amber { background: rgba(251,191,36,0.08); border-color: rgba(251,191,36,0.3); }
+
+.sv-history-logo {
+    width: 26px;
+    height: 26px;
+    object-fit: contain;
+}
+.sv-history-dot {
+    position: absolute;
+    right: -4px;
+    bottom: -4px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid var(--c-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: var(--weight-bold);
+    line-height: 1;
+}
+.sv-history-dot--green { background: var(--c-accent); color: #06240f; }
+.sv-history-dot--red { background: var(--c-danger); color: #330a0a; }
+.sv-history-dot--amber { background: var(--c-warning); }
+
+.sv-cell--muted {
+    color: var(--c-text-muted);
+}
+.sv-cell--miss {
+    color: var(--c-danger);
+    font-weight: var(--weight-medium);
+}
+
+.sv-mulligan {
+    color: var(--c-warning);
+}
+
+.sv-week-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.sv-week-pick__logo {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+.sv-week-pick__team {
+    font-weight: var(--weight-medium);
+}
+.sv-week-pick__pct {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--c-text-muted);
+}
+.sv-week-pick__score {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--c-text-muted);
+}
+.sv-week-pick__score--win {
+    color: var(--c-accent);
+    font-weight: var(--weight-bold);
+}
+.sv-week-pick__score--loss {
+    color: var(--c-danger);
+    font-weight: var(--weight-bold);
+}

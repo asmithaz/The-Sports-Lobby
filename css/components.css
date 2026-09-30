@@ -364,6 +364,11 @@ body {
   background: rgba(251,191,36,0.06);
 }
 
+.status-bar--danger {
+  border-color: rgba(248,113,113,0.3);
+  background: rgba(248,113,113,0.06);
+}
+
 .status-bar__left {
   display: flex;
   align-items: center;
@@ -381,6 +386,10 @@ body {
 
 .status-dot--warning {
   background: var(--c-warning);
+}
+
+.status-dot--danger {
+  background: var(--c-danger);
 }
 
 @keyframes pulse {
@@ -951,13 +960,15 @@ body {
 }
 
 .radio-option:has(input:checked) {
-  border-color: var(--c-accent-border);
-  background: var(--c-accent-dim);
+  border: 2px solid var(--c-accent);
+  background: color-mix(in srgb, var(--c-accent) 18%, var(--c-surface-2));
 }
 
 .radio-option input[type="radio"] {
   flex-shrink: 0;
   accent-color: var(--c-accent);
+  width: 18px;
+  height: 18px;
 }
 
 .radio-option--disabled {

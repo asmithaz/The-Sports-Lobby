@@ -15,7 +15,6 @@
     <script src="/js/error-logging.js"></script>
     <script src="/js/feedback.js"></script>
     <script src="/js/auth.js"></script>
-    <script src="/js/email-templates.js"></script>
 </head>
 <body>
 
@@ -132,6 +131,11 @@
         let fullSlate = []; // every synced game for the season, deterministically ordered — shared by the
                              // standings breakdown and the Pick Comparison grid
         let currentComparisonTier = 'bowl';
+        // Pick Comparison sort — resets to the winner-on-top default every
+        // time the selected tier changes, but a manual header click
+        // overrides it until the next tier switch.
+        let pgSortState = { key: 'total', dir: 'desc' }; // key: 'total' | 'team'
+        let renderPgRows = null; // set by loadPickComparisonGrid; re-invoked on header click to re-sort without refetching
 
         // Shared across Overall Standings and the Pick Comparison grid so a
         // member's owner name (account display name, shown under their team
@@ -243,25 +247,17 @@
                 btn.disabled = true;
                 btn.textContent = 'Sending…';
 
-                const subject = `You're invited to join ${leagueRow?.name || 'a league'} on The Sports Lobby`;
-                const body = `
-                    <p>You've been invited to join <strong>${escapeHtml(leagueRow?.name || 'a league')}</strong>, a College Football Bowl Season Pick 'Em league on The Sports Lobby.</p>
-                    ${emailButton(inviteLink, 'Join League')}
-                    <p style="margin-top:16px;font-size:12px;">Or copy this link: ${escapeHtml(inviteLink)}</p>
-                `;
-                const html = wrapEmail("You're invited!", body);
-
-                const results = await Promise.allSettled(emails.map(to =>
-                    supabase.functions.invoke('send-email', { body: { to, subject, html } })
-                ));
-                const failed = results.some(r => r.status === 'rejected' || r.value?.error);
+                const { error: inviteError } = await supabase.functions.invoke('send-email', {
+                    body: { kind: 'invite', league_id: leagueId, emails }
+                });
+                const failed = !!inviteError;
+                if (failed) console.error('Failed to send invites', inviteError);
 
                 btn.disabled = false;
                 if (failed) {
                     btn.textContent = 'Send Invites';
                     errorEl.textContent = 'Some invites failed to send. Please try again.';
                     errorEl.style.display = 'block';
-                    console.error('Invite send results:', results);
                 } else {
                     emailContainer.querySelectorAll('.email-tag').forEach(t => t.remove());
                     btn.textContent = 'Sent!';
@@ -325,6 +321,7 @@
                 const btn = e.target.closest('button[data-tier]');
                 if (!btn) return;
                 currentComparisonTier = btn.dataset.tier;
+                pgSortState = { key: 'total', dir: 'desc' };
                 renderTierToggle();
                 loadPickComparisonGrid();
             };
@@ -518,16 +515,18 @@
                   ${muLine(g.home_team, g.winner_team === g.home_team, homeTag, g.home_team_logo)}`;
             }
 
-            headerRow.innerHTML = '<th class="pg-team-th">Team</th>'
-                + games.map(g => `<th class="pg-mu-th">${muThHtml(g)}</th>`).join('')
-                + '<th class="pg-total-th">Total</th>';
+            // Precomputed once here (inside loadPickComparisonGrid, where
+            // muThHtml lives) rather than in renderPgTable, which only
+            // reorders rows on a sort click and never needs to rebuild
+            // these matchup headers.
+            games.forEach(g => { g.__muThHtml = muThHtml(g); });
 
             const [{ data: members }, { data: tierPicks }] = await Promise.all([
                 supabase.from('league_members').select('user_id, team_name').eq('league_id', leagueId),
                 supabase.from('bpe_picks').select('user_id, game_id, picked_team, confidence_points')
                     .eq('league_id', leagueId).eq('season', currentSeason).in('game_id', games.map(g => g.id))
             ]);
-            const orderedMembers = (members || []).sort((a, b) => (a.user_id === currentUserId ? -1 : b.user_id === currentUserId ? 1 : 0));
+            const orderedMembers = members || [];
             await ensureOwnerNames(orderedMembers.map(m => m.user_id));
             const picksByGameUser = {};
             (tierPicks || []).forEach(p => { picksByGameUser[`${p.game_id}:${p.user_id}`] = p; });
@@ -566,26 +565,81 @@
                     : { html: `<div class="pcell pcell--miss">${logoHtml}${nameHtml}<span class="pcell-result">✗ +0</span></div>`, pts: 0 };
             }
 
-            body.innerHTML = '';
-            orderedMembers.forEach(m => {
+            // One row-data object per member, computed once up front (not
+            // re-derived per sort) so clicking a header to re-sort is a pure
+            // in-memory reorder — no refetch, no re-walking every pcell.
+            const rows = orderedMembers.map(m => {
                 const isMe = m.user_id === currentUserId;
-                const tr = document.createElement('tr');
-                tr.className = isMe ? 'pg-row--me' : '';
-
                 let tierTotal = 0;
-                const ownerName = ownerNameByUserId[m.user_id];
-                let row = `<td class="pg-team-cell"><div class="name-stack">
-                    <span class="pg-team-name">${escapeHtml(m.team_name || 'Unnamed Team')}${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</span>
-                    ${ownerName ? `<span class="owner-name">${escapeHtml(ownerName)}</span>` : ''}
-                  </div></td>`;
-                games.forEach(g => {
+                const cellsHtml = games.map(g => {
                     const cell = pcell(picksByGameUser[`${g.id}:${m.user_id}`], g, isMe);
                     tierTotal += cell.pts;
-                    row += `<td>${cell.html}</td>`;
+                    return cell.html;
                 });
-                row += `<td class="pg-total-cell">${tierTotal}</td>`;
+                return { member: m, isMe, ownerName: ownerNameByUserId[m.user_id], cellsHtml, tierTotal };
+            });
 
-                tr.innerHTML = row;
+            renderPgRows = () => renderPgTable(rows, games);
+            renderPgRows();
+        }
+
+        // Always renders the arrow glyph, hidden (not removed) when this
+        // isn't the active sort column — visibility:hidden still reserves
+        // its layout space, so a header's own width (and, with it, the
+        // whole sticky Total column's auto-computed width) doesn't change
+        // just from switching which column is sorted.
+        function sortArrowHtml(key) {
+            const active = pgSortState.key === key;
+            const arrow = active && pgSortState.dir === 'asc' ? '▲' : '▼';
+            return `<span class="pg-sort-arrow"${active ? '' : ' style="visibility:hidden"'}>${arrow}</span>`;
+        }
+
+        // Renders both the header (so its sort arrow always matches
+        // pgSortState) and the body rows, in current sort order. Pure
+        // in-memory — safe to call again on every header click.
+        function renderPgTable(rows, games) {
+            const headerRow = document.getElementById('pg-header-row');
+            const body = document.getElementById('pg-body');
+
+            headerRow.innerHTML = `<th class="pg-team-th pg-sortable" data-sort="team">Team${sortArrowHtml('team')}</th>`
+                + games.map(g => `<th class="pg-mu-th">${g.__muThHtml}</th>`).join('')
+                + `<th class="pg-total-th pg-sortable" data-sort="total">Total${sortArrowHtml('total')}</th>`;
+            headerRow.onclick = (e) => {
+                const th = e.target.closest('th[data-sort]');
+                if (!th) return;
+                const key = th.dataset.sort;
+                pgSortState = pgSortState.key === key
+                    ? { key, dir: pgSortState.dir === 'desc' ? 'asc' : 'desc' }
+                    : { key, dir: key === 'team' ? 'asc' : 'desc' };
+                renderPgRows();
+            };
+
+            const nameOf = r => r.member.team_name || 'Unnamed Team';
+            const maxTotal = Math.max(0, ...rows.map(r => r.tierTotal));
+            const sorted = [...rows];
+            if (pgSortState.key === 'team') {
+                sorted.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+            } else if (maxTotal === 0) {
+                // Nothing's been decided yet in this round (upcoming, or no
+                // games final) — ranking by total is meaningless. Default
+                // to "you" first, then alphabetical, instead of an
+                // arbitrary/DB-order tie across everyone at 0.
+                sorted.sort((a, b) => (a.isMe === b.isMe ? nameOf(a).localeCompare(nameOf(b)) : (a.isMe ? -1 : 1)));
+            } else {
+                sorted.sort((a, b) => b.tierTotal - a.tierTotal || nameOf(a).localeCompare(nameOf(b)));
+            }
+            if (pgSortState.dir === 'asc') sorted.reverse();
+
+            body.innerHTML = '';
+            sorted.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.className = r.isMe ? 'pg-row--me' : '';
+                tr.innerHTML = `<td class="pg-team-cell"><div class="name-stack">
+                    <span class="pg-team-name">${escapeHtml(r.member.team_name || 'Unnamed Team')}${r.isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</span>
+                    ${r.ownerName ? `<span class="owner-name">${escapeHtml(r.ownerName)}</span>` : ''}
+                  </div></td>`
+                    + r.cellsHtml.map(html => `<td>${html}</td>`).join('')
+                    + `<td class="pg-total-cell">${r.tierTotal}</td>`;
                 body.appendChild(tr);
             });
         }

@@ -530,6 +530,14 @@ Deno.serve(async (req) => {
     const { error: recalcErr } = await supabase.rpc("nwpe_recalculate_all_scores");
     if (recalcErr) throw recalcErr;
 
+    // NFL Survivor (nfl/survivor/schema.sql) has no games table or sync
+    // cron of its own — it reads nwpe_games/nwpe_game_spread_locks
+    // read-only, so its grading rides this sync instead of a separate
+    // cron. Non-fatal: a Survivor-side issue shouldn't break Weekly
+    // Pick'em's own sync.
+    const { error: nsvErr } = await supabase.rpc("nsv_recalculate_all_status");
+    if (nsvErr) console.error("nsv_recalculate_all_status failed:", nsvErr);
+
     await upsertSeasonState(supabase, seasonYear, seasonType, storedWeekNumber, mapped);
 
     return new Response(

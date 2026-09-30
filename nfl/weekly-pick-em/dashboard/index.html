@@ -15,7 +15,6 @@
     <script src="/js/error-logging.js"></script>
     <script src="/js/feedback.js"></script>
     <script src="/js/auth.js"></script>
-    <script src="/js/email-templates.js"></script>
 </head>
 <body>
 
@@ -146,6 +145,17 @@
         let nwpeLeague = null; // { pick_mode, scoring_mode, spread_lock_mode, continue_to_playoffs, tiebreakers_enabled }
         let comparisonWeeks = [];
         let currentComparisonWeek = null;
+        // Weekly Grid sort — resets to the winner-on-top default every time
+        // the selected week (or the regular/playoffs toggle) changes, but a
+        // manual header click overrides it until the next such switch.
+        let pgSortState = { key: 'total', dir: 'desc' }; // key: 'total' | 'team'
+        let renderPgRows = null; // set by loadPickComparisonGrid; re-invoked on header click to re-sort without refetching
+        // Season Results sort — null means "the same order as Overall
+        // Standings above it" (its actual default, reset every time the tab
+        // or the regular/playoffs toggle changes); a header click overrides
+        // it to 'team' or a specific week number until then.
+        let wrSortState = null; // null | { key: 'team' | 'total' | <week number>, dir: 'asc' | 'desc' }
+        let renderWrRows = null; // set by loadWeeklyResults; re-invoked on header click to re-sort without refetching
         let seasonWeeks = []; // every week in the season's synced schedule, including future ones — for the tiebreak table
         let fullSlate = []; // every synced game for the season (every week, unfiltered by week) — for the standings breakdown
 
@@ -213,13 +223,17 @@
         function visibleSeasonWeeks() {
             return seasonWeeks.filter(w => seasonMode === 'playoffs' ? w > 18 : w <= 18);
         }
-        // Weeks with at least one final game — the whole season is synced
-        // up front now (nwpe-sync-games), so "has a game been synced" is no
-        // longer the same thing as "has this week actually started."
-        // Season Results and the standings breakdown both use this to stay
-        // a dash/empty instead of a fake 0 for a week nothing's played yet.
+        // Weeks with at least one locked (kicked off or final) game — the
+        // whole season is synced up front now (nwpe-sync-games), so "has a
+        // game been synced" is no longer the same thing as "has this week
+        // actually started." Season Results and the standings breakdown
+        // both use this to stay a dash/empty instead of a fake 0 for a week
+        // nothing's kicked off yet. Gating on isLocked (not status ===
+        // 'final') matters mid-week: a week with games underway but none
+        // final yet still needs to show up, in-progress, rather than
+        // vanishing entirely until its first game finishes.
         function startedWeeks() {
-            return seasonWeeks.filter(w => fullSlate.some(g => g.week === w && g.status === 'final'));
+            return seasonWeeks.filter(w => fullSlate.some(g => g.week === w && isLocked(g)));
         }
         // Mirrors nwpe_playoff_round_points() in schema.sql exactly.
         function playoffRoundPoints(week) {
@@ -324,25 +338,17 @@
                 btn.disabled = true;
                 btn.textContent = 'Sending…';
 
-                const subject = `You're invited to join ${leagueRow?.name || 'a league'} on The Sports Lobby`;
-                const body = `
-                    <p>You've been invited to join <strong>${escapeHtml(leagueRow?.name || 'a league')}</strong>, an NFL Weekly Pick 'Em league on The Sports Lobby.</p>
-                    ${emailButton(inviteLink, 'Join League')}
-                    <p style="margin-top:16px;font-size:12px;">Or copy this link: ${escapeHtml(inviteLink)}</p>
-                `;
-                const html = wrapEmail("You're invited!", body);
-
-                const results = await Promise.allSettled(emails.map(to =>
-                    supabase.functions.invoke('send-email', { body: { to, subject, html } })
-                ));
-                const failed = results.some(r => r.status === 'rejected' || r.value?.error);
+                const { error: inviteError } = await supabase.functions.invoke('send-email', {
+                    body: { kind: 'invite', league_id: leagueId, emails }
+                });
+                const failed = !!inviteError;
+                if (failed) console.error('Failed to send invites', inviteError);
 
                 btn.disabled = false;
                 if (failed) {
                     btn.textContent = 'Send Invites';
                     errorEl.textContent = 'Some invites failed to send. Please try again.';
                     errorEl.style.display = 'block';
-                    console.error('Invite send results:', results);
                 } else {
                     emailContainer.querySelectorAll('.email-tag').forEach(t => t.remove());
                     btn.textContent = 'Sent!';
@@ -423,10 +429,14 @@
                 seasonMode = btn.dataset.mode;
                 const vis = visibleComparisonWeeks();
                 currentComparisonWeek = vis.includes(currentWeekNum) ? currentWeekNum : (vis[vis.length - 1] ?? comparisonWeeks[comparisonWeeks.length - 1]);
+                pgSortState = { key: 'total', dir: 'desc' };
                 renderSeasonToggle();
                 renderWeekToggle();
                 loadPickComparisonGrid();
-                if (document.getElementById('pg-view-results').style.display !== 'none') loadWeeklyResults();
+                if (document.getElementById('pg-view-results').style.display !== 'none') {
+                    wrSortState = null;
+                    loadWeeklyResults();
+                }
             });
 
             locksByGameId = {};
@@ -468,7 +478,10 @@
                 // Refetched every time the tab is opened, not cached — scores
                 // and finished games can change while it sits off-screen,
                 // same reasoning as the standings breakdown's own refetch.
-                if (view === 'results') loadWeeklyResults();
+                if (view === 'results') {
+                    wrSortState = null; // back to matching Overall Standings until the user re-sorts
+                    loadWeeklyResults();
+                }
             });
         }
 
@@ -682,6 +695,7 @@
                 const btn = e.target.closest('button[data-week]');
                 if (!btn) return;
                 currentComparisonWeek = parseInt(btn.dataset.week, 10);
+                pgSortState = { key: 'total', dir: 'desc' };
                 renderWeekToggle();
                 loadPickComparisonGrid();
             };
@@ -706,6 +720,11 @@
                 return;
             }
 
+            // Same "status_detail · away–home" convention as the CFB dashboard.
+            function liveScoreLabel(g) {
+                return g.home_score != null ? `${g.away_score}–${g.home_score}` : null;
+            }
+
             function muThHtml(g) {
                 const lock = locksByGameId[g.id];
                 const displaySpread = nwpeLeague.pick_mode === 'spread' ? (lock?.locked_spread ?? null) : g.spread;
@@ -716,17 +735,20 @@
                     const logoHtml = logoUrl ? `<img class="team-logo" src="${escapeHtml(logoUrl)}" alt="" />` : '';
                     return `<div class="mu-th-line${isWinner ? ' winner' : ''}">${logoHtml}<span>${escapeHtml(team)}</span>${spreadTag != null ? `<span class="t-spread">${spreadTag}</span>` : ''}</div>`;
                 }
-                const kickLabel = g.status === 'final' ? 'Final' : g.status === 'live' ? escapeHtml(g.status_detail || 'Live') : (fmtKickoff(g.kickoff_at) || 'Kickoff TBD');
+                const liveScore = liveScoreLabel(g);
+                const kickLabel = g.status === 'final' ? 'Final' : g.status === 'live' ? escapeHtml(`${g.status_detail || 'Live'}${liveScore ? ` · ${liveScore}` : ''}`) : (fmtKickoff(g.kickoff_at) || 'Kickoff TBD');
                 return `<div class="mu-th-head">${kickLabel}</div>
                   ${muLine(g.away_team, g.winner_team === g.away_team, awayTag, g.away_team_logo)}
                   ${muLine(g.home_team, g.winner_team === g.home_team, homeTag, g.home_team_logo)}`;
             }
 
-            headerRow.innerHTML = '<th class="pg-team-th">Team</th>'
-                + games.map(g => `<th class="pg-mu-th">${muThHtml(g)}</th>`).join('')
-                + '<th class="pg-total-th">Wk&nbsp;Total</th>';
+            // Precomputed once here (inside loadPickComparisonGrid, where
+            // muThHtml/liveScoreLabel live) rather than in renderPgTable,
+            // which only reorders rows on a sort click and never needs to
+            // rebuild these matchup headers.
+            games.forEach(g => { g.__muThHtml = muThHtml(g); });
 
-            const orderedMembers = (members || []).sort((a, b) => (a.user_id === currentUserId ? -1 : b.user_id === currentUserId ? 1 : 0));
+            const orderedMembers = members || [];
             await ensureOwnerNames(orderedMembers.map(m => m.user_id));
 
             const picksByGameUser = {};
@@ -746,7 +768,7 @@
                 const logoHtml = logoUrl ? `<img class="pcell-logo" src="${escapeHtml(logoUrl)}" alt="" />` : '';
                 const nameHtml = `<span class="pcell-name">${escapeHtml(pick.picked_team)}</span>`;
                 if (g.status === 'live') {
-                    return { html: `<div class="pcell pcell--live">${logoHtml}${nameHtml}<span class="pcell-result">Live</span></div>`, pts: 0 };
+                    return { html: `<div class="pcell pcell--live">${logoHtml}${nameHtml}<span class="pcell-result">${escapeHtml(liveScoreLabel(g) || 'Live')}</span></div>`, pts: 0 };
                 }
                 if (g.status !== 'final') {
                     return { html: `<div class="pcell pcell--pending">${logoHtml}${nameHtml}</div>`, pts: 0 };
@@ -761,35 +783,190 @@
                     : { html: `<div class="pcell pcell--miss">${logoHtml}${nameHtml}<span class="pcell-result">✗ +0</span></div>`, pts: 0 };
             }
 
-            body.innerHTML = '';
-            orderedMembers.forEach(m => {
+            // One row-data object per member, computed once up front (not
+            // re-derived per sort) so clicking a header to re-sort is a pure
+            // in-memory reorder — no refetch, no re-walking every pcell.
+            const rows = orderedMembers.map(m => {
                 const isMe = m.user_id === currentUserId;
-                const tr = document.createElement('tr');
-                tr.className = isMe ? 'pg-row--me' : '';
-
                 let weekTotal = 0;
-                const ownerName = ownerNameByUserId[m.user_id];
-                let row = `<td class="pg-team-cell"><div class="name-stack">
-                    <span class="pg-team-name">${escapeHtml(m.team_name || 'Unnamed Team')}${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</span>
-                    ${ownerName ? `<span class="owner-name">${escapeHtml(ownerName)}</span>` : ''}
-                  </div></td>`;
-                games.forEach(g => {
+                const cellsHtml = games.map(g => {
                     const cell = pcell(picksByGameUser[`${g.id}:${m.user_id}`], g, isMe);
                     weekTotal += cell.pts;
-                    row += `<td>${cell.html}</td>`;
+                    return cell.html;
                 });
-                row += `<td class="pg-total-cell">${weekTotal}</td>`;
+                return { member: m, isMe, ownerName: ownerNameByUserId[m.user_id], cellsHtml, weekTotal };
+            });
 
-                tr.innerHTML = row;
+            // Only worth resolving a tiebreaker once the week is fully final
+            // (a still-live/upcoming week's totals can still change) and only
+            // for whoever's tied at the TOP — this mirrors "who won the
+            // week", not every tie further down the standings.
+            const weekComplete = games.every(g => g.status === 'final');
+            let tieWinner = null; // { uid, slotsWon } | null
+            if (weekComplete && rows.length > 1 && nwpeLeague.tiebreakers_enabled !== false) {
+                const maxTotal = Math.max(...rows.map(r => r.weekTotal));
+                const tiedUserIds = rows.filter(r => r.weekTotal === maxTotal).map(r => r.member.user_id);
+                if (tiedUserIds.length > 1 && maxTotal > 0) {
+                    tieWinner = await resolveWeeklyTieWinner(tiedUserIds, games);
+                }
+            }
+
+            renderPgRows = () => renderPgTable(rows, games, tieWinner);
+            renderPgRows();
+        }
+
+        // Resolves a tie for a week's (or, from nwpe_get_standings, a
+        // season's) top score using the two tiebreaker guesses: closest
+        // guess wins its slot; whoever wins BOTH slots wins outright; a
+        // 1-1 split falls to whoever's combined |guess - actual| across
+        // both slots is smaller; a dead-even split on both is left
+        // unresolved. Returns { uid, slotsWon } for the winner, or null if
+        // nobody in the tied group ever guessed, or it's still unbreakable.
+        function computeTiebreakWinner(tiedUserIds, actual1, actual2, guessByUser) {
+            const err = (guess, actual) => (actual == null || guess == null) ? Infinity : Math.abs(guess - actual);
+            const scored = tiedUserIds.map(uid => {
+                const g = guessByUser[uid];
+                const e1 = err(g?.tb1_guess, actual1);
+                const e2 = err(g?.tb2_guess, actual2);
+                return { uid, e1, e2, total: e1 + e2 };
+            });
+            const min1 = Math.min(...scored.map(s => s.e1));
+            const min2 = Math.min(...scored.map(s => s.e2));
+            // The Infinity guard keeps a slot with zero real guesses from
+            // handing every tied member a phantom "win" on it (they'd all
+            // tie at Infinity otherwise).
+            scored.forEach(s => {
+                s.slotsWon = (s.e1 === min1 && min1 !== Infinity ? 1 : 0) + (s.e2 === min2 && min2 !== Infinity ? 1 : 0);
+            });
+            scored.sort((a, b) => b.slotsWon - a.slotsWon || a.total - b.total);
+            const winner = scored[0];
+            if (winner.slotsWon === 0) return null;
+            if (scored.length > 1 && scored[1].slotsWon === winner.slotsWon && scored[1].total === winner.total) return null;
+            return { uid: winner.uid, slotsWon: winner.slotsWon };
+        }
+
+        // Reads (never freezes) this week's tiebreaker assignment — freezing
+        // only ever happens from the picks page, the first time a member
+        // actually needs to guess (see nwpe_get_tiebreaker_games in
+        // schema.sql). By the time a week is fully final it was current at
+        // some point, so the row exists if anyone ever visited picks for it;
+        // if nobody did (or tiebreakers were off then), there's nothing to
+        // resolve and the tie just stays a tie.
+        async function resolveWeeklyTieWinner(tiedUserIds, games) {
+            const { data: tg } = await supabase
+                .from('nwpe_tiebreaker_games').select('tb1_game_id, tb2_game_id')
+                .eq('league_id', leagueId).eq('season', currentSeason).eq('week', currentComparisonWeek).maybeSingle();
+            if (!tg) return null;
+            const tb1 = games.find(g => g.id === tg.tb1_game_id);
+            const tb2 = games.find(g => g.id === tg.tb2_game_id);
+            if (!tb1 || tb1.status !== 'final' || tb1.home_score == null) return null;
+            if (!tb2 || tb2.status !== 'final' || tb2.home_score == null) return null;
+
+            const { data: guesses } = await supabase
+                .from('nwpe_tiebreaker_guesses').select('user_id, tb1_guess, tb2_guess')
+                .eq('league_id', leagueId).eq('season', currentSeason).eq('week', currentComparisonWeek)
+                .in('user_id', tiedUserIds);
+            const guessByUser = {};
+            (guesses || []).forEach(g => { guessByUser[g.user_id] = g; });
+
+            return computeTiebreakWinner(tiedUserIds, tb1.home_score + tb1.away_score, tb2.home_score + tb2.away_score, guessByUser);
+        }
+
+        // Always renders the arrow glyph, hidden (not removed) when this
+        // isn't the active sort column — visibility:hidden still reserves
+        // its layout space, so a header's own width (and, with it, the
+        // whole sticky Wk Total column's auto-computed width) doesn't
+        // change just from switching which column is sorted.
+        function sortArrowHtml(key) {
+            const active = pgSortState.key === key;
+            const arrow = active && pgSortState.dir === 'asc' ? '▲' : '▼';
+            return `<span class="pg-sort-arrow"${active ? '' : ' style="visibility:hidden"'}>${arrow}</span>`;
+        }
+
+        // A tie-break winner only ever adds a badge to their existing row —
+        // it never reorders rows relative to a manual sort choice, only the
+        // default per-week total sort (see renderPgTable below).
+        function tieBadgeHtml(tieWinner, userId) {
+            if (!tieWinner || tieWinner.uid !== userId) return '';
+            const title = tieWinner.slotsWon === 2
+                ? "Won this week's tiebreaker (closest guess on both games)"
+                : "Won this week's tiebreaker (closer overall after a 1–1 split)";
+            return ` <span class="pg-tie-badge" title="${title}">🎯</span>`;
+        }
+
+        // Renders both the header (so its sort arrow always matches
+        // pgSortState) and the body rows, in current sort order. Pure
+        // in-memory — safe to call again on every header click.
+        function renderPgTable(rows, games, tieWinner) {
+            const headerRow = document.getElementById('pg-header-row');
+            const body = document.getElementById('pg-body');
+
+            headerRow.innerHTML = `<th class="pg-team-th pg-sortable" data-sort="team">Team${sortArrowHtml('team')}</th>`
+                + games.map(g => `<th class="pg-mu-th">${g.__muThHtml}</th>`).join('')
+                + `<th class="pg-total-th pg-sortable" data-sort="total">Wk&nbsp;Total${sortArrowHtml('total')}</th>`;
+            headerRow.onclick = (e) => {
+                const th = e.target.closest('th[data-sort]');
+                if (!th) return;
+                const key = th.dataset.sort;
+                pgSortState = pgSortState.key === key
+                    ? { key, dir: pgSortState.dir === 'desc' ? 'asc' : 'desc' }
+                    : { key, dir: key === 'team' ? 'asc' : 'desc' };
+                renderPgRows();
+            };
+
+            const nameOf = r => r.member.team_name || 'Unnamed Team';
+            const maxTotal = Math.max(0, ...rows.map(r => r.weekTotal));
+            const sorted = [...rows];
+            if (pgSortState.key === 'team') {
+                sorted.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+            } else if (maxTotal === 0) {
+                // Nothing's been decided yet this week (upcoming, or no
+                // games final) — ranking by total is meaningless. Default
+                // to "you" first, then alphabetical, instead of an
+                // arbitrary/DB-order tie across everyone at 0.
+                sorted.sort((a, b) => (a.isMe === b.isMe ? nameOf(a).localeCompare(nameOf(b)) : (a.isMe ? -1 : 1)));
+            } else {
+                sorted.sort((a, b) => {
+                    // Keep the resolved tiebreaker winner pinned above the
+                    // rest of its tied group, so "winner on top" actually
+                    // holds even when totals are equal.
+                    if (tieWinner && a.weekTotal === b.weekTotal) {
+                        if (a.member.user_id === tieWinner.uid) return -1;
+                        if (b.member.user_id === tieWinner.uid) return 1;
+                    }
+                    return b.weekTotal - a.weekTotal || nameOf(a).localeCompare(nameOf(b));
+                });
+            }
+            if (pgSortState.dir === 'asc') sorted.reverse();
+
+            body.innerHTML = '';
+            sorted.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.className = r.isMe ? 'pg-row--me' : '';
+                tr.innerHTML = `<td class="pg-team-cell"><div class="name-stack">
+                    <span class="pg-team-name">${escapeHtml(r.member.team_name || 'Unnamed Team')}${r.isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</span>
+                    ${r.ownerName ? `<span class="owner-name">${escapeHtml(r.ownerName)}</span>` : ''}
+                  </div></td>`
+                    + r.cellsHtml.map(html => `<td>${html}</td>`).join('')
+                    + `<td class="pg-total-cell">${r.weekTotal}${tieBadgeHtml(tieWinner, r.member.user_id)}</td>`;
                 body.appendChild(tr);
             });
+        }
+
+        function tierClass(ratio) {
+            if (ratio >= 0.7) return 'wr-cell--hi';
+            if (ratio >= 0.4) return 'wr-cell--mid';
+            return 'wr-cell--lo';
         }
 
         // Season Results: one row per person, one column per week (fixed to
         // seasonWeeks), showing that week's picks correct (or points, in
         // confidence/playoff weeks). Order and the pinned Total column both
         // come straight from nwpe_get_standings so this table never
-        // disagrees with Overall Standings above it.
+        // disagrees with Overall Standings above it. A week whose top score
+        // is a tie gets a 🎯 on whoever the weekly tiebreaker resolved it
+        // to, same rule (and same computeTiebreakWinner helper) as the
+        // Weekly Grid — see weekWinnerByWeek below.
         async function loadWeeklyResults() {
             const wrBody = document.getElementById('wr-body');
             const wrHeader = document.getElementById('wr-header-row');
@@ -798,11 +975,18 @@
                 + visWeeks.map(w => `<th>${weekColLabel(w)}</th>`).join('');
             wrBody.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">Loading…</td></tr>`;
 
-            const [{ data: standings, error }, { data: picks }] = await Promise.all([
+            const tiebreaksOn = nwpeLeague.tiebreakers_enabled !== false;
+            const [{ data: standings, error }, { data: picks }, { data: tbGames }, { data: tbGuesses }] = await Promise.all([
                 supabase.rpc('nwpe_get_standings', { p_league_id: leagueId }),
                 supabase.from('nwpe_picks')
                     .select('user_id, week, picked_team, confidence_points, nwpe_games(id, status, winner_team, home_team, away_team, home_score, away_score)')
-                    .eq('league_id', leagueId).eq('season', currentSeason)
+                    .eq('league_id', leagueId).eq('season', currentSeason),
+                tiebreaksOn
+                    ? supabase.from('nwpe_tiebreaker_games').select('week, tb1_game_id, tb2_game_id').eq('league_id', leagueId).eq('season', currentSeason)
+                    : Promise.resolve({ data: [] }),
+                tiebreaksOn
+                    ? supabase.from('nwpe_tiebreaker_guesses').select('user_id, week, tb1_guess, tb2_guess').eq('league_id', leagueId).eq('season', currentSeason)
+                    : Promise.resolve({ data: [] }),
             ]);
             if (error || !standings) {
                 wrBody.innerHTML = `<tr><td class="text-danger" style="padding:var(--space-4);">Failed to load season results.</td></tr>`;
@@ -810,6 +994,19 @@
                 return;
             }
             await ensureOwnerNames(standings.map(row => row.user_id));
+
+            // Looked up by id against fullSlate (this league's own scoped
+            // schedule, already loaded in init()) rather than a fresh query —
+            // a tiebreaker game is always drawn from the league's own slate,
+            // so its final score is already sitting in fullSlate.
+            const slateGameById = {};
+            fullSlate.forEach(g => { slateGameById[g.id] = g; });
+            const tbGamesByWeek = {};
+            (tbGames || []).forEach(tg => { tbGamesByWeek[tg.week] = tg; });
+            const tbGuessesByWeek = {};
+            (tbGuesses || []).forEach(g => {
+                (tbGuessesByWeek[g.week] = tbGuessesByWeek[g.week] || {})[g.user_id] = g;
+            });
 
             // seen = picks visible to me for that user/week (own always,
             // others once their games lock).
@@ -828,11 +1025,6 @@
                 }
             });
 
-            function tierClass(ratio) {
-                if (ratio >= 0.7) return 'wr-cell--hi';
-                if (ratio >= 0.4) return 'wr-cell--mid';
-                return 'wr-cell--lo';
-            }
             function weekValue(userId, w) {
                 const wk = byUserWeek[userId]?.[w];
                 if (isPlayoffWeek(w)) return wk?.points ?? 0;
@@ -847,30 +1039,127 @@
                 weekMax[w] = Math.max(0, ...standings.map(row => weekValue(row.user_id, w)));
             });
 
-            wrBody.innerHTML = '';
-            standings.forEach((row, i) => {
-                const isMe = row.user_id === currentUserId;
-                const tr = document.createElement('tr');
-                tr.className = isMe ? 'pg-row--me' : '';
-
-                const ownerName = ownerNameByUserId[row.user_id];
-                let html = `<td class="pg-team-cell"><div class="pg-name-row"><span class="wr-rank${i === 0 ? ' wr-rank--top' : ''}">${i + 1}</span><div class="name-stack">
-                    <span class="pg-team-name">${escapeHtml(row.team_name || 'Unnamed Team')}${isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</span>
-                    ${ownerName ? `<span class="owner-name">${escapeHtml(ownerName)}</span>` : ''}
-                  </div></div></td>`;
-                html += `<td class="wr-total-cell"><span class="wr-cell wr-cell--total">${row.total_points}</span></td>`;
+            // Same tiebreaker resolution as the Weekly Grid, run for every
+            // visible week that's tied at the top instead of just the one
+            // currently selected there — a week only counts as "complete"
+            // once every one of THIS league's own scoped games for it is
+            // final.
+            const weekWinnerByWeek = {}; // week -> { uid, slotsWon } | undefined
+            if (tiebreaksOn) {
                 visWeeks.forEach(w => {
-                    if (!openWeeks.has(w)) {
-                        html += `<td><span class="wr-cell wr-cell--future">—</span></td>`;
-                        return;
-                    }
+                    const max = weekMax[w];
+                    if (!max) return;
+                    const tiedUserIds = standings.filter(row => weekValue(row.user_id, w) === max).map(row => row.user_id);
+                    if (tiedUserIds.length < 2) return;
+                    const weekComplete = fullSlate.filter(g => g.week === w).every(g => g.status === 'final');
+                    if (!weekComplete) return;
+                    const tg = tbGamesByWeek[w];
+                    if (!tg) return;
+                    const tb1 = slateGameById[tg.tb1_game_id];
+                    const tb2 = slateGameById[tg.tb2_game_id];
+                    if (!tb1 || tb1.status !== 'final' || tb1.home_score == null) return;
+                    if (!tb2 || tb2.status !== 'final' || tb2.home_score == null) return;
+                    const winner = computeTiebreakWinner(
+                        tiedUserIds, tb1.home_score + tb1.away_score, tb2.home_score + tb2.away_score, tbGuessesByWeek[w] || {}
+                    );
+                    if (winner) weekWinnerByWeek[w] = winner;
+                });
+            }
+
+            // One row-data object per member, in nwpe_get_standings' own
+            // order — that order (and each row's captured `rank`) stays
+            // fixed as "the current standings" no matter how the table
+            // below gets re-sorted; only the display order changes.
+            const baseRows = standings.map((row, i) => {
+                const weekCells = {};
+                visWeeks.forEach(w => {
+                    if (!openWeeks.has(w)) { weekCells[w] = { future: true }; return; }
                     const wk = byUserWeek[row.user_id]?.[w];
                     const val = weekValue(row.user_id, w);
                     const ratio = wk && wk.seen > 0 ? wk.correct / wk.seen : 0;
                     const isWinner = weekMax[w] > 0 && val === weekMax[w];
-                    html += `<td><span class="wr-cell ${tierClass(ratio)}${isWinner ? ' wr-cell--winner' : ''}">${val}</span></td>`;
+                    const tieWinner = weekWinnerByWeek[w];
+                    const isTieWinner = !!(tieWinner && tieWinner.uid === row.user_id);
+                    weekCells[w] = { val, ratio, isWinner, isTieWinner, slotsWon: tieWinner?.slotsWon };
                 });
+                return { row, isMe: row.user_id === currentUserId, rank: i + 1, ownerName: ownerNameByUserId[row.user_id], weekCells };
+            });
 
+            renderWrRows = () => renderWrTable(baseRows, visWeeks);
+            renderWrRows();
+        }
+
+        // Same always-rendered/hidden-not-removed arrow as sortArrowHtml
+        // above, so a week header's width doesn't shift depending on
+        // whether it happens to be the active sort column.
+        function wrSortArrowHtml(key) {
+            const active = wrSortState && String(wrSortState.key) === String(key);
+            const arrow = active && wrSortState.dir === 'asc' ? '▲' : '▼';
+            return `<span class="pg-sort-arrow"${active ? '' : ' style="visibility:hidden"'}>${arrow}</span>`;
+        }
+
+        // Renders both the header (Team/Total/each visible week are all
+        // sort toggles) and the body, in current sort order. wrSortState
+        // === null is the actual default — the same order Overall
+        // Standings shows — so it's left completely unsorted rather than
+        // re-derived.
+        function renderWrTable(baseRows, visWeeks) {
+            const wrHeader = document.getElementById('wr-header-row');
+            const wrBody = document.getElementById('wr-body');
+
+            wrHeader.innerHTML = `<th class="pg-team-th pg-sortable" data-sort="team">Team${wrSortArrowHtml('team')}</th>`
+                + `<th class="wr-total-th pg-sortable" data-sort="total">Total${wrSortArrowHtml('total')}</th>`
+                + visWeeks.map(w => `<th class="pg-sortable" data-sort="${w}">${weekColLabel(w)}${wrSortArrowHtml(w)}</th>`).join('');
+            wrHeader.onclick = (e) => {
+                const th = e.target.closest('th[data-sort]');
+                if (!th) return;
+                const key = th.dataset.sort; // 'team' | 'total' | a week number, always as a string here
+                wrSortState = (wrSortState && String(wrSortState.key) === key)
+                    ? { key, dir: wrSortState.dir === 'desc' ? 'asc' : 'desc' }
+                    : { key, dir: key === 'team' ? 'asc' : 'desc' };
+                renderWrRows();
+            };
+
+            const nameOf = r => r.row.team_name || 'Unnamed Team';
+            let sorted = baseRows;
+            if (wrSortState) {
+                sorted = [...baseRows];
+                if (wrSortState.key === 'team') {
+                    sorted.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+                } else if (wrSortState.key === 'total') {
+                    sorted.sort((a, b) => b.row.total_points - a.row.total_points || nameOf(a).localeCompare(nameOf(b)));
+                } else {
+                    const w = wrSortState.key;
+                    sorted.sort((a, b) => {
+                        const av = a.weekCells[w]?.val ?? 0, bv = b.weekCells[w]?.val ?? 0;
+                        if (av !== bv) return bv - av;
+                        // Same "the tiebreaker winner floats to the top of the
+                        // tie" rule as the Weekly Grid, scoped to this one week.
+                        const aTie = !!a.weekCells[w]?.isTieWinner, bTie = !!b.weekCells[w]?.isTieWinner;
+                        if (aTie !== bTie) return aTie ? -1 : 1;
+                        return nameOf(a).localeCompare(nameOf(b));
+                    });
+                }
+                if (wrSortState.dir === 'asc') sorted.reverse();
+            }
+
+            wrBody.innerHTML = '';
+            sorted.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.className = r.isMe ? 'pg-row--me' : '';
+                let html = `<td class="pg-team-cell"><div class="pg-name-row"><span class="wr-rank${r.rank === 1 ? ' wr-rank--top' : ''}">${r.rank}</span><div class="name-stack">
+                    <span class="pg-team-name">${escapeHtml(r.row.team_name || 'Unnamed Team')}${r.isMe ? ' <span class="pill pill--muted pg-you-pill">You</span>' : ''}</span>
+                    ${r.ownerName ? `<span class="owner-name">${escapeHtml(r.ownerName)}</span>` : ''}
+                  </div></div></td>`;
+                html += `<td class="wr-total-cell"><span class="wr-cell wr-cell--total">${r.row.total_points}</span></td>`;
+                visWeeks.forEach(w => {
+                    const c = r.weekCells[w];
+                    if (c.future) { html += `<td><span class="wr-cell wr-cell--future">—</span></td>`; return; }
+                    const titleAttr = c.isTieWinner
+                        ? ` title="${c.slotsWon === 2 ? "Won this week's tiebreaker (closest guess on both games)" : "Won this week's tiebreaker (closer overall after a 1‑1 split)"}"`
+                        : '';
+                    html += `<td><span class="wr-cell ${tierClass(c.ratio)}${c.isWinner ? ' wr-cell--winner' : ''}"${titleAttr}>${c.val}${c.isTieWinner ? ' 🎯' : ''}</span></td>`;
+                });
                 tr.innerHTML = html;
                 wrBody.appendChild(tr);
             });

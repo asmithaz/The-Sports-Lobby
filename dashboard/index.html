@@ -113,7 +113,8 @@
             'fedex-playoffs':              'FedEx Cup Playoffs',
             'cfb-bowl-season-pick-em':     "Bowl Season Pick 'Em",
             'cfb-weekly-pick-em':          "Weekly Pick 'Em",
-            'nfl-weekly-pick-em':          "Weekly Pick 'Em"
+            'nfl-weekly-pick-em':          "Weekly Pick 'Em",
+            'nfl-survivor':                "Survivor Pool"
         };
 
         const TYPE_LABELS = {
@@ -128,7 +129,8 @@
             'fedex-playoffs':               '⛳',
             'cfb-bowl-season-pick-em':      '🏈',
             'cfb-weekly-pick-em':           '🏈',
-            'nfl-weekly-pick-em':           '🏈'
+            'nfl-weekly-pick-em':           '🏈',
+            'nfl-survivor':                 '💀'
         };
 
         const SPORT_OF_GAME = {
@@ -137,7 +139,8 @@
             'fedex-playoffs':               'golf',
             'cfb-bowl-season-pick-em':      'cfb',
             'cfb-weekly-pick-em':           'cfb',
-            'nfl-weekly-pick-em':           'nfl'
+            'nfl-weekly-pick-em':           'nfl',
+            'nfl-survivor':                 'nfl'
         };
 
         const SPORT_LABELS = {
@@ -404,6 +407,15 @@
                 return;
             }
 
+            if (league?.game_type === 'nfl-survivor') {
+                if (!confirm(`Start a new Survivor Pool season? Last season's results will be saved to Season History — everyone keeps the same invite link and starts fresh with a full set of lives once this year's regular season schedule syncs.`)) return;
+                const { error } = await supabase.rpc('nsv_start_new_season', { p_league_id: leagueId });
+                if (error) { alert(error.message); return; }
+                league.status = 'active';
+                applyFilters();
+                return;
+            }
+
             const { error } = await supabase.rpc('reactivate_league', { p_league_id: leagueId });
             if (error) { alert(error.message); return; }
             if (league) league.status = 'active';
@@ -427,6 +439,8 @@
                 window.location.href = '/cfb/weekly-pick-em/picks/';
             } else if (gameType === 'nfl-weekly-pick-em') {
                 window.location.href = '/nfl/weekly-pick-em/picks/';
+            } else if (gameType === 'nfl-survivor') {
+                window.location.href = '/nfl/survivor/picks/';
             } else if (leagueType === 'knockout-only') {
                 window.location.href = '/soccer/world-cup-bracket-challenge/bracket/';
             } else {

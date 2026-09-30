@@ -14,7 +14,6 @@
     <script src="/js/error-logging.js"></script>
     <script src="/js/feedback.js"></script>
     <script src="/js/auth.js"></script>
-    <script src="/js/email-templates.js"></script>
 </head>
 <body>
 
@@ -140,29 +139,11 @@
             return [...document.querySelectorAll('#email-tag-container .email-tag')].map(t => t.dataset.email);
         }
 
-        function escapeHtml(str) {
-            const d = document.createElement('div');
-            d.appendChild(document.createTextNode(str ?? ''));
-            return d.innerHTML;
-        }
-
-        async function sendInviteEmails(emails, leagueName, inviteLink) {
-            const subject = `You're invited to join ${leagueName} on The Sports Lobby`;
-            const body = `
-                <p>You've been invited to join <strong>${escapeHtml(leagueName)}</strong>, a College Football Bowl Season Pick 'Em league on The Sports Lobby.</p>
-                ${emailButton(inviteLink, 'Join League')}
-                <p style="margin-top:16px;font-size:12px;">Or copy this link: ${escapeHtml(inviteLink)}</p>
-            `;
-            const html = wrapEmail("You're invited!", body);
-
-            const results = await Promise.allSettled(emails.map(to =>
-                supabase.functions.invoke('send-email', { body: { to, subject, html } })
-            ));
-            results.forEach((r, i) => {
-                if (r.status === 'rejected' || r.value?.error) {
-                    console.error('Failed to send invite to', emails[i], r.reason ?? r.value?.error);
-                }
+        async function sendInviteEmails(emails, leagueId) {
+            const { error } = await supabase.functions.invoke('send-email', {
+                body: { kind: 'invite', league_id: leagueId, emails }
             });
+            if (error) console.error('Failed to send invites', error);
         }
 
         function copyLink() {
@@ -235,9 +216,7 @@
                 const emails = getInviteEmails();
                 if (emails.length) {
                     btn.textContent = 'Sending invites…';
-                    const leagueName = sessionStorage.getItem('league_name') || 'a league';
-                    const inviteLink = document.getElementById('invite-link').value;
-                    await sendInviteEmails(emails, leagueName, inviteLink);
+                    await sendInviteEmails(emails, leagueId);
                 }
             }
 

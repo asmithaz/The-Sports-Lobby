@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>NFL Survivor Pool — My Pick</title>
+    <link rel="icon" href="/favicon.ico" />
+
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="styles.css" />
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">The Sports Lobby</a>
+        <div class="nav-links">
+            <a href="/nfl/index.html" class="nav-link">NFL</a>
+        </div>
+    </nav>
+
+    <main class="page-wrapper">
+
+        <div class="dash-header">
+            <div>
+                <h1 id="league-name">Loading…</h1>
+                <div class="sub" id="league-sub"></div>
+            </div>
+            <div class="flex gap-2">
+                <a href="/nfl/survivor/history/" id="history-link" class="btn btn--ghost">📜 History</a>
+                <a href="#" id="settings-link" class="btn btn--ghost">⚙️ Settings</a>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <a href="#" id="standings-tab-link" class="tab" style="text-decoration:none;">Standings</a>
+            <span class="tab active" data-tab="picks">My Pick</span>
+        </div>
+
+        <div class="status-bar status-bar--danger mb-4 hidden" id="elim-banner">
+            <div class="status-bar__left">
+                <span class="status-dot status-dot--danger"></span>
+                <span class="status-bar__text" id="elim-banner-text"></span>
+            </div>
+        </div>
+
+        <div class="status-bar status-bar--warning mb-4 hidden" id="kickoff-banner">
+            <div class="status-bar__left">
+                <span class="status-dot status-dot--warning"></span>
+                <span class="status-bar__text" id="kickoff-banner-text"></span>
+            </div>
+            <a href="#" id="kickoff-banner-link" class="btn btn--ghost">View Standings →</a>
+        </div>
+
+        <div class="season-toggle" id="season-toggle" style="display:none; margin-bottom:var(--space-2);">
+            <button type="button" class="season-toggle__btn" data-mode="regular">Regular Season</button>
+            <button type="button" class="season-toggle__btn" data-mode="playoffs">Playoffs</button>
+        </div>
+
+        <div class="week-nav-grid" id="week-nav"></div>
+
+        <div id="week-container">
+            <p class="text-muted" style="padding:var(--space-4);">Loading…</p>
+        </div>
+
+    </main>
+
+    <footer class="site-footer">
+        <span>2026 The Sports Lobby. All rights reserved.</span>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/terms.html" class="footer-link">Terms</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
+    </footer>
+
+    <script>
+        let currentUserId = null;
+        let leagueId = null;
+        let currentSeason = null;
+        let currentWeekNum = null;
+        let nsvLeague = null; // { pick_mode, result_mode, lives_allowed, spread_lock_mode, continue_to_playoffs }
+
+        let allGames = [];
+        let gamesById = {};
+        let weeks = [];
+        let selectedWeek = null;
+        let seasonMode = null;
+        let hasPlayoffWeeks = false;
+        let locksByGameId = {};
+        let myPicksByWeek = {}; // week -> nsv_picks row
+        let usedTeams = new Set(); // every team already picked this season (any week)
+        let myStatus = { is_alive: true, lives_remaining: 0, eliminated_week: null, eliminated_team: null, weeks_survived: 0 };
+        let saving = false;
+        let weekThresholdCache = {}; // week -> ms epoch or null, memoized per loadAndRender pass
+
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.appendChild(document.createTextNode(str ?? ''));
+            return d.innerHTML;
+        }
+        function fmtKickoff(iso) {
+            if (!iso) return null;
+            return new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+        }
+        // Mirrors nsv_week_lock_threshold() in schema.sql exactly — NULL for
+        // 'per_game' mode, otherwise the whole week's earliest-relevant
+        // kickoff minus 5 min. Day-of-week is evaluated in America/New_York
+        // wall-clock time, same as the NFL's own Thu/Sun/Mon scheduling.
+        function isThursdayET(iso) {
+            return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(new Date(iso)) === 'Thu';
+        }
+        function weekLockThreshold(week) {
+            if (nsvLeague.pick_lock_mode === 'per_game') return null;
+            if (week in weekThresholdCache) return weekThresholdCache[week];
+            const games = weekGames(week).filter(g => g.kickoff_at);
+            let pool = games;
+            if (nsvLeague.pick_lock_mode === 'sunday_kickoff') {
+                const nonThu = games.filter(g => !isThursdayET(g.kickoff_at));
+                if (nonThu.length) pool = nonThu;
+            }
+            const kicks = pool.map(g => new Date(g.kickoff_at).getTime());
+            const threshold = kicks.length ? Math.min(...kicks) - 5 * 60 * 1000 : null;
+            weekThresholdCache[week] = threshold;
+            return threshold;
+        }
+        function isLocked(game) {
+            if (game.status === 'final') return true;
+            if (game.kickoff_at && Date.now() >= new Date(game.kickoff_at).getTime() - 5 * 60 * 1000) return true;
+            const threshold = weekLockThreshold(game.week);
+            return threshold != null && Date.now() >= threshold;
+        }
+
+        // Mirrors nwpe_ats_cover() in schema.sql exactly.
+        function computeAtsCover(homeTeam, awayTeam, homeScore, awayScore, spread, favoriteTeam) {
+            if (spread == null || favoriteTeam == null) return null;
+            const favIsHome = favoriteTeam === homeTeam;
+            const margin = favIsHome ? homeScore - awayScore : awayScore - homeScore;
+            if (margin > spread) return favoriteTeam;
+            if (margin < spread) return favIsHome ? awayTeam : homeTeam;
+            return null; // push
+        }
+
+        function weekLabel(w) {
+            if (w <= 18) return `Week ${w}`;
+            return { 19: 'Wild Card', 20: 'Divisional', 21: 'Conference Championship', 22: 'Pro Bowl', 23: 'Super Bowl' }[w] || `Week ${w}`;
+        }
+        function weekColLabel(w) {
+            if (w <= 18) return `Wk ${w}`;
+            return { 19: 'WC', 20: 'Div', 21: 'Conf', 22: 'Pro Bowl', 23: 'SB' }[w] || `Wk ${w}`;
+        }
+        function weekGames(w) {
+            return allGames.filter(g => g.week === w).sort((a, b) => (a.kickoff_at || '').localeCompare(b.kickoff_at || ''));
+        }
+        function visibleWeeks() {
+            return weeks.filter(w => seasonMode === 'playoffs' ? w > 18 : w <= 18);
+        }
+        // Mirrors nsv_submit_pick's v_phase computation exactly — 'season'
+        // (one no-repeat pool all year) unless the league resets used
+        // teams for the playoffs, in which case weeks 1-18 and 19+ are
+        // two independent pools.
+        function weekPhase(w) {
+            if (!nsvLeague.reset_teams_for_playoffs) return 'season';
+            return w <= 18 ? 'regular' : 'playoffs';
+        }
+        function weekEarliestKickoff(week) {
+            const kicks = weekGames(week).map(g => g.kickoff_at).filter(Boolean).map(k => new Date(k).getTime());
+            return kicks.length ? Math.min(...kicks) : null;
+        }
+        function fmtBannerKickoff(ms) {
+            const d = new Date(ms);
+            const day = d.toLocaleDateString(undefined, { weekday: 'long' });
+            const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+            return `${day} at ${time}`;
+        }
+        // Tue/Wed ET is the NFL's own dead zone between weeks — every game
+        // from a normal Thu-Mon slate is long since final by then, but
+        // nwpe_season_state.current_week (ESPN's own pointer) doesn't
+        // necessarily flip to the next week until its Thursday games
+        // actually exist/sync. Without this, "Week 3 kicked off..." would
+        // otherwise keep showing as stale leftover copy straight through
+        // to the next week's kickoff.
+        function isBetweenWeeksET() {
+            const day = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(new Date());
+            return day === 'Tue' || day === 'Wed';
+        }
+        // Shown only for the CURRENT week, and only once its first game has
+        // actually kicked off — nudges toward Standings instead of an
+        // auto-redirect, same pattern as NFL/CFB Weekly Pick'em's picks page.
+        function updateKickoffBanner(week) {
+            const banner = document.getElementById('kickoff-banner');
+            const earliest = week === currentWeekNum ? weekEarliestKickoff(week) : null;
+            if (earliest == null || Date.now() < earliest || isBetweenWeeksET()) { banner.classList.add('hidden'); return; }
+            document.getElementById('kickoff-banner-text').innerHTML = `<b>${weekLabel(week)}</b> kicked off ${fmtBannerKickoff(earliest)}.`;
+            banner.classList.remove('hidden');
+        }
+
+        function weekDotColor(w) {
+            if (myStatus.eliminated_week === w) return 'red';
+            const pick = myPicksByWeek[w];
+            const anyFinal = weekGames(w).some(g => g.status === 'final');
+            if (pick && anyFinal) return 'green';
+            if (w === currentWeekNum && !pick && myStatus.is_alive) return 'amber';
+            return null;
+        }
+
+        function resolveLeagueId() {
+            const fromUrl = new URLSearchParams(window.location.search).get('league_id');
+            if (fromUrl) { sessionStorage.setItem('league_id', fromUrl); return fromUrl; }
+            return sessionStorage.getItem('league_id');
+        }
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { window.location.href = '/login/index.html'; return; }
+            currentUserId = session.user.id;
+
+            leagueId = resolveLeagueId();
+            if (!leagueId) { window.location.href = '/nfl/index.html'; return; }
+
+            document.getElementById('standings-tab-link').href = `/nfl/survivor/dashboard/?league_id=${leagueId}`;
+            document.getElementById('kickoff-banner-link').href = `/nfl/survivor/dashboard/?league_id=${leagueId}`;
+            document.getElementById('history-link').href = `/nfl/survivor/history/?league_id=${leagueId}`;
+            document.getElementById('settings-link').href = `/nfl/survivor/settings/?league_id=${leagueId}`;
+
+            const { data: leagueRow } = await supabase
+                .from('leagues').select('name, current_season').eq('id', leagueId).single();
+            currentSeason = leagueRow?.current_season;
+            document.getElementById('league-name').textContent = leagueRow?.name ?? 'League';
+
+            const { data: memberRow } = await supabase
+                .from('league_members').select('team_name').eq('league_id', leagueId).eq('user_id', currentUserId).single();
+            if (!memberRow?.team_name) {
+                window.location.href = `/nfl/survivor/settings/?league_id=${leagueId}&require=team_name&next=/nfl/survivor/picks/`;
+                return;
+            }
+
+            const { data: nsvLeagueRow } = await supabase
+                .from('nsv_leagues').select('pick_mode, result_mode, lives_allowed, pick_lock_mode, spread_lock_mode, continue_to_playoffs, reset_teams_for_playoffs').eq('league_id', leagueId).eq('season', currentSeason).single();
+            nsvLeague = nsvLeagueRow || { pick_mode: 'straight_up', result_mode: 'survive_on_win', lives_allowed: 0, pick_lock_mode: 'per_game', spread_lock_mode: 'week_reveal', continue_to_playoffs: false, reset_teams_for_playoffs: false };
+
+            const modeLabel = nsvLeague.result_mode === 'survive_on_loss' ? 'Eliminator (pick to lose)' : 'Classic (pick to win)';
+            // "Lives" not "mulligans" — matches Standings' "Lives Left"
+            // column (lives_allowed + 1, since your ongoing pick is itself
+            // a life on top of any mulligans), so the two pages agree.
+            const totalLives = nsvLeague.lives_allowed + 1;
+            const livesLabel = `${totalLives} ${totalLives === 1 ? 'life' : 'lives'}`;
+            const lockLabel = nsvLeague.pick_lock_mode === 'week_kickoff' ? 'Locks before Thursday'
+                : nsvLeague.pick_lock_mode === 'sunday_kickoff' ? 'Locks before Sunday'
+                : 'Locks per game';
+            const playoffsLabel = nsvLeague.continue_to_playoffs
+                ? (nsvLeague.reset_teams_for_playoffs ? ' · Continues into playoffs (teams reset)' : ' · Continues into playoffs')
+                : '';
+            document.getElementById('league-sub').textContent =
+                `NFL Survivor Pool · ${nsvLeague.pick_mode === 'spread' ? 'Against the Spread' : 'Straight Up'} · ${modeLabel} · ${livesLabel} · ${lockLabel}${playoffsLabel}`;
+
+            document.getElementById('season-toggle').addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-mode]');
+                if (!btn || btn.dataset.mode === seasonMode) return;
+                seasonMode = btn.dataset.mode;
+                const vis = visibleWeeks();
+                selectedWeek = vis.includes(currentWeekNum) ? currentWeekNum : vis[vis.length - 1];
+                renderWeekNav();
+                renderSelectedWeek();
+            });
+
+            await loadAndRender();
+        }
+
+        async function loadAndRender() {
+            weekThresholdCache = {};
+            const [{ data: games }, { data: myPicks }, { data: stateRow }, { data: statusRow }] = await Promise.all([
+                supabase.rpc('nsv_get_slate', { p_league_id: leagueId, p_season: currentSeason }),
+                supabase.from('nsv_picks').select('*').eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', currentUserId),
+                supabase.from('nwpe_season_state').select('current_week, regular_season_complete_at').eq('season', currentSeason).maybeSingle(),
+                supabase.from('nsv_status').select('*').eq('league_id', leagueId).eq('season', currentSeason).eq('user_id', currentUserId).maybeSingle()
+            ]);
+
+            allGames = games || [];
+            gamesById = Object.fromEntries(allGames.map(g => [g.id, g]));
+            currentWeekNum = stateRow?.current_week ?? null;
+            const regularSeasonCompleteAt = stateRow?.regular_season_complete_at ?? null;
+
+            locksByGameId = {};
+            if (nsvLeague.pick_mode === 'spread' && allGames.length) {
+                const { data: locks } = await supabase
+                    .from('nwpe_game_spread_locks')
+                    .select('*')
+                    .eq('lock_mode', nsvLeague.spread_lock_mode)
+                    .in('game_id', allGames.map(g => g.id));
+                (locks || []).forEach(l => { locksByGameId[l.game_id] = l; });
+            }
+
+            myPicksByWeek = {};
+            usedTeams = new Set();
+            (myPicks || []).forEach(p => { myPicksByWeek[p.week] = p; usedTeams.add(p.picked_team); });
+
+            myStatus = statusRow || { is_alive: true, lives_remaining: nsvLeague.lives_allowed, eliminated_week: null, eliminated_team: null, weeks_survived: 0 };
+
+            weeks = [...new Set(allGames.map(g => g.week))].sort((a, b) => a - b);
+            hasPlayoffWeeks = weeks.some(w => w > 18);
+            if (seasonMode == null) {
+                seasonMode = (hasPlayoffWeeks && regularSeasonCompleteAt) ? 'playoffs' : 'regular';
+            }
+
+            const elimBanner = document.getElementById('elim-banner');
+            if (!myStatus.is_alive) {
+                const cause = myStatus.eliminated_team
+                    ? `your pick, <strong>${escapeHtml(myStatus.eliminated_team)}</strong>, didn't survive`
+                    : `you didn't submit a pick in time`;
+                document.getElementById('elim-banner-text').innerHTML =
+                    `You were eliminated in <strong>${weekLabel(myStatus.eliminated_week)}</strong> — ${cause}. You survived ${myStatus.weeks_survived} week${myStatus.weeks_survived === 1 ? '' : 's'}.`;
+                elimBanner.classList.remove('hidden');
+            } else {
+                elimBanner.classList.add('hidden');
+            }
+
+            if (!weeks.length) {
+                document.getElementById('season-toggle').style.display = 'none';
+                document.getElementById('week-nav').innerHTML = '';
+                document.getElementById('week-container').innerHTML = `<p class="text-muted" style="padding:var(--space-4);">No games synced yet — check back once this week's games are posted.</p>`;
+                return;
+            }
+
+            if (selectedWeek == null || !visibleWeeks().includes(selectedWeek)) {
+                const vis = visibleWeeks();
+                selectedWeek = vis.includes(currentWeekNum) ? currentWeekNum : vis[vis.length - 1];
+            }
+
+            renderWeekNav();
+            renderSelectedWeek();
+        }
+
+        function renderWeekNav() {
+            const toggle = document.getElementById('season-toggle');
+            toggle.style.display = hasPlayoffWeeks ? 'inline-flex' : 'none';
+            toggle.querySelectorAll('.season-toggle__btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === seasonMode);
+            });
+
+            const vis = visibleWeeks();
+            const nav = document.getElementById('week-nav');
+            nav.style.gridTemplateColumns = `repeat(${vis.length}, minmax(0, 1fr))`;
+            nav.innerHTML = vis.map(w => {
+                const isSelected = w === selectedWeek;
+                const cls = ['wn-cell', isSelected ? 'wn-cell--selected' : ''].filter(Boolean).join(' ');
+                const color = weekDotColor(w);
+                const dot = color ? `<span class="wn-dot wn-dot--${color}"></span>` : '';
+                return `<button type="button" class="${cls}" data-week="${w}">${weekColLabel(w)}${dot}</button>`;
+            }).join('');
+            nav.onclick = (e) => {
+                const btn = e.target.closest('button[data-week]');
+                if (!btn) return;
+                selectedWeek = parseInt(btn.dataset.week, 10);
+                renderWeekNav();
+                renderSelectedWeek();
+            };
+        }
+
+        function usedInWeek(team, forWeek) {
+            const phase = weekPhase(forWeek);
+            for (const w in myPicksByWeek) {
+                const wk = parseInt(w, 10);
+                if (myPicksByWeek[w].picked_team === team && weekPhase(wk) === phase) return wk;
+            }
+            return null;
+        }
+
+        function renderSelectedWeek() {
+            const week = selectedWeek;
+            const games = weekGames(week);
+            const myPick = myPicksByWeek[week];
+            const canPick = myStatus.is_alive;
+            const alreadyEliminatedByNow = myStatus.eliminated_week != null && week > myStatus.eliminated_week;
+            // Once this week's existing pick has itself already locked
+            // (its game kicked off/finished), switching to a different,
+            // still-open game in the same week would overwrite an
+            // already-decided result — nsv_submit_pick rejects this
+            // server-side too, but disabling it here avoids a wasted
+            // click + error round-trip for what looks clickable.
+            const myPickLocked = myPick && isLocked(gamesById[myPick.game_id]);
+
+            // "No repeat teams" scope matches nsv_submit_pick's own phase
+            // check — once a league resets used teams for the playoffs,
+            // regular-season and playoff picks are two independent pools,
+            // so it's worth saying which pool applies to THIS week rather
+            // than a blanket "all season" that's no longer accurate.
+            const noRepeatClause = weekPhase(week) === 'season' ? 'No repeat teams all season'
+                : weekPhase(week) === 'playoffs' ? 'No repeat teams across the playoffs (regular-season picks are back in play)'
+                : 'No repeat teams during the regular season';
+
+            const hint = !canPick
+                ? `You're out of this pool — this week is shown read-only.`
+                : myPickLocked
+                ? `Your pick for this week has already locked in — it can't be changed.`
+                : nsvLeague.result_mode === 'survive_on_loss'
+                ? `Pick a team you think LOSES${nsvLeague.pick_mode === 'spread' ? ' or fails to cover' : ''} this week. ${noRepeatClause} — your pick saves automatically.`
+                : `Pick a team you think wins${nsvLeague.pick_mode === 'spread' ? ' or covers' : ''} this week. ${noRepeatClause} — your pick saves automatically.`;
+
+            const cards = games.map(g => {
+                const locked = isLocked(g);
+                const lock = locksByGameId[g.id];
+                const spreadKnown = nsvLeague.pick_mode === 'spread' && lock && lock.locked_spread != null;
+                const atsWinner = (g.status === 'final' && spreadKnown)
+                    ? computeAtsCover(g.home_team, g.away_team, g.home_score, g.away_score, lock.locked_spread, lock.locked_favorite_team)
+                    : null;
+
+                const teamRow = (team, opponent, isHome) => {
+                    const isMyPickThisWeek = myPick && myPick.picked_team === team;
+                    const usedWeek = !isMyPickThisWeek ? usedInWeek(team, week) : null;
+                    const isUsedElsewhere = usedWeek != null;
+                    const clickable = canPick && !locked && !isUsedElsewhere && (!myPickLocked || isMyPickThisWeek);
+
+                    let resultCls = '';
+                    if (g.status === 'final' && isMyPickThisWeek) {
+                        const hit = spreadKnown ? (atsWinner === team) : (g.winner_team === team);
+                        const push = spreadKnown && atsWinner === null;
+                        resultCls = push ? '' : (hit ? ' sv-team--hit' : ' sv-team--miss');
+                    }
+
+                    let tag = '';
+                    if (isMyPickThisWeek) tag = `<span class="pill pill--green">Your Pick</span>`;
+                    else if (isUsedElsewhere) tag = `<span class="pill pill--muted">Used Wk ${usedWeek}</span>`;
+
+                    let spreadTag = '';
+                    if (nsvLeague.pick_mode === 'spread') {
+                        if (spreadKnown) {
+                            const isFav = lock.locked_favorite_team === team;
+                            const num = Math.abs(lock.locked_spread);
+                            spreadTag = `<span class="sv-team__spread">${isFav ? '-' : '+'}${num}</span>`;
+                        } else if (lock) {
+                            spreadTag = `<span class="sv-team__spread sv-team__spread--pickem">Pick'em</span>`;
+                        }
+                    } else if (g.spread != null && g.favorite_team != null) {
+                        // Straight up picks don't need to cover, but showing
+                        // the spread anyway is useful reference — lets
+                        // members see who's favored without affecting
+                        // grading. Uses the game's LIVE spread (not a frozen
+                        // lock snapshot like spread mode above) since it's
+                        // informational only, nothing to freeze.
+                        const isFav = g.favorite_team === team;
+                        spreadTag = `<span class="sv-team__spread sv-team__spread--info">${isFav ? '-' : '+'}${Math.abs(g.spread)}</span>`;
+                    }
+
+                    const cls = ['sv-team', isMyPickThisWeek ? 'sv-team--selected' : '', isUsedElsewhere ? 'sv-team--disabled' : '', !clickable && !isMyPickThisWeek ? 'sv-team--disabled' : '', resultCls].filter(Boolean).join(' ');
+
+                    const score = g.status !== 'scheduled' ? (isHome ? g.home_score : g.away_score) : null;
+                    const scoreTag = score != null ? `<span class="sv-team__score">${score}</span>` : '';
+
+                    return `<div class="${cls}" data-team="${escapeHtml(team)}" data-game-id="${g.id}">
+                        ${isHome ? (g.home_team_logo ? `<img class="sv-team__logo" src="${g.home_team_logo}" alt="" />` : '') : (g.away_team_logo ? `<img class="sv-team__logo" src="${g.away_team_logo}" alt="" />` : '')}
+                        <span class="sv-team__name">${escapeHtml(team)}</span>
+                        ${scoreTag}
+                        ${spreadTag}
+                        ${tag}
+                    </div>`;
+                };
+
+                // status_detail is ESPN's own live clock/quarter text
+                // (e.g. "8:32 - 3rd Quarter"), synced verbatim onto
+                // nwpe_games by nwpe-sync-games — no extra data needed to
+                // show it here. `locked` (kickoff already passed by our
+                // own clock) is kept as a fallback for the gap between a
+                // game kicking off and ESPN's next 15-min sync flipping
+                // status to 'live'.
+                let meta;
+                if (g.status === 'final') {
+                    meta = 'Final';
+                } else if (g.status === 'live') {
+                    meta = `<span class="pill pill--warning">Live</span>${g.status_detail ? ' ' + escapeHtml(g.status_detail) : ''}`;
+                } else if (locked) {
+                    meta = 'Starting…';
+                } else {
+                    meta = escapeHtml(fmtKickoff(g.kickoff_at) || 'TBD');
+                }
+
+                return `<div class="sv-matchup">
+                    <div class="sv-matchup__meta">${meta}</div>
+                    ${teamRow(g.away_team, g.home_team, false)}
+                    ${teamRow(g.home_team, g.away_team, true)}
+                </div>`;
+            }).join('');
+
+            const container = document.getElementById('week-container');
+            container.innerHTML = `
+                <div class="sv-week-head">
+                    <h2>${weekLabel(week)}${week === currentWeekNum ? ' <span class="pill pill--muted">Current</span>' : ''}</h2>
+                    ${myPick && !isLockedWeek(week) ? `<button type="button" class="btn btn--ghost btn--sm" id="clear-pick-btn">Clear pick</button>` : ''}
+                </div>
+                <p class="sv-week-hint">${hint}</p>
+                <div class="sv-matchup-grid">${cards || '<p class="text-muted">No games this week.</p>'}</div>
+            `;
+
+            if (canPick) {
+                container.querySelectorAll('.sv-team').forEach(el => {
+                    el.addEventListener('click', onTeamClick);
+                });
+            }
+            const clearBtn = document.getElementById('clear-pick-btn');
+            if (clearBtn) clearBtn.addEventListener('click', () => clearPick(week));
+
+            updateKickoffBanner(week);
+        }
+
+        function isLockedWeek(week) {
+            return weekGames(week).every(g => isLocked(g));
+        }
+
+        async function onTeamClick(e) {
+            if (saving) return;
+            const el = e.currentTarget;
+            if (el.classList.contains('sv-team--disabled')) return;
+            const gameId = el.dataset.gameId;
+            const team = el.dataset.team;
+            const game = gamesById[gameId];
+            if (isLocked(game)) return;
+
+            saving = true;
+            const { error } = await supabase.rpc('nsv_submit_pick', {
+                p_league_id: leagueId, p_game_id: gameId, p_picked_team: team
+            });
+            saving = false;
+
+            if (error) {
+                alert('Could not save pick: ' + error.message);
+                console.error(error);
+                return;
+            }
+            await loadAndRender();
+        }
+
+        async function clearPick(week) {
+            if (saving) return;
+            saving = true;
+            const { error } = await supabase.rpc('nsv_clear_pick', { p_league_id: leagueId, p_week: week });
+            saving = false;
+            if (error) {
+                alert('Could not clear pick: ' + error.message);
+                console.error(error);
+                return;
+            }
+            await loadAndRender();
+        }
+
+        init();
+    </script>
+</body>
+</html>

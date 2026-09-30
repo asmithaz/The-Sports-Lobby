@@ -150,10 +150,15 @@ body.tb-disabled .tiebreak-summary { display: none; }
 .pcell--miss .pcell-name, .pcell--miss .pcell-result { color: var(--c-danger); }
 .pcell--hidden { color: var(--c-text-muted); font-size: var(--text-lg); padding: 14px 4px; }
 
-/* Running week total, pinned to the right edge of the weekly grid. */
+/* Running week total, pinned to the right edge of the weekly grid.
+   min-width is fixed rather than left to auto-size on content — without
+   it, the one row carrying a tiebreak badge (see .pg-tie-badge below)
+   made this whole sticky column visibly widen/shift versus every other
+   week's render where no row has a badge. */
 .pg-table th.pg-total-th, .pg-table td.pg-total-cell {
     position: sticky; right: 0; z-index: 2; background: var(--c-surface-2); border-left: 0.5px solid var(--c-border-strong);
     font-family: var(--font-mono); font-weight: var(--weight-bold); font-size: var(--text-md);
+    min-width: 72px;
 }
 /* Header label stays the same plain uppercase font as every other
    header (Team, Wk N) — only the VALUE cell below gets the bigger
@@ -166,6 +171,13 @@ body.tb-disabled .tiebreak-summary { display: none; }
     letter-spacing: 0.05em; text-transform: uppercase;
 }
 .pg-table tr.pg-row--me td.pg-total-cell { background: var(--c-accent-dim-solid); color: var(--c-accent); }
+
+/* Weekly Grid's Team/Wk Total headers double as sort toggles. */
+.pg-table th.pg-sortable { cursor: pointer; }
+.pg-table th.pg-sortable:hover { color: var(--c-text-primary); }
+.pg-sort-arrow { margin-left: 3px; font-size: 9px; }
+/* Marks whoever won a tied-for-the-top week via that week's tiebreaker. */
+.pg-tie-badge { font-size: var(--text-sm); vertical-align: middle; }
 
 /* -- season results: running total pinned right next to the team name;
    week columns fill the rest via table-layout: fixed (see above) -- */
@@ -222,3 +234,8 @@ body.tb-disabled .tiebreak-summary { display: none; }
     font-weight: var(--weight-medium); color: var(--c-text-secondary); text-transform: none;
 }
 #pg-view-results .wr-cell { padding-left: 6px; padding-right: 6px; min-width: 0; }
+/* Same specificity as the week-header color rule above (both are
+   #pg-view-results .pg-table th + 3 class-level selectors) — placed after
+   it so this wins the tie and a week header's hover still highlights,
+   instead of the plain muted color rule silently winning every time. */
+#pg-view-results .pg-table th.pg-sortable:hover { color: var(--c-text-primary); }

@@ -139,3 +139,8 @@ tr.expanded + tr .breakdown { display: block; }
     letter-spacing: 0.05em; text-transform: uppercase;
 }
 .pg-table tr.pg-row--me td.pg-total-cell { background: var(--c-accent-dim-solid); color: var(--c-accent); }
+
+/* Team/Total headers double as sort toggles. */
+.pg-table th.pg-sortable { cursor: pointer; }
+.pg-table th.pg-sortable:hover { color: var(--c-text-primary); }
+.pg-sort-arrow { margin-left: 3px; font-size: 9px; }

@@ -163,6 +163,18 @@
             const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
             return `${day} at ${time}`;
         }
+        // Sun/Mon ET is CFB's own dead zone between weeks — unlike the
+        // NFL's Thu-Mon slate, a CFB week runs Tue(MACtion)-Sat, so the
+        // days right after Saturday's games (and before the next week's
+        // Tuesday games) are Sunday and Monday. wpe_season_state's
+        // current_week (ESPN's own pointer) doesn't necessarily flip
+        // until the next week's games actually sync, so without this,
+        // "Week 8 kicked off..." would otherwise keep showing as stale
+        // leftover copy straight through to the next week's games.
+        function isBetweenWeeksET() {
+            const day = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(new Date());
+            return day === 'Sun' || day === 'Mon';
+        }
         // Shown only for the CURRENT week, and only once its first game has
         // actually kicked off — nudges toward Standings instead of an
         // auto-redirect, reusing kickoff_at already loaded for isLocked()
@@ -170,7 +182,7 @@
         function updateKickoffBanner(week) {
             const banner = document.getElementById('kickoff-banner');
             const earliest = week === currentWeekNum ? weekEarliestKickoff(week) : null;
-            if (earliest == null || Date.now() < earliest) { banner.classList.add('hidden'); return; }
+            if (earliest == null || Date.now() < earliest || isBetweenWeeksET()) { banner.classList.add('hidden'); return; }
             const label = week === REGULAR_SEASON_LENGTH ? 'Conference Championship week' : `Week ${week}`;
             document.getElementById('kickoff-banner-text').innerHTML = `<b>${label}</b> kicked off ${fmtBannerKickoff(earliest)}.`;
             banner.classList.remove('hidden');

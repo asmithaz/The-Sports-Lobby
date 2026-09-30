@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Weekly Pick 'Em — Team Name &amp; Invites</title>
+    <title>NFL Survivor Pool — Team Name &amp; Invites</title>
     <link rel="icon" href="/favicon.ico" />
 
     <link rel="stylesheet" href="/css/design-tokens.css" />
@@ -20,29 +20,26 @@
     <nav class="nav">
         <a href="/index.html" class="nav-logo">The Sports Lobby</a>
         <div class="nav-links">
-            <a href="/cfb/index.html" class="nav-link">CFB</a>
+            <a href="/nfl/index.html" class="nav-link">NFL</a>
             <a href="/login/index.html" class="nav-link">Login</a>
             <a href="/login/index.html" class="nav-link">Signup</a>
         </div>
     </nav>
 
     <main class="page-wrapper page-wrapper--center">
-        <h1 class="page-heading">Weekly Pick 'Em</h1>
+        <h1 class="page-heading">NFL Survivor Pool</h1>
         <p class="page-subhead">Step 2 of 2 — Team Name &amp; Invites</p>
 
         <form id="invite-form" class="stack-form">
 
-            <!-- Team Name — shown on standings instead of account name, same
-                 identity pattern as Bowl Pick'Em. -->
             <div class="form-card">
                 <div class="field">
                     <label class="label" for="team-name">Your Team Name</label>
-                    <input type="text" id="team-name" name="team-name" class="input" placeholder="e.g. Saturday Regulars" maxlength="30" required />
+                    <input type="text" id="team-name" name="team-name" class="input" placeholder="e.g. Sunday Regulars" maxlength="30" required />
                     <span class="hint">Shown on standings instead of your account name — every member picks their own when they join.</span>
                 </div>
             </div>
 
-            <!-- Invite Method -->
             <div class="form-card">
                 <div class="field">
                     <label class="label">Invite Friends</label>
@@ -64,7 +61,6 @@
                     </div>
                 </div>
 
-                <!-- Email input -->
                 <div class="tier-section" id="email-section">
                     <label class="subsection-label">Email Addresses</label>
                     <div class="email-tag-container" id="email-tag-container" onclick="document.getElementById('email-input').focus()">
@@ -73,7 +69,6 @@
                     <span class="hint">Press Enter or , to add each address</span>
                 </div>
 
-                <!-- Link -->
                 <div class="tier-section hidden" id="link-section">
                     <label class="subsection-label">Invite Link</label>
                     <div class="link-row">
@@ -106,7 +101,7 @@
     <script>
         const inviteCode = sessionStorage.getItem('league_invite_code') || 'XXXXXXXX';
         document.getElementById('invite-link').value =
-            window.location.origin + '/join/?code=wpe-' + inviteCode.toLowerCase();
+            window.location.origin + '/join/?code=nsv-' + inviteCode.toLowerCase();
 
         function showInviteMethod(method) {
             document.getElementById('email-section').classList.toggle('hidden', method !== 'email');
@@ -170,25 +165,24 @@
 
             const leagueId = sessionStorage.getItem('league_id');
             if (!leagueId) {
-                window.location.href = '/cfb/weekly-pick-em/setup/';
+                window.location.href = '/nfl/survivor/setup/';
                 return;
             }
 
             const season = new Date().getFullYear();
 
             const { error } = await supabase
-                .from('wpe_leagues')
+                .from('nsv_leagues')
                 .insert({
                     league_id: leagueId,
                     season: season,
-                    pick_mode: sessionStorage.getItem('wpe_pick_mode') || 'straight_up',
-                    scoring_mode: sessionStorage.getItem('wpe_scoring_mode') || 'flat',
-                    scope_mode: sessionStorage.getItem('wpe_scope_mode') || 'sports_lobby_choice',
-                    conferences: JSON.parse(sessionStorage.getItem('wpe_conferences') || '[]'),
-                    include_top25: sessionStorage.getItem('wpe_include_top25') !== '0',
-                    include_week_zero: sessionStorage.getItem('wpe_include_week_zero') === '1',
-                    tiebreakers_enabled: sessionStorage.getItem('wpe_tiebreakers_enabled') !== '0',
-                    include_army_navy_week: sessionStorage.getItem('wpe_include_army_navy_week') === '1'
+                    pick_mode: sessionStorage.getItem('nsv_pick_mode') || 'straight_up',
+                    result_mode: sessionStorage.getItem('nsv_result_mode') || 'survive_on_win',
+                    lives_allowed: parseInt(sessionStorage.getItem('nsv_lives_allowed') || '0', 10),
+                    pick_lock_mode: sessionStorage.getItem('nsv_pick_lock_mode') || 'per_game',
+                    spread_lock_mode: sessionStorage.getItem('nsv_spread_lock_mode') || 'week_reveal',
+                    continue_to_playoffs: sessionStorage.getItem('nsv_continue_to_playoffs') === '1',
+                    reset_teams_for_playoffs: sessionStorage.getItem('nsv_reset_teams_for_playoffs') === '1'
                 });
 
             if (error) {
@@ -199,15 +193,13 @@
                 return;
             }
 
-            // Set the commissioner's own team name via the shared RPC (they're
-            // auto-added as a member by the on-league-created trigger).
             const { error: teamNameError } = await supabase.rpc('set_team_name', {
                 p_league_id: leagueId,
                 p_team_name: teamName
             });
             if (teamNameError) console.error(teamNameError);
 
-            sessionStorage.removeItem('wpe_pending_league_name');
+            sessionStorage.removeItem('nsv_pending_league_name');
 
             const { error: statusError } = await supabase
                 .from('leagues')
@@ -224,7 +216,7 @@
                 }
             }
 
-            window.location.href = '/cfb/weekly-pick-em/picks/';
+            window.location.href = '/nfl/survivor/picks/';
         });
     </script>
 </body>

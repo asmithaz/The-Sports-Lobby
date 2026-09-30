@@ -1,0 +1,151 @@
+/* NFL Survivor Pool — Picks page
+   Team-picker matchup cards, distinct from Weekly Pick'em's sortable
+   table since Survivor is one team choice per week, not per-game. */
+
+/* Week nav strip — .wn-cell itself is shared (css/components.css), but
+   the container class is defined per-page since its border/radius
+   depends on what sits below it (see that file's comment). Unlike
+   Weekly Pick'em/Bowl Pick'em, Survivor doesn't flow into one single
+   flush card beneath it — .sv-matchup-grid is its own independent,
+   already-bordered multi-column grid — so this stays a standalone
+   fully-bordered/rounded bar instead of the flush border-bottom:none
+   treatment those pages use. Without `display: grid` here, the .wn-cell
+   buttons fall back to block layout and stack vertically instead of
+   forming a single-row tab strip.
+   .wn-dot isn't in components.css either (each page's own colors). */
+.week-nav-grid {
+    display: grid;
+    border: 0.5px solid var(--c-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--c-surface-2);
+    margin-bottom: var(--space-4);
+}
+.wn-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.wn-dot--green { background: var(--c-accent); }
+.wn-dot--amber { background: var(--c-warning); }
+.wn-dot--red { background: var(--c-danger); }
+
+.sv-week-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-1);
+}
+.sv-week-head h2 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+.sv-week-hint {
+    color: var(--c-text-secondary);
+    font-size: var(--text-sm, 13px);
+    margin: 0 0 var(--space-4);
+}
+
+.sv-matchup-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: var(--space-3);
+}
+
+.sv-matchup {
+    background: var(--c-surface);
+    border: 0.5px solid var(--c-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    /* Without this, a long "FINAL: New England Patriots 6 – Jacksonville
+       Jaguars 35" meta line or team name has no flex/grid basis to
+       shrink from (flex/grid items default to min-width: auto, i.e.
+       their content's min-content size) and can force this card's grid
+       column wider than its minmax() floor — overflowing the whole
+       page with a horizontal scrollbar instead of just wrapping. */
+    min-width: 0;
+}
+
+.sv-matchup__meta {
+    font-size: var(--text-xs);
+    color: var(--c-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.sv-team {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    border: 0.5px solid var(--c-border-strong);
+    background: color-mix(in srgb, var(--c-surface-2) 100%, white 6%);
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+    min-width: 0;
+}
+.sv-team:hover:not(.sv-team--disabled) {
+    background: var(--c-surface-hover);
+    border-color: var(--c-border-strong);
+}
+
+.sv-team__logo {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.sv-team__name {
+    font-weight: var(--weight-medium);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sv-team__score {
+    font-family: var(--font-mono);
+    font-weight: var(--weight-bold);
+    font-size: var(--text-sm);
+    color: var(--c-text-primary);
+    flex-shrink: 0;
+}
+
+.sv-team__spread {
+    font-size: var(--text-xs);
+    color: var(--c-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+.sv-team__spread--pickem {
+    color: var(--c-warning);
+}
+
+.sv-team--selected {
+    background: var(--c-accent-dim);
+    border-color: var(--c-accent-border, var(--c-accent));
+}
+
+.sv-team--disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.sv-team--hit {
+    background: var(--c-accent-dim);
+    border-color: var(--c-accent);
+}
+.sv-team--miss {
+    background: color-mix(in srgb, var(--c-danger) 28%, var(--c-surface-2));
+    border-color: var(--c-danger);
+}
+
+.btn--sm {
+    padding: 4px 10px;
+    font-size: var(--text-xs);
+}

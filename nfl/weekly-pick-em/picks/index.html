@@ -226,6 +226,17 @@
             const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
             return `${day} at ${time}`;
         }
+        // Tue/Wed ET is the NFL's own dead zone between weeks — every game
+        // from a normal Thu-Mon slate is long since final by then, but
+        // nwpe_season_state.current_week (ESPN's own pointer) doesn't
+        // necessarily flip to the next week until its Thursday games
+        // actually exist/sync. Without this, "Week 3 kicked off..." would
+        // otherwise keep showing as stale leftover copy straight through
+        // to the next week's kickoff.
+        function isBetweenWeeksET() {
+            const day = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(new Date());
+            return day === 'Tue' || day === 'Wed';
+        }
         // Shown only for the CURRENT week, and only once its first game has
         // actually kicked off — nudges toward Standings instead of an
         // auto-redirect, reusing kickoff_at already loaded for isLocked()
@@ -233,7 +244,7 @@
         function updateKickoffBanner(week) {
             const banner = document.getElementById('kickoff-banner');
             const earliest = week === currentWeekNum ? weekEarliestKickoff(week) : null;
-            if (earliest == null || Date.now() < earliest) { banner.classList.add('hidden'); return; }
+            if (earliest == null || Date.now() < earliest || isBetweenWeeksET()) { banner.classList.add('hidden'); return; }
             document.getElementById('kickoff-banner-text').innerHTML = `<b>${weekLabel(week)}</b> kicked off ${fmtBannerKickoff(earliest)}.`;
             banner.classList.remove('hidden');
         }

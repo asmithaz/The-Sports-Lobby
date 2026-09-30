@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>NFL Survivor Pool — Dashboard</title>
+    <link rel="icon" href="/favicon.ico" />
+
+    <link rel="stylesheet" href="/css/design-tokens.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="styles.css" />
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/js/supabase.js"></script>
+    <script src="/js/error-logging.js"></script>
+    <script src="/js/feedback.js"></script>
+    <script src="/js/auth.js"></script>
+</head>
+<body>
+
+    <nav class="nav">
+        <a href="/index.html" class="nav-logo">The Sports Lobby</a>
+        <div class="nav-links">
+            <a href="/nfl/index.html" class="nav-link">NFL</a>
+        </div>
+    </nav>
+
+    <main class="page-wrapper">
+
+        <div class="dash-header">
+            <div>
+                <h1 id="league-name">Loading…</h1>
+                <div class="sub" id="league-sub"></div>
+            </div>
+            <div class="flex gap-2">
+                <button type="button" id="invite-btn" class="btn btn--ghost">✉️ Invite</button>
+                <a href="/nfl/survivor/history/" id="history-link" class="btn btn--ghost">📜 History</a>
+                <a href="#" id="settings-link" class="btn btn--ghost">⚙️ Settings</a>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <span class="tab active" data-tab="standings">Standings</span>
+            <a href="/nfl/survivor/picks/" id="picks-tab-link" class="tab" style="text-decoration:none;">My Pick</a>
+        </div>
+
+        <div class="section-block">
+            <div class="section-title">Standings</div>
+            <div class="section-sub" id="standings-sub">Still-alive members are shown first. Eliminated members are ranked by how many weeks they survived.</div>
+            <div class="table-wrap">
+                <table class="data-table" id="standings-table">
+                    <thead>
+                        <tr>
+                            <th>Team</th>
+                            <th>This Week</th>
+                            <th>% Picked</th>
+                            <th>Status</th>
+                            <th>Lives Left</th>
+                            <th>Weeks Survived</th>
+                        </tr>
+                    </thead>
+                    <tbody id="standings-body"><tr><td colspan="6" class="text-muted" style="padding:var(--space-4);">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section-block">
+            <div class="section-title">Pick History</div>
+            <div class="section-sub">Everyone's picks are hidden until that game locks — you can always see your own. A red cell is the week that member was eliminated.</div>
+            <div class="table-wrap">
+                <table class="data-table sv-history-table" id="history-table">
+                    <thead><tr id="history-header-row"></tr></thead>
+                    <tbody id="history-body"><tr><td class="text-muted" style="padding:var(--space-4);">Loading…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <div class="join-overlay" id="invite-overlay" style="display:none;">
+        <div class="join-panel">
+            <h3>Invite to this league</h3>
+            <div class="link-row">
+                <input type="text" id="invite-link-input" class="input" readonly />
+                <button type="button" class="btn btn--ghost" id="copy-invite-btn">Copy</button>
+            </div>
+            <div class="form-actions" style="margin-top:var(--space-3);">
+                <button type="button" class="btn btn--ghost" id="close-invite-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <span>2026 The Sports Lobby. All rights reserved.</span>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/terms.html" class="footer-link">Terms</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="/legal/privacy.html" class="footer-link">Privacy</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="#" class="footer-link" data-feedback-trigger>Feedback</a>
+        <span class="footer-sep">&middot;</span>
+        <a href="https://venmo.com/u/smithaz" class="footer-link" target="_blank" rel="noopener">💚 Support</a>
+    </footer>
+
+    <script>
+        let currentUserId = null;
+        let leagueId = null;
+        let currentSeason = null;
+        let nsvLeague = null; // { pick_mode, result_mode, lives_allowed, continue_to_playoffs }
+
+        function escapeHtml(str) {
+            const d = document.createElement('div');
+            d.appendChild(document.createTextNode(str ?? ''));
+            return d.innerHTML;
+        }
+        function weekColLabel(w) {
+            if (w <= 18) return `Wk ${w}`;
+            return { 19: 'WC', 20: 'Div', 21: 'Conf', 22: 'PB', 23: 'SB' }[w] || `Wk ${w}`;
+        }
+        function isLocked(game) {
+            if (game.status === 'final') return true;
+            if (!game.kickoff_at) return false;
+            return Date.now() >= new Date(game.kickoff_at).getTime() - 5 * 60 * 1000;
+        }
+
+        // Mirrors nwpe_ats_cover() in schema.sql exactly — same helper the
+        // Picks page uses, needed here too so Pick History's win/loss dots
+        // are accurate for spread-mode leagues, not just straight-up ones.
+        function computeAtsCover(homeTeam, awayTeam, homeScore, awayScore, spread, favoriteTeam) {
+            if (spread == null || favoriteTeam == null) return null;
+            const favIsHome = favoriteTeam === homeTeam;
+            const margin = favIsHome ? homeScore - awayScore : awayScore - homeScore;
+            if (margin > spread) return favoriteTeam;
+            if (margin < spread) return favIsHome ? awayTeam : homeTeam;
+            return null; // push
+        }
+
+        function resolveLeagueId() {
+            const fromUrl = new URLSearchParams(window.location.search).get('league_id');
+            if (fromUrl) { sessionStorage.setItem('league_id', fromUrl); return fromUrl; }
+            return sessionStorage.getItem('league_id');
+        }
+
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) { window.location.href = '/login/index.html'; return; }
+            currentUserId = session.user.id;
+
+            leagueId = resolveLeagueId();
+            if (!leagueId) { window.location.href = '/nfl/index.html'; return; }
+
+            document.getElementById('picks-tab-link').href = `/nfl/survivor/picks/?league_id=${leagueId}`;
+            document.getElementById('history-link').href = `/nfl/survivor/history/?league_id=${leagueId}`;
+            document.getElementById('settings-link').href = `/nfl/survivor/settings/?league_id=${leagueId}`;
+
+            const { data: leagueRow } = await supabase
+                .from('leagues').select('name, current_season, invite_code').eq('id', leagueId).single();
+            currentSeason = leagueRow?.current_season;
+            document.getElementById('league-name').textContent = leagueRow?.name ?? 'League';
+
+            const { data: nsvLeagueRow } = await supabase
+                .from('nsv_leagues').select('pick_mode, result_mode, lives_allowed, spread_lock_mode, continue_to_playoffs, reset_teams_for_playoffs').eq('league_id', leagueId).eq('season', currentSeason).single();
+            nsvLeague = nsvLeagueRow;
+            if (nsvLeagueRow) {
+                const modeLabel = nsvLeagueRow.result_mode === 'survive_on_loss' ? 'Eliminator' : 'Classic';
+                // "Lives" here, not "mulligans" — matches the Standings
+                // page's "Lives Left" column (lives_allowed + 1, since your
+                // ongoing pick is itself a life, on top of any mulligans).
+                // Mixing "1 mulligan" in this banner with "2 lives" in the
+                // table read as two different, disagreeing numbers.
+                const totalLives = nsvLeagueRow.lives_allowed + 1;
+                const livesLabel = `${totalLives} ${totalLives === 1 ? 'life' : 'lives'}`;
+                const playoffsLabel = nsvLeagueRow.continue_to_playoffs
+                    ? (nsvLeagueRow.reset_teams_for_playoffs ? ' · Continues into playoffs (teams reset)' : ' · Continues into playoffs')
+                    : '';
+                document.getElementById('league-sub').textContent =
+                    `NFL Survivor Pool · ${nsvLeagueRow.pick_mode === 'spread' ? 'Against the Spread' : 'Straight Up'} · ${modeLabel} · ${livesLabel}${playoffsLabel}`;
+            }
+
+            document.getElementById('invite-btn').addEventListener('click', () => {
+                document.getElementById('invite-link-input').value =
+                    window.location.origin + '/join/?code=nsv-' + (leagueRow?.invite_code || '').toLowerCase();
+                document.getElementById('invite-overlay').style.display = 'flex';
+            });
+            document.getElementById('close-invite-btn').addEventListener('click', () => {
+                document.getElementById('invite-overlay').style.display = 'none';
+            });
+            document.getElementById('copy-invite-btn').addEventListener('click', () => {
+                const input = document.getElementById('invite-link-input');
+                navigator.clipboard.writeText(input.value).then(() => {
+                    const btn = document.getElementById('copy-invite-btn');
+                    btn.textContent = 'Copied!';
+                    setTimeout(() => btn.textContent = 'Copy', 2000);
+                });
+            });
+
+            await loadAndRender();
+        }
+
+        async function loadAndRender() {
+            const [{ data: standings }, { data: games }, { data: picks }, { data: stateRow }] = await Promise.all([
+                supabase.rpc('nsv_get_standings', { p_league_id: leagueId, p_season: currentSeason }),
+                supabase.rpc('nsv_get_slate', { p_league_id: leagueId, p_season: currentSeason }),
+                supabase.from('nsv_picks').select('*').eq('league_id', leagueId).eq('season', currentSeason),
+                supabase.from('nwpe_season_state').select('current_week').eq('season', currentSeason).maybeSingle()
+            ]);
+
+            const currentWeekNum = stateRow?.current_week ?? null;
+
+            let locksByGameId = {};
+            if (nsvLeague?.pick_mode === 'spread' && games?.length) {
+                const { data: locks } = await supabase
+                    .from('nwpe_game_spread_locks')
+                    .select('*')
+                    .eq('lock_mode', nsvLeague.spread_lock_mode)
+                    .in('game_id', games.map(g => g.id));
+                (locks || []).forEach(l => { locksByGameId[l.game_id] = l; });
+            }
+
+            renderStandings(standings || [], games || [], picks || [], currentWeekNum);
+            renderHistory(standings || [], games || [], picks || [], locksByGameId);
+        }
+
+        // "This Week" column shows each member's pick for the CURRENT week —
+        // same hide-until-locked rule as Pick History below (always visible
+        // for your own row) — plus, once a pick is visible, what percentage
+        // of everyone else with a visible pick this week chose the same
+        // team (a simple Yahoo/ESPN-style consensus read), NOT a percentage
+        // of the whole league (members who haven't picked yet, or whose
+        // pick is still hidden, don't count toward that denominator).
+        function renderStandings(standings, games, picks, currentWeekNum) {
+            const body = document.getElementById('standings-body');
+            if (!standings.length) {
+                body.innerHTML = `<tr><td colspan="6" class="text-muted" style="padding:var(--space-4);">No members yet.</td></tr>`;
+                return;
+            }
+
+            const gamesById = Object.fromEntries(games.map(g => [g.id, g]));
+            const thisWeekPickByUser = {};
+            if (currentWeekNum != null) {
+                picks.filter(p => p.week === currentWeekNum).forEach(p => { thisWeekPickByUser[p.user_id] = p; });
+            }
+            const visiblePickByUser = {};
+            Object.entries(thisWeekPickByUser).forEach(([userId, p]) => {
+                if (userId === currentUserId || (gamesById[p.game_id] && isLocked(gamesById[p.game_id]))) visiblePickByUser[userId] = p;
+            });
+            const teamCounts = {};
+            Object.values(visiblePickByUser).forEach(p => { teamCounts[p.picked_team] = (teamCounts[p.picked_team] || 0) + 1; });
+            const visibleTotal = Object.keys(visiblePickByUser).length;
+
+            const weekGamesArr = games.filter(g => g.week === currentWeekNum);
+            const weekClosed = weekGamesArr.length > 0 && weekGamesArr.every(isLocked);
+
+            body.innerHTML = standings.map(s => {
+                const statusPill = s.is_alive
+                    ? `<span class="pill pill--green">Alive</span>`
+                    : `<span class="pill pill--danger">Out — ${weekColLabel(s.eliminated_week)}${s.eliminated_team ? ' vs. ' + escapeHtml(s.eliminated_team) : ' (no pick)'}</span>`;
+
+                let thisWeekCell, pctCell;
+                const visiblePick = visiblePickByUser[s.user_id];
+                if (visiblePick) {
+                    const pct = visibleTotal ? Math.round((teamCounts[visiblePick.picked_team] / visibleTotal) * 100) : 0;
+                    const game = gamesById[visiblePick.game_id];
+                    const pickedHome = game && game.home_team === visiblePick.picked_team;
+                    const logo = game ? (pickedHome ? game.home_team_logo : game.away_team_logo) : null;
+
+                    // Own team's score vs. the opponent's, so standings alone
+                    // show whether each member's pick is currently winning or
+                    // losing without needing to click into Picks/History.
+                    let scoreTag = '';
+                    if (game && game.status !== 'scheduled') {
+                        const score = pickedHome ? game.home_score : game.away_score;
+                        const oppScore = pickedHome ? game.away_score : game.home_score;
+                        if (score != null && oppScore != null) {
+                            const scoreCls = score > oppScore ? 'sv-week-pick__score--win' : score < oppScore ? 'sv-week-pick__score--loss' : '';
+                            scoreTag = `<span class="sv-week-pick__score ${scoreCls}">${score}-${oppScore}</span>`;
+                        }
+                    }
+
+                    thisWeekCell = `<div class="sv-week-pick">
+                        ${logo ? `<img class="sv-week-pick__logo" src="${logo}" alt="" />` : ''}
+                        <span class="sv-week-pick__team">${escapeHtml(visiblePick.picked_team)}</span>
+                        ${scoreTag}
+                    </div>`;
+                    pctCell = `<span class="sv-week-pick__pct">${pct}%</span>`;
+                } else if (thisWeekPickByUser[s.user_id]) {
+                    thisWeekCell = `<span class="text-muted">🔒</span>`; // has a pick, just not visible yet
+                    pctCell = `<span class="text-muted">—</span>`;
+                } else if (!s.is_alive) {
+                    thisWeekCell = `<span class="text-muted">—</span>`; // already out, nothing to pick this week
+                    pctCell = `<span class="text-muted">—</span>`;
+                } else if (!weekClosed) {
+                    thisWeekCell = `<span class="text-muted">🔒</span>`;
+                    pctCell = `<span class="text-muted">—</span>`;
+                } else {
+                    thisWeekCell = `<span class="sv-cell--miss">No pick</span>`;
+                    pctCell = `<span class="text-muted">—</span>`;
+                }
+
+                // s.lives_remaining is mulligans left (0 once your last
+                // safety net is used), not total chances left — displaying
+                // that raw made "0" look like "you're already done" for a
+                // member who is actually still alive and just on their
+                // final life. +1 converts it to total lives remaining
+                // (your ongoing pick plus any banked mulligans), matching
+                // how commissioners describe "1 mulligan" as "2 lives" —
+                // so it only reaches 0 once Status also says Out.
+                const livesLeft = s.is_alive ? s.lives_remaining + 1 : 0;
+
+                return `<tr${s.user_id === currentUserId ? ' class="row--me"' : ''}>
+                    <td>${escapeHtml(s.team_name || 'Unnamed')}</td>
+                    <td>${thisWeekCell}</td>
+                    <td>${pctCell}</td>
+                    <td>${statusPill}</td>
+                    <td>${livesLeft}</td>
+                    <td>${s.weeks_survived}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        // True per-pick outcome (mirrors the Picks page's own grading) —
+        // returns true/false once the game is final, or null while it's
+        // still in progress or ended in a push (spread mode only).
+        function computeHit(pick, game, locksByGameId) {
+            if (!game || game.status !== 'final') return null;
+            if (nsvLeague?.pick_mode === 'spread') {
+                const lock = locksByGameId[pick.game_id];
+                if (lock && lock.locked_spread != null) {
+                    const atsWinner = computeAtsCover(game.home_team, game.away_team, game.home_score, game.away_score, lock.locked_spread, lock.locked_favorite_team);
+                    if (atsWinner == null) return null; // push
+                    return pick.picked_team === atsWinner;
+                }
+            }
+            return pick.picked_team === game.winner_team;
+        }
+
+        function renderHistory(standings, games, picks, locksByGameId) {
+            const weeks = [...new Set(games.map(g => g.week))].sort((a, b) => a - b);
+            const gamesById = Object.fromEntries(games.map(g => [g.id, g]));
+
+            const headerRow = document.getElementById('history-header-row');
+            headerRow.innerHTML = `<th>Team</th>` + weeks.map(w => `<th>${weekColLabel(w)}</th>`).join('');
+
+            const picksByUserWeek = {};
+            picks.forEach(p => {
+                if (!picksByUserWeek[p.user_id]) picksByUserWeek[p.user_id] = {};
+                picksByUserWeek[p.user_id][p.week] = p;
+            });
+
+            const body = document.getElementById('history-body');
+            if (!standings.length) {
+                body.innerHTML = `<tr><td class="text-muted" style="padding:var(--space-4);">No members yet.</td></tr>`;
+                return;
+            }
+
+            body.innerHTML = standings.map(s => {
+                const userPicks = picksByUserWeek[s.user_id] || {};
+                const cells = weeks.map(w => {
+                    const pick = userPicks[w];
+                    const weekGamesArr = games.filter(g => g.week === w);
+                    const weekClosed = weekGamesArr.length > 0 && weekGamesArr.every(isLocked);
+
+                    if (!pick) {
+                        if (!weekClosed) return `<td class="sv-cell sv-cell--muted">🔒</td>`;
+                        return `<td class="sv-cell sv-cell--miss">No pick</td>`;
+                    }
+
+                    const game = gamesById[pick.game_id];
+                    const isElimWeek = s.eliminated_week === w;
+                    const mulliganTag = pick.used_mulligan ? ' <span class="sv-mulligan" title="Mulligan used">★</span>' : '';
+                    const logo = game ? (game.home_team === pick.picked_team ? game.home_team_logo : game.away_team_logo) : null;
+
+                    // Green/red/amber dot on the logo itself reflects the
+                    // pick's actual result (win/loss, using the same
+                    // spread-aware grading the Picks page uses) — not just
+                    // "was this week's game final", so a loss saved by a
+                    // mulligan still shows red (the star icon separately
+                    // marks that a mulligan covered it).
+                    let dotColor = null;
+                    if (game?.status === 'live') {
+                        dotColor = 'amber';
+                    } else {
+                        const hit = computeHit(pick, game, locksByGameId);
+                        if (hit != null) {
+                            const survived = nsvLeague?.result_mode === 'survive_on_loss' ? !hit : hit;
+                            dotColor = survived ? 'green' : 'red';
+                        }
+                    }
+                    // Same checkmark/✗ language as the CFB Weekly Pick'em
+                    // grid's .pcell cards, just compact — a tinted chip
+                    // around the logo plus a small badge, instead of that
+                    // grid's full logo+name+result card (which is 116px
+                    // wide per cell; this table needs to stay 18-22 columns
+                    // narrow).
+                    const dotGlyph = dotColor === 'green' ? '✓' : dotColor === 'red' ? '✗' : '';
+                    const dotTag = dotColor ? `<span class="sv-history-dot sv-history-dot--${dotColor}">${dotGlyph}</span>` : '';
+                    const chipCls = ['sv-history-pick', dotColor ? `sv-history-pick--${dotColor}` : ''].filter(Boolean).join(' ');
+
+                    // Team logo instead of the full team name — narrows every
+                    // week column from ~110px (e.g. "Jacksonville Jaguars")
+                    // down to the icon's own width, which is what actually
+                    // fixes the table's horizontal scrollbar across 18+ weeks.
+                    const pickMark = logo
+                        ? `<span class="${chipCls}"><img class="sv-history-logo" src="${logo}" alt="${escapeHtml(pick.picked_team)}" title="${escapeHtml(pick.picked_team)}" />${dotTag}</span>`
+                        : escapeHtml(pick.picked_team);
+                    const cellCls = ['sv-cell', isElimWeek ? 'sv-cell--elim' : ''].filter(Boolean).join(' ');
+                    return `<td class="${cellCls}">${pickMark}${mulliganTag}</td>`;
+                }).join('');
+                return `<tr${s.user_id === currentUserId ? ' class="row--me"' : ''}><td>${escapeHtml(s.team_name || 'Unnamed')}</td>${cells}</tr>`;
+            }).join('');
+        }
+
+        init();
+    </script>
+</body>
+</html>
